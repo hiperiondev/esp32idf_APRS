@@ -33,7 +33,7 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 
 ## Highlights
 
-- **On-chip soft-modem.** AFSK 1200 Bd Bell 202 (standard APRS) with up to six parallel demodulators (a multi-slicer set sharing tilted prefilters, tunable from the web admin), plus AFSK 1200 Bd V.23, AFSK 300 Bd, and **G3RUH 9600 Bd FSK** — all in pure C on the ESP32's own ADC/DAC.
+- **On-chip soft-modem.** AFSK 1200 Bd Bell 202 (standard APRS) with up to eight parallel demodulators (a multi-slicer set on two tilted prefilters covering about 25 dB of tone twist, tunable from the web admin, with a tone-band receive level meter), plus AFSK 1200 Bd V.23, AFSK 300 Bd, and **G3RUH 9600 Bd FSK** — all in pure C on the ESP32's own ADC/DAC.
 - **FX.25 forward error correction.** Reed–Solomon FEC over AX.25, RX-only or RX+TX, for reliable decodes in weak-signal conditions.
 - **Full APRS-IS IGate.** Bidirectional **RF→INET** and **INET→RF** gating with duplicate suppression, `qAR`/`qAO` construction, payload-type gating, callsign budlists, a local range gate (haversine distance), a prefix whitelist and, on the INET→RF side, a position requirement, a locally-heard source test and per-source spacing that keep a wide APRS-IS subscription off the local channel. Up to four APRS-IS servers can be listed, with automatic failover between the enabled ones.
 - **BrandMeister APRS interconnect.** Recognises, gates and routes the APRS traffic BrandMeister injects, over the APRS-IS session the IGate already has — an `APBMxx` tocall, a `DMR` path alias or a named entry gateway identifies it. Its own page, off by default. **No DMR connection of any kind is involved.**
@@ -56,7 +56,7 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 
 | Area | Notes |
 |---|---|
-| AFSK 1200 Bd Bell 202 | Up to six parallel demodulators, default profile |
+| AFSK 1200 Bd Bell 202 | Up to eight parallel demodulators, default profile |
 | AFSK 1200 Bd V.23 · AFSK 300 Bd · G3RUH 9600 Bd FSK | Multiple selectable modem profiles |
 | HDLC / AX.25 UI frame RX + TX | Full soft-modem TX/RX path |
 | FX.25 (Reed–Solomon FEC over AX.25) | RX-only / RX+TX modes |

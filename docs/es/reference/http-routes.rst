@@ -147,7 +147,7 @@ estación y nada de la estación cambia con ello.
      - ejecutar el loop test (resultado JSON)
    * - POST
      - ``/radio/level``
-     - medir el nivel de recepción, la polarización de entrada y el margen del conversor e informar las estadísticas de recepción, sin transmitir (resultado JSON)
+     - medir el nivel de recepción en la banda de tonos y de banda ancha con un veredicto de nivel, la polarización de entrada y el margen del conversor e informar las estadísticas de recepción, sin transmitir (resultado JSON)
    * - POST
      - ``/radio/txtest``
      - transmitir una ráfaga de prueba acotada para ajustar el nivel de transmisión (resultado JSON)

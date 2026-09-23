@@ -306,10 +306,13 @@
 /**
  * @brief Number of slicers run by the ::MODEM_RX_EQ_MULTISLICE preset.
  *
- * All of them read the same correlator and differ only in the weight given to
- * the space tone, spaced 3 dB apart; see modem.c for the weight tables.
+ * The slicers are split evenly over two tilted prefilters (correlators), four
+ * on each. They differ only in the weight given to the space tone, chosen so
+ * that the twist compensation of the whole set - prefilter tilt plus slicer
+ * weight - steps 3.5 dB over a 24.5 dB range; see modem.c for the target
+ * tables.
  */
-#define MODEM_RX_SLICER_COUNT 6
+#define MODEM_RX_SLICER_COUNT 8
 
 /**
  * @brief Maximum number of 1200 Bd demodulators that can run in parallel on
@@ -326,7 +329,7 @@
  * ::MODEM_RX_SLICER_COUNT..8.
  */
 #ifndef MODEM_RX_MAX_DEMODULATORS
-#define MODEM_RX_MAX_DEMODULATORS 6
+#define MODEM_RX_MAX_DEMODULATORS 8
 #endif
 
 #if (MODEM_RX_MAX_DEMODULATORS < MODEM_RX_SLICER_COUNT) || (MODEM_RX_MAX_DEMODULATORS > 8) || (MODEM_RX_MAX_DEMODULATORS < MODEM_RX_MAX_PREFILTERS)

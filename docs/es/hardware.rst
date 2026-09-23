@@ -220,8 +220,9 @@ trimmer multivuelta es lo que lo hace ajustable.
 
 Ajuste los niveles con los dos botones junto a PRUEBA DE BUCLE, que es lo que
 el loop test no puede hacer una vez que un equipo reemplaza el puente:
-**NIVEL RX** mide sin transmitir — apunte a 250 a 350 mV RMS con el rango
-crudo bien lejos de 0 y 4095, y con la polarización interna activada espere un
+**NIVEL RX** mide sin transmitir — apunte al veredicto **bueno**, un nivel de
+la banda de tonos de al menos 100 mV RMS (unos 250 a 350 mV RMS de banda ancha
+con una entrada plana), con el rango crudo bien lejos de 0 y 4095, y con la polarización interna activada espere un
 offset de continua entre 1200 y 2000 mV — y **PRUEBA TX** activa el
 transmisor para poder leer la desviación en otro instrumento y ajustarla a
 2,5 a 3,5 kHz.

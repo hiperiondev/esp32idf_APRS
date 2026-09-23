@@ -22,18 +22,19 @@ The chain, stage by stage
    * - SAR-ADC1 continuous/DMA, 128-sample conversion frames
      - **76 800 Hz**
      - driver ISR on core 0
-   * - ingest: pair un-swap, DC-offset removal, RMS metering, receive gate decision
+   * - ingest: pair un-swap, DC-offset removal, wideband RMS metering
      - 76 800 Hz
      - ``afsk.c``
-   * - decimation FIR (48 taps, ratio **8:1**), optional CTCSS high-pass, AGC
-       or fixed gain, gate hold ring
+   * - decimation FIR (48 taps, ratio **8:1**), CTCSS/bass high-pass
+       (300 Hz by default), tone-band level meter and receive gate decision,
+       AGC or fixed gain, gate hold ring
      - → **9 600 Hz**
      - ``afsk.c``
    * - per correlator (up to three): band-pass prefilter, mark/space
        correlators, tone magnitudes, low-pass, tone-twist tracking
      - 9 600 Hz
      - ``modem.c``
-   * - per demodulator (up to six): slicer on a correlator's magnitudes, DCD,
+   * - per demodulator (up to eight): slicer on a correlator's magnitudes, DCD,
        DPLL, NRZI decode
      - 9 600 Hz
      - ``modem.c``
@@ -90,11 +91,16 @@ by a half-built chain.
    slicer cannot do is keep a loud space tone out of the mark correlator: the
    correlator is one symbol long, so its response is broad enough for the
    other tone to leak in, and only a filter ahead of it removes that. The
-   default ``MODEM_RX_EQ_MULTISLICE`` set therefore pairs two prefilters
-   (tilts 0 and −5 dB on flat audio) with three slicers each, covering roughly
-   +3 to −12 dB of compensation; the filter-set presets give every demodulator
-   its own prefilter and an unweighted slicer, and the legacy set keeps the
-   fixed 8-tap tables.
+   default ``MODEM_RX_EQ_MULTISLICE`` set therefore pairs two prefilters,
+   tilted towards the two ends of the range (+5 and −9 dB on flat audio, +9
+   and −4 dB on speaker audio), with four slicers each. The tables in
+   ``modem.c`` hold the compensation every slicer should end up with — prefilter
+   tilt plus slicer weight — and each weight is derived from the tilt its
+   prefilter actually realized, so the eight demodulators step 3.5 dB over
+   +9 to −15.5 dB (flat) or +16 to −8.5 dB (speaker) whatever the prefilter
+   length. ``ModemLogConfig()`` lists the result once the receive task runs
+   again. The filter-set presets give every demodulator its own prefilter and
+   an unweighted slicer, and the legacy set keeps the fixed 8-tap tables.
 
 **Duplicate suppression and statistics.**
    A frame with a valid FCS opens a window of 32 bit periods × the active
@@ -105,9 +111,11 @@ by a half-built chain.
    tells what each prefilter adds.
 
 **The receive gate holds what it gates.**
-   A block reaches the demodulators while its RMS has exceeded
+   A block reaches the demodulators while its tone-band level
+   (``afskGetBandRms()``: two cascaded band-passes around 900–2600 Hz on the
+   decimated, high-passed signal, scaled to mV at the pin) has exceeded
    ``rx.gate_mv`` for more than three blocks, and until it falls below half of
-   it. The decimator and the high-pass run on every block regardless, and the
+   it. Hum, CTCSS and bass therefore neither open nor hold the gate. The decimator and the high-pass run on every block regardless, and the
    last three gated blocks are kept (decimated, 3 × 192 floats); when the gate
    opens they are demodulated first, so the preamble spent deciding to open is
    not lost. ``gate_mv = 0`` feeds every block.
@@ -278,7 +286,7 @@ every macro ``#ifndef``-guarded so the build system can override it.
      - 3
      - 1..3
    * - ``MODEM_RX_MAX_DEMODULATORS``
-     - 6
+     - 8
      - parallel 1200 Bd demodulators (slicers), ``MODEM_RX_SLICER_COUNT``..8
    * - *(derived)* ``MODEM_DEMOD_SAMPLERATE``
      - 9600

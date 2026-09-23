@@ -44,8 +44,8 @@ puede convertir el valor guardado directamente al enum:
      - 9600
      - —
 
-Los perfiles de 1200 Bd ejecutan **hasta seis demoduladores en paralelo**
-(``MODEM_RX_MAX_DEMODULATORS = 6``). Un demodulador es un comparador sobre la
+Los perfiles de 1200 Bd ejecutan **hasta ocho demoduladores en paralelo**
+(``MODEM_RX_MAX_DEMODULATORS = 8``). Un demodulador es un comparador sobre la
 salida de un correlador (un prefiltro pasabanda y los correladores de marca y
 espacio que lo siguen): o bien cada uno tiene su propio prefiltro, con distinta
 inclinación entre los tonos, o bien varios comparadores comparten un prefiltro y
@@ -254,9 +254,12 @@ que devuelva la trama. Dos botones a su lado cubren el mismo terreno con un
 equipo conectado, uno por sentido.
 
 **NIVEL RX** (``aprs_rx_level_sample()``, ``POST /radio/level``) observa la
-etapa de recepción durante alrededor de un segundo e informa el nivel RMS y su
-pico, el offset de continua de la entrada, la ganancia del AGC, los extremos
-crudos de conversión y el estado de la detección de portadora, seguidos de las
+etapa de recepción durante alrededor de un segundo e informa el nivel de la
+banda de tonos (``afskGetBandRms()``) y el nivel RMS de banda ancha con sus
+picos, un veredicto en una palabra (saturado, sin señal, bajo por debajo de
+100 mV RMS de tonos, bueno), el offset de continua de la entrada, la ganancia
+del AGC, los extremos crudos de conversión en toda la ventana y el estado de la
+detección de portadora, seguidos de las
 estadísticas de recepción de ``modem_get_rx_stats()`` (tramas decodificadas y
 exclusivas de cada demodulador, tramas entregadas y reparadas, muestras
 perdidas). No transmite

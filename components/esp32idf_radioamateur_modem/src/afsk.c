@@ -208,17 +208,22 @@ static int16_t s_rawMax = 0;
 // Over-range reporting. s_clipWarn is the operator's selection; s_clipNextWarnMs
 // is the millisecond timestamp before which no further warning is emitted, kept
 // as a deadline rather than a countdown so the comparison stays correct across
-// the 32-bit wrap.
+// the 32-bit wrap. The raw thresholds are AFSK_RAW_CLIP_LOW/HIGH in afsk.h.
 static bool s_clipWarn = false;
 static uint32_t s_clipNextWarnMs = 0;
-
-// Raw conversion results this close to either end of the 12-bit range are taken
-// as over-range: the last few codes are already outside the converter's usable
-// window, and on an interface without input clamp diodes reaching them also
-// means the pin is being driven past the supply rails.
-#define CLIP_RAW_LOW      15
-#define CLIP_RAW_HIGH     4080
 #define CLIP_WARN_HOLD_MS 5000
+
+// Tone-band level meter: two identical second-order band-passes in cascade on
+// the decimated signal, centred at the geometric mean of 900 and 2600 Hz with
+// Q = 0.9, and the millivolts one ADC count is worth, taken from the
+// calibration curve when the ADC starts.
+#define BAND_METER_LO_HZ 900.0f
+#define BAND_METER_HI_HZ 2600.0f
+#define BAND_METER_Q     0.9f
+static float s_bandB0, s_bandB2, s_bandA1, s_bandA2;
+static float s_bandX1[2], s_bandX2[2], s_bandY1[2], s_bandY2[2];
+static float s_mvPerCount = 0.806f;
+static int s_bandMvRms = 0;
 
 // DAC sample rate the modulator is programmed for. Fixed while the modem runs:
 // AFSK_init() turns it into the sample-clock alarm period and ModemInit() turns
@@ -289,8 +294,9 @@ static inline uint8_t IRAM_ATTR dac_scale(uint8_t s) {
 // rail in one step.
 #define AGC_MAX_STEP 2.0f
 
-// Receive gate. s_gateOnMv is the opening threshold (0 = no gate), the gate
-// closes below half of it; s_dcdCnt counts blocks above the threshold. The
+// Receive gate. s_gateOnMv is the opening threshold (0 = no gate), compared
+// with the tone-band level of each block; the gate closes below half of it,
+// and s_dcdCnt counts blocks above the threshold. The
 // pending values are written by afskSetRxFrontEnd() and copied into the live
 // ones by afskSetModem() while the receive task is held.
 static uint16_t s_gateOnMv = 10;
@@ -378,6 +384,48 @@ static void hpf_run(float *buf, int len) {
         s_hpfY1 = y;
         buf[i] = y;
     }
+}
+
+// @brief Build the tone-band meter coefficients and clear its state.
+//
+// Constant-peak-gain band-pass from the bilinear transform, at the demodulator
+// sample rate the decimated signal runs at.
+static void band_meter_setup(void) {
+    const float f0 = sqrtf(BAND_METER_LO_HZ * BAND_METER_HI_HZ);
+    const float w0 = 2.0f * (float)M_PI * f0 / (float)MODEM_DEMOD_SAMPLERATE;
+    const float alpha = sinf(w0) / (2.0f * BAND_METER_Q);
+    const float a0 = 1.0f + alpha;
+
+    s_bandB0 = alpha / a0;
+    s_bandB2 = -alpha / a0;
+    s_bandA1 = -2.0f * cosf(w0) / a0;
+    s_bandA2 = (1.0f - alpha) / a0;
+    memset(s_bandX1, 0, sizeof(s_bandX1));
+    memset(s_bandX2, 0, sizeof(s_bandX2));
+    memset(s_bandY1, 0, sizeof(s_bandY1));
+    memset(s_bandY2, 0, sizeof(s_bandY2));
+}
+
+// @brief RMS of a decimated block through the tone-band meter, in ADC counts.
+//
+// Reads buf without changing it; only the meter's own filter state advances.
+static float band_meter_run(const float *buf, int len) {
+    float sumSq = 0.0f;
+
+    for (int i = 0; i < len; i++) {
+        float v = buf[i];
+        for (int st = 0; st < 2; st++) {
+            float y = s_bandB0 * v + s_bandB2 * s_bandX2[st] - s_bandA1 * s_bandY1[st] - s_bandA2 * s_bandY2[st];
+            s_bandX2[st] = s_bandX1[st];
+            s_bandX1[st] = v;
+            s_bandY2[st] = s_bandY1[st];
+            s_bandY1[st] = y;
+            v = y;
+        }
+        sumSq += v * v;
+    }
+
+    return (len > 0) ? sqrtf(sumSq / (float)len) * 2048.0f : 0.0f;
 }
 
 // @brief Hand one block to the demodulators at the current gain.
@@ -833,6 +881,10 @@ uint16_t afskGetRms(void) {
     return (uint16_t)s_mVrms;
 }
 
+uint16_t afskGetBandRms(void) {
+    return (uint16_t)s_bandMvRms;
+}
+
 uint32_t afskGetAdcSampleCount(void) {
     return s_adcSamples;
 }
@@ -1230,6 +1282,13 @@ static esp_err_t adc_start_continuous(void) {
         return err;
     }
 
+    // Slope of the calibration line, for the tone-band meter, which works in
+    // ADC counts. Measured between two codes well inside the linear part of
+    // the range.
+    int mvLo = 0, mvHi = 0;
+    if ((adc_cali_raw_to_voltage(s_cali, 1000, &mvLo) == ESP_OK) && (adc_cali_raw_to_voltage(s_cali, 3000, &mvHi) == ESP_OK) && (mvHi > mvLo))
+        s_mvPerCount = (float)(mvHi - mvLo) / 2000.0f;
+
     return adc_continuous_start(s_adc);
 }
 
@@ -1297,7 +1356,7 @@ void AFSK_Poll(void) {
             s_rawMin = rawMin;
             s_rawMax = rawMax;
 
-            if (s_clipWarn && ((rawMax >= CLIP_RAW_HIGH) || (rawMin <= CLIP_RAW_LOW))) {
+            if (s_clipWarn && ((rawMax >= AFSK_RAW_CLIP_HIGH) || (rawMin <= AFSK_RAW_CLIP_LOW))) {
                 uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
 
                 // Signed difference against a deadline, so the hold survives the
@@ -1309,18 +1368,8 @@ void AFSK_Poll(void) {
             }
         }
 
-        if (mVsumCount > 0) {
+        if (mVsumCount > 0)
             s_mVrms = (int)sqrtf((float)(mVsum / mVsumCount));
-            if (s_gateOnMv > 0) {
-                if (s_mVrms > (int)s_gateOnMv) {
-                    if (s_dcdCnt < 100)
-                        s_dcdCnt++;
-                } else if (s_mVrms < (int)s_gateOffMv) {
-                    if (s_dcdCnt > 0)
-                        s_dcdCnt--;
-                }
-            }
-        }
 
         // G3RUH is the one profile that is NOT decimated.
         //
@@ -1347,6 +1396,21 @@ void AFSK_Poll(void) {
             resample_audio(s_audio);
             if (s_hpfOn)
                 hpf_run(s_audio, count);
+            s_bandMvRms = (int)(band_meter_run(s_audio, count) * s_mvPerCount + 0.5f);
+        } else {
+            s_bandMvRms = s_mVrms;
+        }
+
+        // The gate follows the tone band, so hum or bass alone cannot hold it
+        // open and a quiet tone under a loud low end still opens it.
+        if (s_gateOnMv > 0) {
+            if (s_bandMvRms > (int)s_gateOnMv) {
+                if (s_dcdCnt < 100)
+                    s_dcdCnt++;
+            } else if (s_bandMvRms < (int)s_gateOffMv) {
+                if (s_dcdCnt > 0)
+                    s_dcdCnt--;
+            }
         }
 
         bool signalPresent = (s_gateOnMv == 0) || (s_dcdCnt > 3) || (ModemConfig.modem == MODEM_MODEM_G3RUH);
@@ -1429,9 +1493,6 @@ void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t pream
     // out-of-range values fall back to standard-APRS Bell202.
     ModemConfig.modem = (val <= MODEM_MODEM_G3RUH) ? (modem_mode_t)val : MODEM_MODEM_BELL202;
 
-    ESP_LOGI(TAG, "modem=%d adcRate=%d blockSize=%d resample=%d demodRate=%d", (int)ModemConfig.modem, MODEM_ADC_SAMPLERATE, MODEM_BLOCK_SIZE,
-             MODEM_RESAMPLE_RATIO, MODEM_DEMOD_SAMPLERATE);
-
     ModemInit();
     Ax25Init(fx25Mode);
     Ax25Config.fullDuplex = s_fullDuplex ? 1 : 0;
@@ -1459,12 +1520,21 @@ void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t pream
     s_agcFixed = s_pendAgcFixed;
     s_fixedGain = powf(10.0f, (float)s_pendFixedGainDb / 20.0f);
     s_agcGain = s_agcFixed ? s_fixedGain : 1.0f;
-    ESP_LOGI(TAG, "RX front end: gate %s%u mV, high-pass %s%u Hz, gain %s %.2fx", s_gateOnMv ? "" : "off/", (unsigned)s_gateOnMv, s_hpfOn ? "" : "off/",
-             (unsigned)s_pendHpfHz, s_agcFixed ? "fixed" : "auto, start", (double)s_agcGain);
+    band_meter_setup();
+    s_bandMvRms = 0;
     AFSK_FlushFifo();
 
     if (s_rxTask)
         vTaskResume(s_rxTask);
+
+    // Logged only once the receive task runs again: the console takes several
+    // milliseconds per line, longer in total than the ADC driver's pool can
+    // buffer while nothing drains it.
+    ESP_LOGI(TAG, "modem=%d adcRate=%d blockSize=%d resample=%d demodRate=%d", (int)ModemConfig.modem, MODEM_ADC_SAMPLERATE, MODEM_BLOCK_SIZE,
+             MODEM_RESAMPLE_RATIO, MODEM_DEMOD_SAMPLERATE);
+    ModemLogConfig();
+    ESP_LOGI(TAG, "RX front end: gate %s%u mV (tone band), high-pass %s%u Hz, gain %s %.2fx", s_gateOnMv ? "" : "off/", (unsigned)s_gateOnMv,
+             s_hpfOn ? "" : "off/", (unsigned)s_pendHpfHz, s_agcFixed ? "fixed" : "auto, start", (double)s_agcGain);
 }
 
 // ------------------------------------------------------------------

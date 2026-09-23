@@ -22,13 +22,14 @@ La cadena, etapa por etapa
    * - SAR-ADC1 continuo/DMA, tramas de conversión de 128 muestras
      - **76 800 Hz**
      - ISR del controlador en núcleo 0
-   * - ingesta: des-intercambio de pares, eliminación de offset DC, medición RMS,
-       decisión del umbral de recepción
+   * - ingesta: des-intercambio de pares, eliminación de offset DC, medición RMS
+       de banda ancha
      - 76 800 Hz
      - ``afsk.c``
-   * - FIR de diezmado (48 coeficientes, ratio **8:1**), pasa-altos opcional
-       de CTCSS, AGC o
-       ganancia fija, anillo de retención del umbral
+   * - FIR de diezmado (48 coeficientes, ratio **8:1**), pasa-altos de
+       CTCSS y graves (300 Hz por omisión), medidor de nivel de la banda de
+       tonos y decisión del umbral de recepción, AGC o ganancia fija, anillo de
+       retención del umbral
      - → **9 600 Hz**
      - ``afsk.c``
    * - por correlador (hasta tres): prefiltro pasabanda, correladores de
@@ -36,7 +37,7 @@ La cadena, etapa por etapa
        desbalance de tonos
      - 9 600 Hz
      - ``modem.c``
-   * - por demodulador (hasta seis): comparador sobre las magnitudes de un
+   * - por demodulador (hasta ocho): comparador sobre las magnitudes de un
        correlador, DCD, DPLL, decodificación NRZI
      - 9 600 Hz
      - ``modem.c``
@@ -99,10 +100,17 @@ procesa con una cadena a medio construir.
    correlador de marca: el correlador dura un símbolo, así que su respuesta es
    lo bastante ancha como para que el otro tono se cuele, y sólo un filtro
    previo lo quita. Por eso el juego por omisión ``MODEM_RX_EQ_MULTISLICE``
-   combina dos prefiltros (inclinaciones 0 y −5 dB con audio plano) con tres
-   comparadores cada uno, y cubre de +3 a −12 dB de compensación; los juegos
-   de filtros dan a cada demodulador su propio prefiltro y un comparador sin
-   peso, y el juego clásico conserva las tablas fijas de 8 coeficientes.
+   combina dos prefiltros, inclinados hacia los dos extremos del rango (+5 y
+   −9 dB con audio plano, +9 y −4 dB con audio de altavoz), con cuatro
+   comparadores cada uno. Las tablas de ``modem.c`` contienen la compensación
+   con la que debe quedar cada comparador — inclinación del prefiltro más peso
+   del comparador — y cada peso se calcula a partir de la inclinación que su
+   prefiltro alcanzó de verdad, así que los ocho demoduladores avanzan en pasos
+   de 3,5 dB de +9 a −15,5 dB (plano) o de +16 a −8,5 dB (altavoz) sea cual sea
+   la longitud del prefiltro. ``ModemLogConfig()`` escribe el resultado cuando
+   la tarea de recepción vuelve a correr. Los juegos de filtros dan a cada
+   demodulador su propio prefiltro y un comparador sin peso, y el juego clásico
+   conserva las tablas fijas de 8 coeficientes.
 
 **Supresión de duplicados y estadísticas.**
    Una trama con FCS válido abre una ventana de 32 periodos de bit × el número
@@ -113,9 +121,12 @@ procesa con una cadena a medio construir.
    contador ``exclusivos`` que indica lo que aporta cada prefiltro.
 
 **El umbral de recepción guarda lo que retiene.**
-   Un bloque llega a los demoduladores mientras su RMS ha superado
-   ``rx.gate_mv`` durante más de tres bloques, y hasta que cae por debajo de la
-   mitad. El diezmador y el pasa-altos se ejecutan en todos los bloques, y los
+   Un bloque llega a los demoduladores mientras su nivel en la banda de tonos
+   (``afskGetBandRms()``: dos pasabandas en cascada en torno a 900–2600 Hz
+   sobre la señal diezmada y filtrada por el pasa-altos, en mV en el pin) ha
+   superado ``rx.gate_mv`` durante más de tres bloques, y hasta que cae por
+   debajo de la mitad. El zumbido, el CTCSS y los graves no lo abren ni lo
+   mantienen abierto. El diezmador y el pasa-altos se ejecutan en todos los bloques, y los
    tres últimos bloques retenidos se guardan (diezmados, 3 × 192 floats); al
    abrirse el umbral se demodulan primero, así que el preámbulo gastado en
    decidir la apertura no se pierde. ``gate_mv = 0`` alimenta todos los bloques.
@@ -296,7 +307,7 @@ sobreescribir.
      - 3
      - 1..3
    * - ``MODEM_RX_MAX_DEMODULATORS``
-     - 6
+     - 8
      - demoduladores (comparadores) de 1200 Bd en paralelo,
        ``MODEM_RX_SLICER_COUNT``..8
    * - *(derivado)* ``MODEM_DEMOD_SAMPLERATE``

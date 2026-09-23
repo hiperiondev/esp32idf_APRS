@@ -485,18 +485,29 @@ bool aprs_loop_test_run(char *msg, size_t msg_len);
  * traffic is being decoded - which is what the loop test cannot do, since
  * that one keys up and waits to hear itself back.
  *
- * The measurement is what the audio interface is adjusted against: the RMS
- * level sets the receive attenuator, the raw conversion extremes show how
+ * The measurement is what the audio interface is adjusted against: the
+ * tone-band level (afskGetBandRms()) is what the demodulators actually get to
+ * work with and sets the receive level, the raw conversion extremes show how
  * much headroom is left before the converter runs out of range, and the DC
  * offset shows where the input is biased - the reading that tells an
  * AC-coupled input with the ADC self-bias enabled from one with no bias at
- * all.
+ * all. The wideband level is reported beside the tone-band one; a large gap
+ * between them means most of the input's energy lies outside the tones.
  *
- * The reported object carries @c ok, @c mVrms, @c peak_mVrms, @c dc_mV,
- * @c agc, @c raw_min, @c raw_max, @c dcd and @c adc_samples, followed by the
- * receive statistics of modem_get_rx_stats(): @c demods (active
- * demodulators), @c decoded and @c unique (arrays of @c demods entries, one
- * per demodulator), @c delivered, @c repaired, @c fifo_drops and @c pool_ovf.
+ * The reported object carries @c ok, @c mVrms and @c peak_mVrms (wideband
+ * mean and peak), @c band_mVrms and @c band_peak_mVrms (tone-band mean and
+ * peak), @c level, @c dc_mV, @c agc, @c raw_min and @c raw_max (extremes over
+ * the whole window), @c dcd and @c adc_samples, followed by the receive
+ * statistics of modem_get_rx_stats(): @c demods (active demodulators),
+ * @c decoded and @c unique (arrays of @c demods entries, one per
+ * demodulator), @c delivered, @c repaired, @c fifo_drops and @c pool_ovf.
+ *
+ * @c level is a one-word verdict: @c "clip" when the raw extremes reached
+ * ::AFSK_RAW_CLIP_LOW or ::AFSK_RAW_CLIP_HIGH, otherwise @c "idle" when no
+ * demodulator detected a carrier during the window, otherwise @c "low" when
+ * the peak tone-band level stayed below 100 mV RMS and @c "good" when it did
+ * not.
+ *
  * Every value is produced locally, so nothing received off the air is ever
  * echoed into it.
  *

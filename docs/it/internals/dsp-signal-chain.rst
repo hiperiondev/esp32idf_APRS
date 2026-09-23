@@ -22,13 +22,14 @@ La catena, fase per fase
    * - SAR-ADC1 continuo/DMA, frame di conversione da 128 campioni
      - **76 800 Hz**
      - ISR del driver su core 0
-   * - ingest: de-interleave coppie, rimozione offset DC, misura RMS, decisione
-       della soglia di ricezione
+   * - ingest: de-interleave coppie, rimozione offset DC, misura RMS a banda
+       larga
      - 76 800 Hz
      - ``afsk.c``
    * - FIR di decimazione (48 coefficienti, rapporto **8:1**), passa-alto
-       CTCSS opzionale, AGC o
-       guadagno fisso, anello di trattenuta della soglia
+       CTCSS e bassi (300 Hz predefinito), misura del livello della banda dei
+       toni e decisione della soglia di ricezione, AGC o guadagno fisso, anello
+       di trattenuta della soglia
      - → **9 600 Hz**
      - ``afsk.c``
    * - per correlatore (fino a tre): prefiltro passa-banda, correlatori
@@ -36,7 +37,7 @@ La catena, fase per fase
        sbilanciamento dei toni
      - 9 600 Hz
      - ``modem.c``
-   * - per demodulatore (fino a sei): comparatore sulle magnitudini di un
+   * - per demodulatore (fino a otto): comparatore sulle magnitudini di un
        correlatore, DCD, DPLL, decodifica NRZI
      - 9 600 Hz
      - ``modem.c``
@@ -99,10 +100,17 @@ mai elaborato da una catena costruita a metà.
    del mark: il correlatore dura un simbolo, quindi la sua risposta è
    abbastanza larga perché l'altro tono entri, e solo un filtro a monte lo
    toglie. Per questo il set predefinito ``MODEM_RX_EQ_MULTISLICE`` unisce due
-   prefiltri (inclinazioni 0 e −5 dB con audio piatto) a tre comparatori
-   ciascuno e copre da +3 a −12 dB di compensazione; i set di filtri danno a
-   ogni demodulatore il proprio prefiltro e un comparatore senza peso, e il set
-   classico conserva le tabelle fisse a 8 coefficienti.
+   prefiltri, inclinati verso i due estremi dell'intervallo (+5 e −9 dB con
+   audio piatto, +9 e −4 dB con audio altoparlante), a quattro comparatori
+   ciascuno. Le tabelle di ``modem.c`` contengono la compensazione con cui deve
+   finire ogni comparatore — inclinazione del prefiltro più peso del
+   comparatore — e ogni peso è calcolato dall'inclinazione che il suo prefiltro
+   ha raggiunto davvero, quindi gli otto demodulatori avanzano a passi di
+   3,5 dB da +9 a −15,5 dB (piatto) o da +16 a −8,5 dB (altoparlante)
+   qualunque sia la lunghezza del prefiltro. ``ModemLogConfig()`` scrive il
+   risultato quando il task di ricezione torna a girare. I set di filtri danno
+   a ogni demodulatore il proprio prefiltro e un comparatore senza peso, e il
+   set classico conserva le tabelle fisse a 8 coefficienti.
 
 **Soppressione dei duplicati e statistiche.**
    Una trama con FCS valido apre una finestra di 32 periodi di bit × il numero
@@ -113,8 +121,11 @@ mai elaborato da una catena costruita a metà.
    contatore ``esclusivi`` che dice ciò che ogni prefiltro aggiunge.
 
 **La soglia di ricezione conserva ciò che trattiene.**
-   Un blocco raggiunge i demodulatori mentre il suo RMS ha superato
-   ``rx.gate_mv`` per più di tre blocchi, e finché non scende sotto la metà. Il
+   Un blocco raggiunge i demodulatori mentre il suo livello nella banda dei
+   toni (``afskGetBandRms()``: due passa-banda in cascata attorno a
+   900–2600 Hz sul segnale decimato e filtrato dal passa-alto, in mV al pin) ha
+   superato ``rx.gate_mv`` per più di tre blocchi, e finché non scende sotto la
+   metà. Ronzio, CTCSS e bassi non la aprono né la tengono aperta. Il
    decimatore e il passa-alto girano su ogni blocco, e gli ultimi tre blocchi
    trattenuti vengono conservati (decimati, 3 × 192 float); quando la soglia si
    apre vengono demodulati per primi, così il preambolo speso per decidere
@@ -296,7 +307,7 @@ sovrascriverla.
      - 3
      - 1..3
    * - ``MODEM_RX_MAX_DEMODULATORS``
-     - 6
+     - 8
      - demodulatori (comparatori) a 1200 Bd in parallelo,
        ``MODEM_RX_SLICER_COUNT``..8
    * - *(derivato)* ``MODEM_DEMOD_SAMPLERATE``

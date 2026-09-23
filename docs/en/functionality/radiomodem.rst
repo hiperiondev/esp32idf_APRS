@@ -576,9 +576,11 @@ Receive demodulator
 
 This fieldset sets up the receive chain: which demodulators run on the audio,
 how their input is filtered, when they are fed and how the gain is set. Every
-field is applied live on *Save*: the demodulators are rebuilt while the receive
-task is held, and the receive statistics shown by **RX LEVEL** restart whenever
-anything here, the modulation or *Flat / discriminator audio input* changes.
+field is applied live on *Save*. When anything here other than *Bit repair*,
+the modulation or *Flat / discriminator audio input* changes, the demodulators
+are rebuilt while the receive task is held — a frame arriving at that moment is
+lost — and the receive statistics shown by **RX LEVEL** restart; saving the page
+with those settings unchanged leaves reception untouched.
 
 Demodulator set
 ---------------
@@ -620,23 +622,31 @@ prefilters with different tilts covers it together.
      - +4, 0, −5 dB
      - 0, +3, +6 dB
    * - Multi-slicer (default)
-     - 6
-     - prefilters 0, −5 dB; slicer weights +3 … −12 dB
-     - prefilters +5, 0 dB; slicer weights +6 … −6 dB
+     - 8
+     - prefilters +5, −9 dB; compensation +9 … −15.5 dB
+     - prefilters +9, −4 dB; compensation +16 … −8.5 dB
    * - Custom
      - *Custom: demodulators*
      - *Custom: tilt* fields
      - *Custom: tilt* fields
 
-**How to choose.** Keep **Multi-slicer**. It pairs two prefilters with three
-decision thresholds each, so it covers the whole twist range without designing
-a prefilter per demodulator, and it costs less CPU than the three-filter set
-while running six HDLC decoders. In a host simulation of a noisy FM channel it
-matched the three-filter set at moderate twist and decoded about a quarter more
-frames at +12 dB, where the legacy pair fails altogether. The
+**How to choose.** Keep **Multi-slicer**. It pairs two prefilters, tilted
+towards the two ends of the twist range, with four decision thresholds each.
+Each threshold (slicer weight) is computed from the tilt its prefilter really
+reached, so the eight demodulators together compensate twist in even 3.5 dB
+steps — the *compensation* column above, prefilter tilt plus slicer weight —
+whatever the *Band-pass length*. The tilted prefilters keep a loud tone from
+leaking into the other tone's correlator, which no threshold can undo. It costs
+less CPU than the three-filter set while running eight HDLC decoders.
+
+In a host simulation of a noisy FM channel with the twist applied by the
+receiver's audio stage, the speaker set decodes nearly every frame from
+−14 dB (space tone below mark) to +6 dB, and the flat set does the same from
+−10 to +12 dB. A
+speaker output with its own audio chain reaches −15 dB in practice. The
 *RX LEVEL* statistics show what each demodulator contributes on your own
-channel: a demodulator that never decodes anything the others miss can be
-dropped, or given a different tilt with *Custom*.
+channel, and the log lists the effective compensation of each one whenever
+the set is rebuilt.
 
 **Custom: demodulators** and **Custom: tilt, demodulator 1–3 (dB)** apply only
 to the *Custom* preset: the number of demodulators (1–3) and the tilt of each
@@ -650,17 +660,27 @@ The designed prefilters pass the band between **Band-pass lower edge** (600–
 2600 Hz). A lower low edge lets in more CTCSS and hum; a higher high edge lets
 in more of the noise a discriminator output carries above the tones.
 
-**Band-pass length** (9–31 taps, default 21, always odd) sets how sharp the
+**Band-pass length** (9–31 taps, default 31, always odd) sets how sharp the
 edges are and how much of the requested tilt is actually reached: 21 taps give
-about three quarters of it, 31 taps nearly all of it. The tilt each prefilter
-really has is written to the log whenever the demodulators are rebuilt.
+about three quarters of it, 31 taps nearly all of it, and 31 taps reject hum and
+CTCSS about 30 dB more. The *Multi-slicer* set compensates a shorter prefilter
+with its slicer weights, but the ends of its range rely on the tilt being
+there. The tilt each prefilter really has is written to the log whenever the
+demodulators are rebuilt.
+
+.. note::
+
+   A configuration saved before 31 taps became the default keeps its stored
+   value. Set 31 here and save.
 
 Receive gate (mV RMS, 0 = off)
 ------------------------------
 
-**What it is.** A level threshold ahead of the demodulators. They are fed while
-the input has stayed above the threshold for a few 20 ms blocks and until it
-falls below half of it. The blocks received while the gate was deciding to open
+**What it is.** A level threshold ahead of the demodulators, compared with the
+*tone-band* level — the 900–2600 Hz band the tones occupy, the ``tones`` figure
+of **RX LEVEL** — so hum, CTCSS or the bass of a speaker output neither open nor
+hold it. The demodulators are fed while that level has stayed above the
+threshold for a few 20 ms blocks and until it falls below half of it. The blocks received while the gate was deciding to open
 are kept and demodulated first, so the start of a transmission still reaches
 the demodulators. Range 0–50 mV, default 10 mV.
 
@@ -673,10 +693,19 @@ High-pass (CTCSS rejection)
 ---------------------------
 
 A second-order high-pass at 150, 300 or 400 Hz in front of the demodulators of
-the AFSK profiles, off by default. A discriminator output carries the CTCSS
-tone at full level; a speaker output usually has it filtered already. The
-designed band-pass prefilters reject CTCSS as well, so this matters mostly for
-the *Legacy* preset, whose second demodulator has no prefilter.
+the AFSK profiles, **300 Hz** by default. A discriminator output carries the
+CTCSS tone at full level, and a de-emphasized speaker output carries bass well
+above the level of the tones — de-emphasis lifts everything below the tones by
+6 dB per octave. The designed prefilters reject both inside the demodulators,
+but the high-pass runs ahead of the automatic gain, so the gain follows the
+tones rather than the low end, and it covers the *Legacy* preset, whose second
+demodulator has no prefilter. Turn it off only for a receiver whose audio is
+clean below 300 Hz and a preset that needs nothing removed there.
+
+.. note::
+
+   A configuration saved while the high-pass defaulted to off keeps *Off*.
+   Select 300 Hz here and save.
 
 Receive gain and Fixed receive gain (dB)
 ----------------------------------------
@@ -995,7 +1024,9 @@ RX LEVEL
 **What it does.** Watches the receive front-end for about one second and
 reports what it saw. **Nothing is transmitted and no modem state is touched**,
 so — unlike the loop test — it can be run with the transceiver connected, the
-antenna up, and real traffic decoding.
+antenna up, and real traffic decoding. The page is saved first only when a
+field on it differs from what was last loaded or saved, so pressing it
+repeatedly does not write to flash or disturb reception.
 
 This is the measurement the receive side of the audio interface is adjusted
 against.
@@ -1006,10 +1037,24 @@ against.
 
    * - Field
      - How to read it
+   * - ``level``
+     - One-word verdict. **clipping** (red): the raw extremes reached the
+       converter's limits — lower the receive level. **no signal**: no
+       demodulator detected a carrier during the window, so there is nothing
+       to judge; press again while a packet arrives. **low** (orange): a
+       carrier was there but the tones peaked below 100 mV RMS, too close to
+       the ESP32 ADC's own noise — raise the receive level. **good** (green):
+       tones at or above 100 mV RMS with no over-range.
+   * - ``tones``
+     - Mean and peak RMS level of the tone band, 900–2600 Hz, at the ADC pin.
+       This is what the demodulators actually work with, and the figure to
+       adjust the receive level by.
    * - ``mVrms`` / ``peak``
-     - Mean and peak audio level over the window. With the radio unsquelched on
-       an idle channel you are reading noise; with a packet arriving you are
-       reading signal. A healthy level leaves clear headroom below the rails.
+     - Mean and peak wideband audio level over the window. With the radio
+       unsquelched on an idle channel you are reading noise; with a packet
+       arriving you are reading signal. Much higher than ``tones`` means most
+       of the input is outside the tones — hum, CTCSS, or the bass of a
+       de-emphasized speaker output.
    * - ``DC``
      - Where the input is biased. Should sit near the middle of the converter's
        range, around 1500–1600 mV. Near 0 mV or near the rail means the input
@@ -1020,8 +1065,9 @@ against.
        large gain means the signal is far too quiet and the modem is amplifying
        noise along with it.
    * - ``raw``
-     - The raw conversion extremes, against rails of 0 and 4095. This is your
-       clipping margin: reaching 0 or 4095 is over-range.
+     - The raw conversion extremes over the whole window, against rails of 0
+       and 4095. This is your clipping margin: reaching 0 or 4095 is
+       over-range.
    * - ``DCD``
      - Whether a demodulator was locked during the window. ``yes`` while a
        packet is arriving is exactly right; ``yes`` on a silent channel points
@@ -1051,11 +1097,15 @@ demodulator set was last changed:
      - Samples dropped because the receive FIFO was full, and ADC driver
        buffer overflows. Both should stay at 0; anything else means the
        receive task is not keeping up (CPU clock below 240 MHz, or another
-       task starving it).
+       task starving it). Every loss is also reported on the console, at most
+       once a minute, as ``RX samples lost``.
 
-**Typical procedure.** Unsquelch the radio, press **RX LEVEL**, and adjust the
-receive trimmer until the raw extremes use a good share of the range without
-approaching the rails, and the DC offset is centred. Then squelch normally, wait
+**Typical procedure.** Unsquelch the radio, press **RX LEVEL**, and check that
+the DC offset is centred. Then press it while packets arrive and adjust the
+radio's volume and the receive trimmer until the verdict reads **good** — tones
+of at least 100 mV RMS — without ever reading **clipping**. With a speaker
+output this usually means a fairly high volume setting: its tones sit well
+below its overall level. Then squelch normally, wait
 for real traffic, and confirm ``DCD yes`` appears and the dashboard shows
 decodes.
 
@@ -1308,7 +1358,7 @@ Field reference
      - Live
    * - Band-pass length
      - 9–31 taps (odd)
-     - 21
+     - 31
      - Live
    * - Receive gate
      - 0–50 mV (0 = off)
@@ -1316,7 +1366,7 @@ Field reference
      - Live
    * - High-pass (CTCSS rejection)
      - off / 150 / 300 / 400 Hz
-     - off
+     - 300 Hz
      - Live
    * - Receive gain
      - automatic / fixed

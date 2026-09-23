@@ -143,7 +143,7 @@ the station changes with it.
      - run the loop test (JSON result)
    * - POST
      - ``/radio/level``
-     - measure the receive level, input bias and converter headroom and report the receive statistics, without transmitting (JSON result)
+     - measure the tone-band and wideband receive level with a level verdict, input bias and converter headroom and report the receive statistics, without transmitting (JSON result)
    * - POST
      - ``/radio/txtest``
      - transmit a bounded test burst for setting the transmit level (JSON result)

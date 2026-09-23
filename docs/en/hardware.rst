@@ -211,8 +211,9 @@ of travel, so a multiturn trimmer is what makes it settable at all.
 
 Set the levels with the two buttons next to LOOP TEST, which is what the loop
 test cannot do once a transceiver has replaced the jumper: **RX LEVEL**
-measures without transmitting — aim for 250 to 350 mV RMS with the raw range
-well clear of 0 and 4095, and with the self-bias on expect a DC offset between
+measures without transmitting — aim for the **good** verdict, a tone-band
+level of at least 100 mV RMS (about 250 to 350 mV RMS wideband on a flat
+input), with the raw range well clear of 0 and 4095, and with the self-bias on expect a DC offset between
 1200 and 2000 mV — and **TX TEST** keys up so the deviation can be read on
 other equipment and trimmed to 2.5 to 3.5 kHz.
 

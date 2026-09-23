@@ -373,6 +373,8 @@ struct Correlator {
     struct Filter bpf;
     int16_t bpfTable[BPF_MAX_TAPS]; // storage for a prefilter designed by ModemInit()
     float bpfTiltDb;                // prefilter gain at the space tone minus gain at the mark tone
+    bool bpfDesigned;               // bpfTable holds a prefilter designed from rxTuning
+    int8_t bpfTiltRequestedDb;      // tilt the designed prefilter was asked for
 
     int16_t samples[NMAX]; // prefiltered input, one symbol long, circular
     uint8_t samplesIdx;
@@ -427,8 +429,8 @@ struct DemodState {
 };
 
 // Fixed-point position of DemodState::spaceWeight. With the weights bounded to
-// +-MODEM_RX_TILT_DB_MAX and the magnitudes and their low-passed values well
-// inside 2^16, the product stays far inside int32.
+// +-SLICE_WEIGHT_DB_MAX (a factor of 7.9) and the magnitudes and their
+// low-passed values well inside 2^15, the product stays inside int32.
 #define SLICER_WEIGHT_BITS 12
 
 static struct Correlator correlators[MODEM_MAX_CORRELATOR_COUNT];
@@ -874,40 +876,57 @@ static const int8_t tiltDiv3Flat[3] = { 4, 0, -5 };
 static const int8_t tiltDiv3Speaker[3] = { 0, 3, 6 };
 
 // MODEM_RX_EQ_MULTISLICE: MODEM_RX_SLICE_PREFILTERS prefilters, each feeding
-// MODEM_RX_SLICE_WEIGHTS slicers. The prefilter tables hold tilts and the
-// weight tables hold the weight every slicer gives the space magnitude, both
-// in dB and with the same sign convention (negative favours the mark tone).
+// MODEM_RX_SLICE_WEIGHTS slicers. The tilt tables hold the tilt requested from
+// each prefilter; the target tables hold the twist compensation every slicer
+// ends up with, in dB: the prefilter's realized tilt plus the slicer's own
+// weight on the space magnitude. Positive values boost the space tone against
+// the mark tone, negative ones favour the mark tone.
 //
 // Twist compensation is split between the two on purpose. A slicer is nearly
-// free and reaches any weight exactly, where a 21-tap prefilter realizes only
-// part of a large tilt, so the slicers carry most of the range. What they
-// cannot do is keep a loud space tone out of the mark correlator: the
-// correlator is one symbol long, so its response is broad enough for the space
-// tone to leak into the mark arm, and with the space tone 10 dB up that
-// leakage buries a weak mark tone no matter how the two magnitudes are
-// weighted afterwards. Only a filter ahead of the correlators removes it,
-// which is what the tilted second prefilter is for.
+// free and reaches any weight exactly, where a short prefilter realizes only
+// part of a large tilt, so the slicers carry most of the range and each
+// slicer weight is derived from the tilt its prefilter actually realized
+// (setup1200DemodSet()). That keeps the targets on an even grid whatever the
+// prefilter length. What a slicer cannot do is keep a loud tone out of the
+// other tone's correlator arm: the correlator is one symbol long, so its
+// response is broad enough for a tone 10 dB up to leak into the other arm and
+// bury the weaker tone no matter how the two magnitudes are weighted
+// afterwards. Only a filter ahead of the correlators removes it, which is why
+// the two prefilters are tilted towards the two ends of the range.
 //
-// Flat (discriminator) audio carries no twist from a flat transmitter and up
-// to about +12 dB from a pre-emphasizing one, so the set runs from +3 to
-// -12 dB. De-emphasized (speaker) audio shifts the whole range up by the
-// receiver's de-emphasis, about 6 dB.
+// The targets cover twist as it reaches the demodulators, which includes the
+// slope of the capture chain itself: the decimation filter alone takes about
+// 1.3 dB off the space tone, and a sound card or a receiver's audio stage adds
+// its own. De-emphasized (speaker) audio arrives with the space tone well
+// below the mark tone - a receiver's de-emphasis takes about 5 dB between the
+// two tones, and speaker outputs measured with the audio chain in front of the
+// ADC reach 15 dB - so its set runs from +16 to -8.5 dB. Flat (discriminator)
+// audio carries up to about 12 dB of excess space tone from a pre-emphasizing
+// transmitter and the chain's own slope from a flat one, so its set runs from
+// +9 to -15.5 dB. Both sets step 3.5 dB, which keeps every twist inside
+// about 1.75 dB of a slicer.
 #define MODEM_RX_SLICE_PREFILTERS 2
 #define MODEM_RX_SLICE_WEIGHTS    (MODEM_RX_SLICER_COUNT / MODEM_RX_SLICE_PREFILTERS)
 _Static_assert(MODEM_RX_SLICER_COUNT == MODEM_RX_SLICE_PREFILTERS * MODEM_RX_SLICE_WEIGHTS,
                "MODEM_RX_SLICER_COUNT must be a whole number of slicers per prefilter");
 _Static_assert(MODEM_RX_SLICE_PREFILTERS <= MODEM_MAX_CORRELATOR_COUNT, "the multi-slicer preset needs one correlator per prefilter");
+_Static_assert(MODEM_RX_SLICE_WEIGHTS == 4, "the multi-slicer target tables hold four slicers per prefilter");
 
-static const int8_t sliceTiltFlat[MODEM_RX_SLICE_PREFILTERS] = { 0, -5 };
-static const int8_t sliceTiltSpeaker[MODEM_RX_SLICE_PREFILTERS] = { 5, 0 };
-static const int8_t sliceWeightFlat[MODEM_RX_SLICE_PREFILTERS][MODEM_RX_SLICE_WEIGHTS] = {
-    { 3, 0, -3 },
-    { -3, -6, -9 },
+static const int8_t sliceTiltFlat[MODEM_RX_SLICE_PREFILTERS] = { 5, -9 };
+static const int8_t sliceTiltSpeaker[MODEM_RX_SLICE_PREFILTERS] = { 9, -4 };
+static const float sliceTargetFlat[MODEM_RX_SLICE_PREFILTERS][MODEM_RX_SLICE_WEIGHTS] = {
+    { 9.0f, 5.5f, 2.0f, -1.5f },
+    { -5.0f, -8.5f, -12.0f, -15.5f },
 };
-static const int8_t sliceWeightSpeaker[MODEM_RX_SLICE_PREFILTERS][MODEM_RX_SLICE_WEIGHTS] = {
-    { 6, 3, 0 },
-    { 0, -3, -6 },
+static const float sliceTargetSpeaker[MODEM_RX_SLICE_PREFILTERS][MODEM_RX_SLICE_WEIGHTS] = {
+    { 16.0f, 12.5f, 9.0f, 5.5f },
+    { 2.0f, -1.5f, -5.0f, -8.5f },
 };
+
+// Largest slicer weight, dB either way. The targets sit within this of any
+// tilt a designed prefilter can realize, and it keeps the weighted magnitude
+// inside int32 (see SLICER_WEIGHT_BITS).
+#define SLICE_WEIGHT_DB_MAX 18.0f
 
 // Frequency grid of the prefilter designer, points from 0 Hz to fs/2.
 #define BPF_DESIGN_GRID 128
@@ -1027,8 +1046,8 @@ static void designCorrelatorPrefilter(uint8_t index, int8_t tiltDb) {
     designPrefilter(c->bpfTable, rxTuning.bpf_taps, (float)MODEM_DEMOD_SAMPLERATE, (float)rxTuning.bpf_lo_hz, (float)rxTuning.bpf_hi_hz, markFreq, spaceFreq,
                     (float)tiltDb);
     setPrefilter(c, c->bpfTable, rxTuning.bpf_taps, 15);
-    ESP_LOGI(TAG, "prefilter %u: band-pass %u-%u Hz, %u taps, tilt %+d dB requested, %+.1f dB realized", (unsigned)index, (unsigned)rxTuning.bpf_lo_hz,
-             (unsigned)rxTuning.bpf_hi_hz, (unsigned)rxTuning.bpf_taps, (int)tiltDb, (double)c->bpfTiltDb);
+    c->bpfDesigned = true;
+    c->bpfTiltRequestedDb = tiltDb;
 }
 
 // @brief Build the 1200 Bd demodulator set selected by rxTuning.
@@ -1058,7 +1077,7 @@ static void setup1200DemodSet(void) {
         case MODEM_RX_EQ_MULTISLICE:
         default: {
             const int8_t *tilts = ModemConfig.flatAudioIn ? sliceTiltFlat : sliceTiltSpeaker;
-            const int8_t (*weights)[MODEM_RX_SLICE_WEIGHTS] = ModemConfig.flatAudioIn ? sliceWeightFlat : sliceWeightSpeaker;
+            const float (*targets)[MODEM_RX_SLICE_WEIGHTS] = ModemConfig.flatAudioIn ? sliceTargetFlat : sliceTargetSpeaker;
 
             corrCount = MODEM_RX_SLICE_PREFILTERS;
             demodCount = MODEM_RX_SLICER_COUNT;
@@ -1066,9 +1085,11 @@ static void setup1200DemodSet(void) {
                 setupCorrelator(&correlators[c], lpf1200, sizeof(lpf1200) / sizeof(*lpf1200), 15);
                 designCorrelatorPrefilter(c, tilts[c]);
                 for (uint8_t k = 0; k < MODEM_RX_SLICE_WEIGHTS; k++) {
-                    uint8_t i = (uint8_t)(c * MODEM_RX_SLICE_WEIGHTS + k);
-                    setup1200Demod(&demodState[i], c, (float)weights[c][k]);
-                    ESP_LOGI(TAG, "demod %u: prefilter %u, space weight %+d dB", (unsigned)i, (unsigned)c, (int)weights[c][k]);
+                    // The slicer supplies whatever the prefilter's realized
+                    // tilt leaves between it and the target.
+                    float weightDb = targets[c][k] - correlators[c].bpfTiltDb;
+                    weightDb = fmaxf(fminf(weightDb, SLICE_WEIGHT_DB_MAX), -SLICE_WEIGHT_DB_MAX);
+                    setup1200Demod(&demodState[(uint8_t)(c * MODEM_RX_SLICE_WEIGHTS + k)], c, weightDb);
                 }
             }
             return;
@@ -1195,13 +1216,6 @@ void ModemInit(void) {
     baudPhaseStep = (uint32_t)(((double)baudRate * 4294967296.0) / (double)txRateHz + 0.5);
     baudRateStep = (uint16_t)(dacRate / (uint32_t)baudRate);
 
-    {
-        float txMark = 0, txSpace = 0;
-        ModemGetStepTones(&txMark, &txSpace);
-        ESP_LOGI(TAG, "mark %.1f Hz -> emits %.2f, space %.1f Hz -> emits %.2f, DAC %.1f Hz, %u demodulator(s), RX clock correction %+.3f%%", markFreq, txMark,
-                 spaceFreq, txSpace, (double)txRateHz, (unsigned)demodCount, (double)((rxRateCorrection - 1.0f) * 100.0f));
-    }
-
     for (uint8_t i = 0; i < N; i++) { // correlator coefficients
         coeffLoI[i] = (int16_t)(4095.f * cosf(2.f * (float)M_PI * (float)i / (float)N * markFreq / baudRate));
         coeffLoQ[i] = (int16_t)(4095.f * sinf(2.f * (float)M_PI * (float)i / (float)N * markFreq / baudRate));
@@ -1219,4 +1233,28 @@ void ModemInit(void) {
     txLfsr = 0x1FFFF;
     rxLfsr = 0x1FFFF;
     dcd = 0;
+}
+
+void ModemLogConfig(void) {
+    for (uint8_t c = 0; c < corrCount; c++) {
+        const struct Correlator *cr = &correlators[c];
+        if (cr->bpfDesigned)
+            ESP_LOGI(TAG, "prefilter %u: band-pass %u-%u Hz, %u taps, tilt %+d dB requested, %+.1f dB realized", (unsigned)c, (unsigned)rxTuning.bpf_lo_hz,
+                     (unsigned)rxTuning.bpf_hi_hz, (unsigned)cr->bpf.taps, (int)cr->bpfTiltRequestedDb, (double)cr->bpfTiltDb);
+    }
+
+    // The per-demodulator lines matter where slicers share a correlator: the
+    // effective figure is the twist compensation the demodulator applies.
+    if (demodCount > corrCount) {
+        for (uint8_t i = 0; i < demodCount; i++) {
+            const struct DemodState *d = &demodState[i];
+            ESP_LOGI(TAG, "demod %u: prefilter %u, space weight %+.1f dB, effective %+.1f dB", (unsigned)i, (unsigned)d->corr, (double)d->spaceWeightDb,
+                     (double)(d->spaceWeightDb + correlators[d->corr].bpfTiltDb));
+        }
+    }
+
+    float txMark = 0, txSpace = 0;
+    ModemGetStepTones(&txMark, &txSpace);
+    ESP_LOGI(TAG, "mark %.1f Hz -> emits %.2f, space %.1f Hz -> emits %.2f, DAC %.1f Hz, %u demodulator(s), RX clock correction %+.3f%%", markFreq, txMark,
+             spaceFreq, txSpace, (double)txRateHz, (unsigned)demodCount, (double)((rxRateCorrection - 1.0f) * 100.0f));
 }

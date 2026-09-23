@@ -1941,6 +1941,49 @@ static void messageTxHandler(const char *packet, size_t len, uint8_t channels) {
 // The modem component has no RF power-switch output, so there is no
 // rf_power/band config to carry.
 
+// Shortest interval between two warnings about lost receive samples. Each
+// warning reports everything lost since the previous one, so nothing is
+// hidden by the hold; it only keeps a persistent problem from flooding the
+// console.
+#define RX_LOSS_WARN_HOLD_S 60
+
+// @brief Warn when the receive path loses samples.
+//
+// The ADC driver discards the whole content of its pool when it overflows,
+// and the sample FIFO drops what does not fit; either loses every frame in
+// flight at that moment. Both counters only ever grow, apart from
+// modem_reset_rx_stats(), which the baseline follows.
+static void rx_loss_watch_1hz(void) {
+    static uint32_t s_seenFifo = 0, s_seenOvf = 0;
+    static uint32_t s_pendFifo = 0, s_pendOvf = 0;
+    static uint32_t s_holdS = 0;
+
+    if (!aprs_service_modem_ready())
+        return;
+
+    uint32_t fifo = afskGetFifoDrops();
+    uint32_t ovf = afskGetPoolOverflows();
+
+    if ((fifo < s_seenFifo) || (ovf < s_seenOvf)) {
+        s_seenFifo = fifo;
+        s_seenOvf = ovf;
+    }
+    s_pendFifo += fifo - s_seenFifo;
+    s_pendOvf += ovf - s_seenOvf;
+    s_seenFifo = fifo;
+    s_seenOvf = ovf;
+
+    if (s_holdS > 0)
+        s_holdS--;
+    if ((s_holdS == 0) && ((s_pendFifo > 0) || (s_pendOvf > 0))) {
+        ESP_LOGW(TAG, "RX samples lost: %lu ADC pool overflow(s), %lu FIFO drop(s) - frames being received at those moments were lost",
+                 (unsigned long)s_pendOvf, (unsigned long)s_pendFifo);
+        s_pendFifo = 0;
+        s_pendOvf = 0;
+        s_holdS = RX_LOSS_WARN_HOLD_S;
+    }
+}
+
 static void serviceTickTask(void *arg) {
     while (1) {
         // Periodic heap sample, first in the pass so that consecutive lines
@@ -1982,6 +2025,8 @@ static void serviceTickTask(void *arg) {
 
         if (g_config.msg_enable)
             sendAPRSMessageRetry();
+
+        rx_loss_watch_1hz();
 
         ESP_LOGD(TAG, "aprs_svc_tick stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
 
@@ -2422,6 +2467,14 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
 // diagnostics task.
 #define RX_LEVEL_POLL_MS 20
 
+// Tone-band level, mV RMS, below which aprs_rx_level_sample() calls a
+// received signal low. The ESP32's ADC adds broadband noise and bursts of
+// interference tens of millivolts high to whatever it converts, so tones
+// weaker than this leave the demodulators little margin; raising the receive
+// level until the tones clear it, without reaching over-range, is the most
+// effective adjustment the interface offers.
+#define RX_LEVEL_BAND_LOW_MV 100
+
 // Room for one comma-separated list of per-demodulator counters: up to
 // MODEM_RX_MAX_DEMODULATORS unsigned 32-bit values, each at most ten digits,
 // with a separator between them and the terminating NUL.
@@ -2462,19 +2515,25 @@ bool aprs_rx_level_sample(char *json, size_t json_len) {
     // the loop test.
     uint16_t rmsPeak = 0;
     uint32_t rmsSum = 0;
+    uint16_t bandPeak = 0;
+    uint32_t bandSum = 0;
     uint32_t rmsCount = 0;
     float agcPeak = 0.0f;
     bool dcd = false;
-    int16_t rawMin = 0;
-    int16_t rawMax = 0;
+    int16_t rawMin = INT16_MAX;
+    int16_t rawMax = INT16_MIN;
 
     TickType_t start = xTaskGetTickCount();
     while ((xTaskGetTickCount() - start) < pdMS_TO_TICKS(RX_LEVEL_WINDOW_MS)) {
         uint16_t rms = afskGetRms();
+        uint16_t band = afskGetBandRms();
 
         if (rms > rmsPeak)
             rmsPeak = rms;
         rmsSum += rms;
+        if (band > bandPeak)
+            bandPeak = band;
+        bandSum += band;
         rmsCount++;
 
         float gain = afskGetAgcGain();
@@ -2484,12 +2543,38 @@ bool aprs_rx_level_sample(char *json, size_t json_len) {
         if (ModemDcdState())
             dcd = true;
 
+        // The raw extremes describe one block at a time, so they are
+        // gathered over the whole window like the levels.
+        int16_t blockMin = 0, blockMax = 0;
+        afskGetRawMinMax(&blockMin, &blockMax);
+        if (blockMin < rawMin)
+            rawMin = blockMin;
+        if (blockMax > rawMax)
+            rawMax = blockMax;
+
         vTaskDelay(pdMS_TO_TICKS(RX_LEVEL_POLL_MS));
     }
 
-    afskGetRawMinMax(&rawMin, &rawMax);
+    if (rawMin > rawMax) {
+        rawMin = 0;
+        rawMax = 0;
+    }
 
     unsigned mean = (rmsCount > 0) ? (unsigned)(rmsSum / rmsCount) : 0;
+    unsigned bandMean = (rmsCount > 0) ? (unsigned)(bandSum / rmsCount) : 0;
+
+    // One-word verdict for the operator. Over-range wins over everything
+    // else; without a carrier in the window there is no signal to judge, and
+    // with one the peak tone-band level decides between low and good.
+    const char *verdict;
+    if ((rawMax >= AFSK_RAW_CLIP_HIGH) || (rawMin <= AFSK_RAW_CLIP_LOW))
+        verdict = "clip";
+    else if (!dcd)
+        verdict = "idle";
+    else if (bandPeak < RX_LEVEL_BAND_LOW_MV)
+        verdict = "low";
+    else
+        verdict = "good";
 
     // The AGC gain is rendered from hundredths held in an integer rather than
     // through a float conversion: the gain is bounded by the AGC's own limits,
@@ -2527,16 +2612,17 @@ bool aprs_rx_level_sample(char *json, size_t json_len) {
     // Every field is produced locally, so there is nothing here that could
     // carry a byte off the air into the response.
     snprintf(json, json_len,
-             "{\"ok\":true,\"mVrms\":%u,\"peak_mVrms\":%u,\"dc_mV\":%d,\"agc\":%u.%02u,"
-             "\"raw_min\":%d,\"raw_max\":%d,\"dcd\":%s,\"adc_samples\":%lu,"
+             "{\"ok\":true,\"mVrms\":%u,\"peak_mVrms\":%u,\"band_mVrms\":%u,\"band_peak_mVrms\":%u,\"level\":\"%s\","
+             "\"dc_mV\":%d,\"agc\":%u.%02u,\"raw_min\":%d,\"raw_max\":%d,\"dcd\":%s,\"adc_samples\":%lu,"
              "\"demods\":%u,\"decoded\":[%s],\"unique\":[%s],\"delivered\":%lu,\"repaired\":%lu,"
              "\"fifo_drops\":%lu,\"pool_ovf\":%lu}",
-             mean, (unsigned)rmsPeak, afskGetDcOffset(), agcCenti / 100u, agcCenti % 100u, (int)rawMin, (int)rawMax, dcd ? "true" : "false",
-             (unsigned long)afskGetAdcSampleCount(), (unsigned)demods, decodedList, uniqueList, (unsigned long)st.delivered, (unsigned long)st.repaired,
-             (unsigned long)st.fifo_drops, (unsigned long)st.adc_pool_overflows);
+             mean, (unsigned)rmsPeak, bandMean, (unsigned)bandPeak, verdict, afskGetDcOffset(), agcCenti / 100u, agcCenti % 100u, (int)rawMin, (int)rawMax,
+             dcd ? "true" : "false", (unsigned long)afskGetAdcSampleCount(), (unsigned)demods, decodedList, uniqueList, (unsigned long)st.delivered,
+             (unsigned long)st.repaired, (unsigned long)st.fifo_drops, (unsigned long)st.adc_pool_overflows);
 
-    ESP_LOGI(TAG, "RX level: %u mV RMS (peak %u), DC offset %d mV, AGC %u.%02ux, raw %d..%d, DCD %s", mean, (unsigned)rmsPeak, afskGetDcOffset(),
-             agcCenti / 100u, agcCenti % 100u, (int)rawMin, (int)rawMax, dcd ? "yes" : "no");
+    ESP_LOGI(TAG, "RX level: %u mV RMS (peak %u), tones %u mV RMS (peak %u), level %s, DC offset %d mV, AGC %u.%02ux, raw %d..%d, DCD %s", mean,
+             (unsigned)rmsPeak, bandMean, (unsigned)bandPeak, verdict, afskGetDcOffset(), agcCenti / 100u, agcCenti % 100u, (int)rawMin, (int)rawMax,
+             dcd ? "yes" : "no");
     ESP_LOGI(TAG, "RX stats: %u demod(s), decoded %s, unique %s, delivered %lu, repaired %lu, FIFO drops %lu, pool overflows %lu", (unsigned)demods,
              decodedList, uniqueList, (unsigned long)st.delivered, (unsigned long)st.repaired, (unsigned long)st.fifo_drops,
              (unsigned long)st.adc_pool_overflows);

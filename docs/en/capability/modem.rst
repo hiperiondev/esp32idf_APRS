@@ -44,8 +44,8 @@ saved value straight to the enum:
      - 9600
      - —
 
-The 1200 Bd profiles run **up to six demodulators in parallel**
-(``MODEM_RX_MAX_DEMODULATORS = 6``). A demodulator is a slicer on the output of
+The 1200 Bd profiles run **up to eight demodulators in parallel**
+(``MODEM_RX_MAX_DEMODULATORS = 8``). A demodulator is a slicer on the output of
 a correlator (a band-pass prefilter and the mark/space correlators behind it):
 either each one has its own prefilter, tilted differently between the mark and
 space tones, or several slicers share a prefilter and differ in the weight they
@@ -242,9 +242,11 @@ frame back. Two buttons beside it cover the same ground for a connected
 transceiver, one direction each.
 
 **RX LEVEL** (``aprs_rx_level_sample()``, ``POST /radio/level``) watches the
-receive front-end for about a second and reports the RMS level and its peak,
-the input's DC offset, the AGC gain, the raw conversion extremes and the
-carrier-detect state, followed by the receive statistics of
+receive front-end for about a second and reports the tone-band level
+(``afskGetBandRms()``) and the wideband RMS level with their peaks, a one-word
+verdict (clipping, no signal, low below 100 mV RMS of tones, good), the input's
+DC offset, the AGC gain, the raw conversion extremes over the whole window and
+the carrier-detect state, followed by the receive statistics of
 ``modem_get_rx_stats()`` (frames decoded and decoded only by each demodulator,
 frames delivered and repaired, samples lost). It transmits nothing and changes no modem state, so it
 can run while real traffic is being decoded. It is what the receive trimmer is

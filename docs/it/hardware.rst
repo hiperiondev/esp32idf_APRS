@@ -222,8 +222,10 @@ cui è un trimmer multigiro a renderlo regolabile.
 
 Regolare i livelli con i due pulsanti accanto a TEST LOOP, che è ciò che il
 loop test non può fare una volta che un apparato ha sostituito il ponticello:
-**LIVELLO RX** misura senza trasmettere — puntare a 250-350 mV RMS con la
-gamma grezza ben lontana da 0 e 4095, e con la polarizzazione interna attiva
+**LIVELLO RX** misura senza trasmettere — puntare al verdetto **buono**, un
+livello della banda dei toni di almeno 100 mV RMS (circa 250-350 mV RMS a
+banda larga con un ingresso piatto), con la gamma grezza ben lontana da 0 e
+4095, e con la polarizzazione interna attiva
 aspettarsi un offset di continua fra 1200 e 2000 mV — e **TEST TX** manda in
 trasmissione per poter leggere la deviazione su altra strumentazione e
 regolarla a 2,5-3,5 kHz.

@@ -97,22 +97,26 @@ typedef enum {
  * | SINGLE        | 0 dB                       | +3 dB                         |
  * | DIVERSITY2    | 0, -5 dB                   | 0, +5 dB                      |
  * | DIVERSITY3    | +4, 0, -5 dB               | 0, +3, +6 dB                  |
- * | MULTISLICE    | 0 dB, weights +3 .. -12 dB | 0 dB, weights +9 .. -6 dB     |
+ * | MULTISLICE    | +5, -9 dB; +9 .. -15.5 dB  | +9, -4 dB; +16 .. -8.5 dB     |
  *
  * Tone twist on the air ranges well beyond what one prefilter can absorb:
  * a transmitter that pre-emphasizes its audio arrives on a discriminator
  * output with the space tone 5 to 12 dB louder than the mark tone, a flat
  * data-port transmitter arrives with no twist at all, and a speaker output
- * shifts both by the receiver's de-emphasis. The SINGLE to CUSTOM presets
- * cover that range with several prefilters of different tilt, each with its
- * own correlator and demodulator. ::MODEM_RX_EQ_MULTISLICE covers it with one
- * prefilter and one correlator read by ::MODEM_RX_SLICER_COUNT slicers, which
- * compare the mark tone magnitude against the space tone magnitude weighted
- * from +3 to -12 dB in 3 dB steps (flat input; 6 dB higher on speaker input).
- * The weighting has the same effect on the decision as a prefilter tilt, but
- * reaches the whole range, where a short prefilter realizes only part of the
- * tilt it is asked for, and costs a fraction of the CPU time of separate
- * correlators.
+ * shifts both by the receiver's de-emphasis, with the audio chain in front of
+ * the ADC adding a slope of its own. The SINGLE to CUSTOM presets cover that
+ * range with several prefilters of different tilt, each with its own
+ * correlator and demodulator. ::MODEM_RX_EQ_MULTISLICE covers it with two
+ * prefilters, tilted towards the two ends of the range, each read by half of
+ * ::MODEM_RX_SLICER_COUNT slicers. A slicer compares the mark tone magnitude
+ * against the space tone magnitude weighted by the difference between its
+ * target and the tilt its prefilter actually realized, so the set's twist
+ * compensation (prefilter tilt plus slicer weight) steps 3.5 dB across the
+ * range in the table whatever the prefilter length. The weighting has the
+ * same effect on the decision as a prefilter tilt, reaches values a short
+ * prefilter cannot, and costs a fraction of the CPU time of separate
+ * correlators; the tilted prefilters keep a loud tone from leaking into the
+ * other tone's correlator, which no weighting can undo.
  */
 typedef enum {
     MODEM_RX_EQ_LEGACY = 0, /**< Two demodulators with the fixed 8-tap tables: a tilted or flat band-pass, depending on flat_audio, and an unfiltered one. */
@@ -120,7 +124,7 @@ typedef enum {
     MODEM_RX_EQ_DIVERSITY2 = 2, /**< Two demodulators with different prefilter tilts. */
     MODEM_RX_EQ_DIVERSITY3 = 3, /**< Three demodulators with different prefilter tilts. */
     MODEM_RX_EQ_CUSTOM = 4,     /**< custom_count demodulators with the tilts in custom_tilt_db[]. */
-    MODEM_RX_EQ_MULTISLICE = 5, /**< One prefilter and ::MODEM_RX_SLICER_COUNT slicers with space weights spread over the tone twist range. */
+    MODEM_RX_EQ_MULTISLICE = 5, /**< Two tilted prefilters and ::MODEM_RX_SLICER_COUNT slicers whose twist compensation is spread over the tone twist range. */
 } modem_rx_eq_preset_t;
 
 /**
@@ -145,11 +149,13 @@ typedef struct {
     uint16_t bpf_hi_hz;                             /**< Upper band edge of the designed prefilters, Hz. */
     uint8_t bpf_taps; /**< Length of the designed prefilters, taps; forced odd so the filters stay linear phase. Short filters reach only part of the
                            requested tilt; ModemInit() logs the tilt each prefilter actually has. */
-    uint16_t gate_mv; /**< Receive gate, mV RMS: the demodulators are fed only while the input exceeds this level (it closes again below half of it).
+    uint16_t gate_mv; /**< Receive gate, mV RMS: the demodulators are fed only while the tone-band level of the input (see afskGetBandRms())
+                         exceeds this value; it closes again below half of it. Hum, CTCSS and bass therefore neither open nor hold the gate.
                          The blocks received while the gate is closed are held and demodulated when it opens, so the start of a transmission is
                          not lost. 0 feeds the demodulators continuously, which suits a squelch-independent data or discriminator port. */
     uint16_t hpf_hz;  /**< Corner of a second-order high-pass applied to the demodulator input of the AFSK profiles, Hz, or 0 for none. Removes
-                         CTCSS tones and hum that a discriminator output carries at full level. */
+                         CTCSS tones and hum that a discriminator output carries at full level, and the bass a de-emphasized speaker output
+                         carries above the level of the tones, before they reach the gain control. */
     modem_rx_agc_mode_t agc_mode; /**< Automatic or fixed receive gain. */
     int8_t agc_fixed_gain_db;     /**< Receive gain used by ::MODEM_RX_AGC_FIXED, dB. */
     uint8_t fix_bits;             /**< Repair of frames whose FCS does not match: 0 = off, 1 = one corrupted symbol (two adjacent bits after NRZI decoding),
@@ -161,8 +167,15 @@ typedef struct {
 /**
  * @brief Build a ::modem_rx_tuning_t initializer with the default receive
  *        tuning: the multi-slicer demodulator set, a 900-2600 Hz band,
- *        21-tap prefilters, a 10 mV receive gate, no high-pass, automatic
- *        gain and no bit repair.
+ *        31-tap prefilters, a 10 mV receive gate, a 300 Hz high-pass,
+ *        automatic gain and no bit repair.
+ *
+ * 31 taps is the longest prefilter and the one that realizes the requested
+ * tilts almost exactly, which the multi-slicer set relies on at the ends of
+ * its range; it also rejects hum and CTCSS about 30 dB more than 21 taps. The
+ * high-pass keeps low-frequency energy - hum, CTCSS, and the bass a
+ * de-emphasized speaker output carries well above the tones - out of the gain
+ * control and the tone-band level measurement.
  */
 #define MODEM_RX_TUNING_DEFAULT()                                                                                                                              \
     {                                                                                                                                                          \
@@ -171,9 +184,9 @@ typedef struct {
         .custom_tilt_db = { 4, 0, -5 },                                                                                                                        \
         .bpf_lo_hz = 900,                                                                                                                                      \
         .bpf_hi_hz = 2600,                                                                                                                                     \
-        .bpf_taps = 21,                                                                                                                                        \
+        .bpf_taps = 31,                                                                                                                                        \
         .gate_mv = 10,                                                                                                                                         \
-        .hpf_hz = 0,                                                                                                                                           \
+        .hpf_hz = 300,                                                                                                                                         \
         .agc_mode = MODEM_RX_AGC_AUTO,                                                                                                                         \
         .agc_fixed_gain_db = 0,                                                                                                                                \
         .fix_bits = 0,                                                                                                                                         \
@@ -320,6 +333,17 @@ esp_err_t modem_init(const modem_config_t *cfg);
 
 /**
  * @brief Change the active modem profile and related settings at runtime.
+ *
+ * The receive chain - demodulator set, prefilters, receive front end and
+ * HDLC decoders - is rebuilt only when a setting it is built from differs
+ * from the last applied one: the modulation, ::modem_config_t::flat_audio,
+ * ::modem_config_t::full_duplex, ::modem_config_t::fx25_mode or any field of
+ * ::modem_config_t::rx other than ::modem_rx_tuning_t::fix_bits. A rebuild
+ * holds the receive task, discards the samples waiting in the FIFO and
+ * restarts every demodulator, so a frame arriving at that moment is lost.
+ * Every other setting is applied in place, and calling this again with an
+ * unchanged configuration does not disturb reception at all.
+ *
  * @param cfg New configuration to apply.
  */
 void modem_set_modem(const modem_config_t *cfg);

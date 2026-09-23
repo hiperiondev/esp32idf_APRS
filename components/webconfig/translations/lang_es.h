@@ -1212,6 +1212,18 @@
 #define TR_RADIO_RX_STATS_REPAIRED "reparados"
 /** Spanish text: RX statistics label: FIFO drops / ADC pool overflows. */
 #define TR_RADIO_RX_STATS_LOST "muestras perdidas"
+/** Spanish text: RX level label: RMS level of the tone band (900-2600 Hz). */
+#define TR_RADIO_RX_TONES "tonos"
+/** Spanish text: RX level label: one-word verdict on the receive level. */
+#define TR_RADIO_RX_LEVEL "nivel"
+/** Spanish text: RX level verdict: the ADC input reached over-range. */
+#define TR_RADIO_RX_LEVEL_CLIP "saturado"
+/** Spanish text: RX level verdict: no carrier detected during the measurement. */
+#define TR_RADIO_RX_LEVEL_IDLE "sin señal"
+/** Spanish text: RX level verdict: tones below 100 mV RMS, raise the receive level. */
+#define TR_RADIO_RX_LEVEL_LOW "bajo"
+/** Spanish text: RX level verdict: tones well above the ADC noise, no over-range. */
+#define TR_RADIO_RX_LEVEL_GOOD "bueno"
 
 /** @} */
 

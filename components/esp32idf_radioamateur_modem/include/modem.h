@@ -228,6 +228,22 @@ bool ModemTxTeardownPending(void);
 void ModemInit(void);
 
 /**
+ * @brief Log the demodulator set built by the last ModemInit().
+ *
+ * Writes one line per designed prefilter (band edges, length, requested and
+ * realized tilt), one line per demodulator when several slicers share a
+ * correlator (space weight and the effective twist compensation, i.e. weight
+ * plus realized prefilter tilt), and a summary line with the transmitted tone
+ * frequencies, the DAC rate, the number of demodulators and the receive clock
+ * correction.
+ *
+ * Only reads state ModemInit() left behind, so it is meant to be called once
+ * the receive task runs again: writing to the console takes several
+ * milliseconds per line, which must not be spent while that task is held.
+ */
+void ModemLogConfig(void);
+
+/**
  * @brief Calibrate every demodulator's DPLL against the real ADC sample
  *        rate, and record the real DAC rate for the G3RUH self-test.
  *

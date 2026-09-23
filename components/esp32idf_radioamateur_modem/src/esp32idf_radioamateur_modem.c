@@ -56,6 +56,22 @@ static const char *TAG = "radiomodem";
 static uint32_t s_txMaxKeyedMs = 0;
 static uint32_t s_txKeyedSinceMs = 0;
 
+// The settings the receive chain was last rebuilt from. modem_set_modem()
+// rebuilds it - holding the receive task, flushing the sample FIFO and
+// restarting every demodulator - only when one of these differs, so saving
+// unrelated settings, or the same ones again, leaves reception untouched.
+// Written only from modem_init()/modem_set_modem(), which callers serialize.
+typedef struct {
+    modem_mode_t modem;
+    bool flat_audio;
+    bool full_duplex;
+    uint8_t fx25_mode;
+    modem_rx_tuning_t rx;
+} rx_chain_key_t;
+
+static rx_chain_key_t s_rxChainKey;
+static bool s_rxChainKeyValid = false;
+
 static ax25_ctx_t s_ctx;
 static TaskHandle_t s_svcTask = NULL;
 static modem_rx_cb_t s_rxCb = NULL;
@@ -265,20 +281,57 @@ void modem_rx_tuning_sanitize(modem_rx_tuning_t *t) {
         t->fix_bits = MODEM_RX_FIX_BITS_MAX;
 }
 
+// @brief Whether two receive tunings build the same receive chain.
+//
+// Bit repair is left out: it is applied to the HDLC layer directly and needs
+// no rebuild.
+static bool rx_chain_tuning_equal(const modem_rx_tuning_t *a, const modem_rx_tuning_t *b) {
+    if ((a->eq_preset != b->eq_preset) || (a->custom_count != b->custom_count) || (a->bpf_lo_hz != b->bpf_lo_hz) || (a->bpf_hi_hz != b->bpf_hi_hz) ||
+        (a->bpf_taps != b->bpf_taps) || (a->gate_mv != b->gate_mv) || (a->hpf_hz != b->hpf_hz) || (a->agc_mode != b->agc_mode) ||
+        (a->agc_fixed_gain_db != b->agc_fixed_gain_db))
+        return false;
+    for (int i = 0; i < MODEM_RX_MAX_PREFILTERS; i++) {
+        if (a->custom_tilt_db[i] != b->custom_tilt_db[i])
+            return false;
+    }
+    return true;
+}
+
 void modem_set_modem(const modem_config_t *cfg) {
     // PTT pin is fixed at compile time (::MODEM_PTT_GPIO); only its active
     // level is applied here.
     AFSK_setPttActiveHigh(cfg->ptt_active_high);
 
-    // The receive tuning is only stored by these two calls; afskSetModem()
-    // applies it while the receive task is held.
     modem_rx_tuning_t rx = cfg->rx;
     modem_rx_tuning_sanitize(&rx);
-    ModemSetRxTuning(&rx);
-    afskSetRxFrontEnd(rx.gate_mv, rx.hpf_hz, rx.agc_mode == MODEM_RX_AGC_FIXED, rx.agc_fixed_gain_db);
+
+    rx_chain_key_t key = {
+        .modem = cfg->modem,
+        .flat_audio = cfg->flat_audio,
+        .full_duplex = cfg->full_duplex,
+        .fx25_mode = cfg->fx25_mode,
+        .rx = rx,
+    };
+    bool rebuild = !s_rxChainKeyValid || (key.modem != s_rxChainKey.modem) || (key.flat_audio != s_rxChainKey.flat_audio) ||
+                   (key.full_duplex != s_rxChainKey.full_duplex) || (key.fx25_mode != s_rxChainKey.fx25_mode) ||
+                   !rx_chain_tuning_equal(&key.rx, &s_rxChainKey.rx);
 
     afskSetFullDuplex(cfg->full_duplex);
-    afskSetModem((uint8_t)cfg->modem, cfg->flat_audio, cfg->slot_time_ms, cfg->preamble_ms, cfg->fx25_mode, cfg->min_unkey_ms);
+    if (rebuild) {
+        // The receive tuning is only stored by these two calls; afskSetModem()
+        // applies it while the receive task is held.
+        ModemSetRxTuning(&rx);
+        afskSetRxFrontEnd(rx.gate_mv, rx.hpf_hz, rx.agc_mode == MODEM_RX_AGC_FIXED, rx.agc_fixed_gain_db);
+        afskSetModem((uint8_t)cfg->modem, cfg->flat_audio, cfg->slot_time_ms, cfg->preamble_ms, cfg->fx25_mode, cfg->min_unkey_ms);
+        s_rxChainKey = key;
+        s_rxChainKeyValid = true;
+    } else {
+        // Transmit timing alone: plain settings of the HDLC layer, applied
+        // without touching the receive chain.
+        Ax25TimeSlot(cfg->slot_time_ms);
+        Ax25TxDelay(cfg->preamble_ms);
+        Ax25MinUnkeyTime(cfg->min_unkey_ms);
+    }
     Ax25SetFixBits(rx.fix_bits);
     Ax25Config.allowNonAprs = cfg->allow_non_aprs ? 1 : 0;
     Ax25Config.fullDuplex = cfg->full_duplex ? 1 : 0;
@@ -334,6 +387,9 @@ esp_err_t modem_init(const modem_config_t *cfg) {
     afskSetClipWarn(cfg->rx_clip_warn);
     s_txMaxKeyedMs = cfg->tx_max_keyed_ms;
     s_txKeyedSinceMs = 0;
+
+    // A fresh start always builds the receive chain.
+    s_rxChainKeyValid = false;
 
     esp_err_t err = AFSK_init();
     if (err != ESP_OK)

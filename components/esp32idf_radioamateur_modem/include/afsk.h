@@ -247,6 +247,22 @@ bool afskGetAdcSelfBias(void);
 void afskSetClipWarn(bool enable);
 
 /**
+ * @brief Lowest raw ADC conversion result still counted as in range.
+ *
+ * Results at or below this code, or at or above ::AFSK_RAW_CLIP_HIGH, are
+ * taken as over-range: the last few codes are already outside the
+ * converter's usable window, and on an interface without input clamp diodes
+ * reaching them also means the pin is being driven past the supply rails.
+ */
+#define AFSK_RAW_CLIP_LOW 15
+
+/**
+ * @brief Highest raw ADC conversion result still counted as in range; see
+ *        ::AFSK_RAW_CLIP_LOW.
+ */
+#define AFSK_RAW_CLIP_HIGH 4080
+
+/**
  * @brief Get the raw ADC extremes of the last processed block.
  *
  * Reports the minimum and maximum conversion results of the most recent
@@ -401,9 +417,30 @@ void LED_Status2(uint8_t red, uint8_t green, uint8_t blue);
 
 /**
  * @brief Get the last measured RMS level of the receiver input.
+ *
+ * Wideband: everything the ADC converts, DC removed, over the last block.
+ *
  * @return RMS input level, in millivolts.
  */
 uint16_t afskGetRms(void);
+
+/**
+ * @brief Get the last measured RMS level of the tone band of the receiver
+ *        input.
+ *
+ * Measured on the decimated signal of the AFSK profiles, after the optional
+ * high-pass and before the gain control, through a fourth-order band-pass
+ * centred between 900 and 2600 Hz (about -1.6 dB at 1200 Hz, -3.2 dB at
+ * 2200 Hz and -26 dB at 300 Hz), and scaled to millivolts at the ADC pin. It
+ * reads the level of the tones themselves, where the wideband figure of
+ * afskGetRms() can be dominated by hum, CTCSS, the bass of a de-emphasized
+ * speaker output or noise above the tones. The receive gate of the AFSK
+ * profiles compares against this value. G3RUH, which is not decimated, reports
+ * the wideband level here as well.
+ *
+ * @return RMS level of the tone band over the last block, in millivolts.
+ */
+uint16_t afskGetBandRms(void);
 
 /**
  * @brief Get the total number of samples delivered by the ADC since boot.

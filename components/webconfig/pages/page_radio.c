@@ -248,7 +248,7 @@ esp_err_t page_radio_get(httpd_req_t *req) {
                                   // saved to flash.
                                   "var form=document.getElementById('radioForm');"
                                   "var params=new URLSearchParams(new FormData(form));"
-                                  "fetch('/radio',{method:'POST',body:params}).then(function(){"
+                                  "fetch('/radio',{method:'POST',body:params}).then(function(){radioSaved=params.toString();"
                                   "status.textContent=' " TR_LOOPTEST_RUNNING "';"
                                   // POST, not GET: this route keys the transmitter, so it is
                                   // registered POST-only and goes through the same-origin check.
@@ -261,25 +261,39 @@ esp_err_t page_radio_get(httpd_req_t *req) {
                                   "}"
                                   // Receive level and bias measurement. Nothing is transmitted, so
                                   // unlike the loop test it can be run with a transceiver connected
-                                  // and while real traffic is being decoded. The form is saved first
-                                  // for the same reason as above: what is on screen is what gets
+                                  // and while real traffic is being decoded. What is on screen is
+                                  // what gets measured: the form is saved first, but only when it
+                                  // differs from what was last loaded or saved, because a save
+                                  // writes to flash and a changed receive setting rebuilds the
+                                  // demodulators, and either would disturb the reception being
                                   // measured.
+                                  "var radioSaved=null;"
+                                  "function radioFormState(){"
+                                  "return new URLSearchParams(new FormData(document.getElementById('radioForm'))).toString();"
+                                  "}"
+                                  "window.addEventListener('load',function(){radioSaved=radioFormState();});"
                                   "function rxLevel(){"
                                   "var btn=document.getElementById('rxLevelBtn');"
                                   "var status=document.getElementById('loopTestStatus');"
-                                  "btn.disabled=true;status.style.color='';status.textContent=' " TR_LOOPTEST_SAVING "';"
-                                  "var form=document.getElementById('radioForm');"
-                                  "var params=new URLSearchParams(new FormData(form));"
-                                  "fetch('/radio',{method:'POST',body:params}).then(function(){"
+                                  "btn.disabled=true;status.style.color='';"
+                                  "var state=radioFormState(),save;"
+                                  "if(state===radioSaved){save=Promise.resolve();}"
+                                  "else{status.textContent=' " TR_LOOPTEST_SAVING "';"
+                                  "save=fetch('/radio',{method:'POST',body:new URLSearchParams(state)}).then(function(){radioSaved=state;});}"
+                                  "save.then(function(){"
                                   "status.textContent=' " TR_LOOPTEST_RUNNING "';"
                                   "return fetch('/radio/level',{method:'POST'});"
                                   "}).then(function(r){return r.json();}).then(function(data){"
                                   "btn.disabled=false;"
                                   "if(!data.ok){status.style.color='red';status.textContent=' '+data.msg;return;}"
-                                  "status.style.color='green';"
+                                  "var lv={clip:['" TR_RADIO_RX_LEVEL_CLIP "','red'],idle:['" TR_RADIO_RX_LEVEL_IDLE "',''],"
+                                  "low:['" TR_RADIO_RX_LEVEL_LOW "','darkorange'],good:['" TR_RADIO_RX_LEVEL_GOOD "','green']}[data.level]||[data.level,''];"
+                                  "status.style.color=lv[1];"
                                   "var n=data.demods||0,dec=[],uni=[];"
                                   "for(var i=0;i<n;i++){dec.push(data.decoded[i]);uni.push(data.unique[i]);}"
-                                  "status.textContent=' '+data.mVrms+' mV RMS (peak '+data.peak_mVrms+'), DC '+data.dc_mV"
+                                  "status.textContent=' " TR_RADIO_RX_LEVEL " '+lv[0]+'; " TR_RADIO_RX_TONES
+                                  " '+data.band_mVrms+' mV RMS (peak '+data.band_peak_mVrms+')'"
+                                  "+', '+data.mVrms+' mV RMS (peak '+data.peak_mVrms+'), DC '+data.dc_mV"
                                   "+' mV, AGC '+data.agc+'x, raw '+data.raw_min+'..'+data.raw_max+', DCD '+(data.dcd?'yes':'no')"
                                   "+'; " TR_RADIO_RX_STATS_DECODED " '+dec.join('/')+', " TR_RADIO_RX_STATS_UNIQUE " '+uni.join('/')"
                                   "+', " TR_RADIO_RX_STATS_DELIVERED " '+data.delivered+', " TR_RADIO_RX_STATS_REPAIRED " '+data.repaired"
@@ -294,7 +308,7 @@ esp_err_t page_radio_get(httpd_req_t *req) {
                                   "btn.disabled=true;status.style.color='';status.textContent=' " TR_LOOPTEST_SAVING "';"
                                   "var form=document.getElementById('radioForm');"
                                   "var params=new URLSearchParams(new FormData(form));"
-                                  "fetch('/radio',{method:'POST',body:params}).then(function(){"
+                                  "fetch('/radio',{method:'POST',body:params}).then(function(){radioSaved=params.toString();"
                                   "status.textContent=' " TR_LOOPTEST_RUNNING "';"
                                   "return fetch('/radio/txtest',{method:'POST'});"
                                   "}).then(function(r){return r.json();}).then(function(data){"
@@ -393,9 +407,10 @@ esp_err_t page_radio_level_post(httpd_req_t *req) {
     httpd_resp_set_type(req, "application/json");
 
     // Sized for the widest reading the object can hold - every field is a
-    // number of known width plus the fixed keys, the receive statistics being
-    // five fixed counters plus two arrays of up to MODEM_RX_MAX_DEMODULATORS
-    // 10-digit entries - with room for the failure form, which is shorter.
+    // number of known width or a fixed keyword plus the fixed keys, the
+    // receive statistics being five fixed counters plus two arrays of up to
+    // MODEM_RX_MAX_DEMODULATORS 10-digit entries, about 510 bytes in all -
+    // with room for the failure form, which is shorter.
     char result[768];
     aprs_rx_level_sample(result, sizeof(result));
     httpd_resp_sendstr(req, result);

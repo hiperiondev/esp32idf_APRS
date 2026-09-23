@@ -607,10 +607,12 @@ Demodulatore di ricezione
 Questo gruppo di campi configura la catena di ricezione: quali demodulatori
 lavorano sull'audio, come viene filtrato il loro ingresso, quando vengono
 alimentati e come si imposta il guadagno. Tutti i campi si applicano dal vivo
-al *Salva*: i demodulatori vengono ricostruiti con il task di ricezione
-fermo, e le statistiche di ricezione mostrate da **LIVELLO RX** ripartono da
-zero ogni volta che cambia qualcosa qui, la modulazione o l'*Ingresso audio
-piatto / da discriminatore*.
+al *Salva*. Quando cambia qualcosa qui diverso dalla *Riparazione dei bit*, la
+modulazione o l'*Ingresso audio piatto / da discriminatore*, i demodulatori
+vengono ricostruiti con il task di ricezione fermo — una trama che arriva in
+quel momento va persa — e le statistiche di ricezione mostrate da
+**LIVELLO RX** ripartono da zero; salvare la pagina senza cambiare queste
+impostazioni non tocca la ricezione.
 
 Set di demodulatori
 -------------------
@@ -652,24 +654,33 @@ parte. Un set di prefiltri con inclinazioni diverse lo copre nel complesso.
      - +4, 0, −5 dB
      - 0, +3, +6 dB
    * - Multicomparatore (predefinito)
-     - 6
-     - prefiltri 0, −5 dB; pesi +3 … −12 dB
-     - prefiltri +5, 0 dB; pesi +6 … −6 dB
+     - 8
+     - prefiltri +5, −9 dB; compensazione +9 … −15,5 dB
+     - prefiltri +9, −4 dB; compensazione +16 … −8,5 dB
    * - Personalizzato
      - *Personalizzato: demodulatori*
      - campi *Personalizzato: inclinazione*
      - campi *Personalizzato: inclinazione*
 
-**Come scegliere.** Tenete **Multicomparatore**. Unisce due prefiltri a tre
-soglie di decisione ciascuno, quindi copre tutto l'intervallo di
-sbilanciamento senza progettare un prefiltro per demodulatore, e costa meno CPU
-del set a tre filtri pur eseguendo sei decodificatori HDLC. In una simulazione
-di un canale FM rumoroso ha pareggiato il set a tre filtri a sbilanciamenti
-moderati e ha decodificato circa un quarto di trame in più a +12 dB, dove
-la coppia classica fallisce del tutto. Le statistiche di *LIVELLO RX* mostrano ciò che
-ogni demodulatore apporta sul vostro canale: un demodulatore che non decodifica
-mai nulla che gli altri perdano può essere tolto, o ricevere un'altra
-inclinazione con *Personalizzato*.
+**Come scegliere.** Tenete **Multicomparatore**. Unisce due prefiltri,
+inclinati verso i due estremi dell'intervallo di sbilanciamento, a quattro
+soglie di decisione ciascuno. Ogni soglia (peso del comparatore) è calcolata
+dall'inclinazione che il suo prefiltro ha raggiunto davvero, quindi gli otto
+demodulatori insieme compensano lo sbilanciamento a passi uguali di 3,5 dB — la
+colonna *compensazione* qui sopra, inclinazione del prefiltro più peso del
+comparatore — qualunque sia la *Lunghezza del passa-banda*. I prefiltri
+inclinati impediscono che un tono forte trapeli nel correlatore dell'altro,
+cosa che nessuna soglia può correggere. Costa meno CPU del set a tre filtri
+pur eseguendo otto decodificatori HDLC.
+
+In una simulazione di un canale FM rumoroso con lo sbilanciamento applicato
+dallo stadio audio del ricevitore, il set altoparlante decodifica quasi tutte
+le trame da −14 dB (tono di spazio sotto quello di marca) a +6 dB, e il set
+piatto fa lo stesso da −10 a +12 dB. Un'uscita altoparlante con la propria
+catena audio arriva in pratica a −15 dB. Le statistiche di *LIVELLO RX*
+mostrano ciò che ogni demodulatore apporta sul vostro canale, e il log indica
+la compensazione effettiva di ciascuno ogni volta che il set viene
+ricostruito.
 
 **Personalizzato: demodulatori** e **Personalizzato: inclinazione,
 demodulatore 1–3 (dB)** si applicano solo al preset *Personalizzato*: il numero
@@ -684,17 +695,28 @@ passa-banda** (2300–3000 Hz, predefinito 2600 Hz). Un bordo inferiore più
 basso lascia passare più CTCSS e ronzio; un bordo superiore più alto lascia
 passare più del rumore che un'uscita discriminatore porta sopra i toni.
 
-La **Lunghezza del passa-banda** (9–31 coefficienti, predefinito 21, sempre
+La **Lunghezza del passa-banda** (9–31 coefficienti, predefinito 31, sempre
 dispari) stabilisce quanto sono netti i bordi e quanta dell'inclinazione
 richiesta si raggiunge davvero: 21 coefficienti ne danno circa tre quarti, 31
-quasi tutta. L'inclinazione reale di ogni prefiltro viene scritta nel log ogni
-volta che i demodulatori vengono ricostruiti.
+quasi tutta, e 31 coefficienti respingono ronzio e CTCSS di circa 30 dB in più.
+Il set *Multicomparatore* compensa un prefiltro più corto con i pesi dei suoi
+comparatori, ma gli estremi del suo intervallo contano sul fatto che
+l'inclinazione ci sia. L'inclinazione reale di ogni prefiltro viene scritta nel
+log ogni volta che i demodulatori vengono ricostruiti.
+
+.. note::
+
+   Una configurazione salvata prima che 31 diventasse il valore predefinito
+   conserva il proprio. Impostate 31 qui e salvate.
 
 Soglia di ricezione (mV RMS, 0 = spenta)
 ----------------------------------------
 
-**Che cos'è.** Una soglia di livello davanti ai demodulatori. Vengono
-alimentati mentre l'ingresso è rimasto sopra la soglia per alcuni blocchi da
+**Che cos'è.** Una soglia di livello davanti ai demodulatori, confrontata con il
+livello della *banda dei toni* — i 900–2600 Hz occupati dai toni, il valore
+``toni`` di **LIVELLO RX** — così ronzio, CTCSS o i bassi di un'uscita
+altoparlante non la aprono né la tengono aperta. I demodulatori vengono
+alimentati mentre quel livello è rimasto sopra la soglia per alcuni blocchi da
 20 ms e finché non scende sotto la metà. I blocchi ricevuti mentre la soglia
 decideva di aprirsi vengono conservati e demodulati per primi, così l'inizio di
 una trasmissione arriva comunque ai demodulatori. Intervallo 0–50 mV,
@@ -710,11 +732,20 @@ Passa-alto (reiezione CTCSS)
 ----------------------------
 
 Un passa-alto del secondo ordine a 150, 300 o 400 Hz davanti ai demodulatori
-dei profili AFSK, spento per impostazione predefinita. Un'uscita discriminatore
-porta il tono CTCSS a pieno livello; quella altoparlante di solito lo ha già
-filtrato. Anche i prefiltri passa-banda progettati respingono il CTCSS, quindi
-questo conta soprattutto per il preset *Classico*, il cui secondo demodulatore
-non ha prefiltro.
+dei profili AFSK, **300 Hz** per impostazione predefinita. Un'uscita
+discriminatore porta il tono CTCSS a pieno livello, e un'uscita altoparlante
+deenfatizzata porta bassi ben sopra il livello dei toni — la deenfasi alza
+tutto ciò che sta sotto i toni di 6 dB per ottava. I prefiltri progettati
+respingono entrambi dentro i demodulatori, ma il passa-alto lavora prima del
+guadagno automatico, così il guadagno segue i toni e non i bassi, e copre
+anche il preset *Classico*, il cui secondo demodulatore non ha prefiltro.
+Spegnetelo solo con un ricevitore il cui audio sia pulito sotto i 300 Hz e un
+preset che non abbia bisogno di togliere nulla lì.
+
+.. note::
+
+   Una configurazione salvata quando il passa-alto era spento per impostazione
+   predefinita conserva *Off*. Selezionate 300 Hz qui e salvate.
 
 Guadagno di ricezione e Guadagno fisso di ricezione (dB)
 --------------------------------------------------------
@@ -1055,7 +1086,10 @@ LIVELLO RX
 **Che cosa fa.** Osserva lo stadio d'ingresso di ricezione per circa un secondo
 e riporta ciò che ha visto. **Non trasmette nulla e non tocca alcuno stato del
 modem**, quindi — a differenza del test loop — può essere eseguito con il
-ricetrasmettitore collegato, l'antenna su e traffico reale in decodifica.
+ricetrasmettitore collegato, l'antenna su e traffico reale in decodifica. La
+pagina viene salvata prima solo quando un campo differisce da quanto caricato o
+salvato per ultimo, quindi premerlo più volte non scrive in flash né disturba
+la ricezione.
 
 È la misura contro cui si regola il lato ricezione dell'interfaccia audio.
 
@@ -1065,11 +1099,25 @@ ricetrasmettitore collegato, l'antenna su e traffico reale in decodifica.
 
    * - Campo
      - Come leggerlo
+   * - ``livello``
+     - Verdetto in una parola. **saturato** (rosso): gli estremi grezzi hanno
+       raggiunto i limiti del convertitore — abbassate il livello di ricezione.
+       **nessun segnale**: nessun demodulatore ha rilevato una portante nella
+       finestra, quindi non c'è nulla da giudicare; premetelo di nuovo mentre
+       arriva un pacchetto. **basso** (arancione): la portante c'era ma i toni
+       non hanno superato 100 mV RMS, troppo vicino al rumore proprio dell'ADC
+       dell'ESP32 — alzate il livello di ricezione. **buono** (verde): toni di
+       almeno 100 mV RMS senza fuori scala.
+   * - ``toni``
+     - Livello RMS medio e di picco della banda dei toni, 900–2600 Hz, al pin
+       dell'ADC. È ciò con cui lavorano davvero i demodulatori, e il valore su
+       cui regolare il livello di ricezione.
    * - ``mVrms`` / ``peak``
-     - Livello audio medio e di picco sulla finestra. Con la radio senza squelch
-       su un canale inattivo state leggendo rumore; con un pacchetto in arrivo
-       state leggendo segnale. Un livello sano lascia margine chiaro sotto i
-       binari.
+     - Livello audio a banda larga medio e di picco sulla finestra. Con la radio
+       senza squelch su un canale inattivo state leggendo rumore; con un
+       pacchetto in arrivo state leggendo segnale. Molto più alto di ``toni``
+       significa che gran parte dell'ingresso sta fuori dai toni — ronzio, CTCSS
+       o i bassi di un'uscita altoparlante deenfatizzata.
    * - ``DC``
      - Dove è polarizzato l'ingresso. Dovrebbe stare vicino al centro del campo
        del convertitore, attorno a 1500–1600 mV. Vicino a 0 mV o al binario
@@ -1081,8 +1129,9 @@ ricetrasmettitore collegato, l'antenna su e traffico reale in decodifica.
        sopra. Un guadagno molto grande significa che il segnale è troppo debole e
        il modem sta amplificando rumore insieme a esso.
    * - ``raw``
-     - Gli estremi di conversione grezzi, rispetto a binari 0 e 4095. È il vostro
-       margine di saturazione: raggiungere 0 o 4095 è fuori scala.
+     - Gli estremi di conversione grezzi su tutta la finestra, rispetto a binari
+       0 e 4095. È il vostro margine di saturazione: raggiungere 0 o 4095 è
+       fuori scala.
    * - ``DCD``
      - Se un demodulatore è stato agganciato durante la finestra. ``sì`` mentre
        arriva un pacchetto è esattamente giusto; ``sì`` su un canale silenzioso
@@ -1112,11 +1161,16 @@ dall'ultima modifica del set di demodulatori:
      - Campioni scartati perché la FIFO di ricezione era piena, e overflow del
        buffer del driver dell'ADC. Entrambi devono restare a 0; qualunque altro
        valore indica che il task di ricezione non tiene il passo (clock della
-       CPU sotto i 240 MHz, o un altro task che lo affama).
+       CPU sotto i 240 MHz, o un altro task che lo affama). Ogni perdita viene
+       anche segnalata sulla console, al massimo una volta al minuto, come
+       ``RX samples lost``.
 
 **Procedura tipica.** Togliete lo squelch alla radio, premete **LIVELLO RX** e
-regolate il trimmer di ricezione finché gli estremi grezzi usano una buona parte
-del campo senza avvicinarsi ai binari e l'offset in continua è centrato. Poi
+verificate che l'offset in continua sia centrato. Poi premetelo mentre arrivano
+pacchetti e regolate il volume della radio e il trimmer di ricezione finché il
+verdetto indica **buono** — toni di almeno 100 mV RMS — senza mai arrivare a
+**saturato**. Con un'uscita altoparlante di solito serve un volume piuttosto
+alto: i suoi toni stanno ben sotto il suo livello complessivo. Poi
 rimettete lo squelch normale, aspettate traffico reale e verificate che compaia
 ``DCD sì`` e che il pannello mostri decodifiche.
 
@@ -1375,7 +1429,7 @@ Riferimento dei campi
      - Dal vivo
    * - Lunghezza del passa-banda
      - 9–31 coefficienti (dispari)
-     - 21
+     - 31
      - Dal vivo
    * - Soglia di ricezione
      - 0–50 mV (0 = spenta)
@@ -1383,7 +1437,7 @@ Riferimento dei campi
      - Dal vivo
    * - Passa-alto (reiezione CTCSS)
      - spento / 150 / 300 / 400 Hz
-     - spento
+     - 300 Hz
      - Dal vivo
    * - Guadagno di ricezione
      - automatico / fisso
