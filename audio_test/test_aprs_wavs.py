@@ -84,6 +84,15 @@ only that section - for the settings that decode best (--demod_max_rounds,
 0 skips it). Every value changed is listed in the final report; see the
 ModemOptimizer and DemodSearch classes for the rules.
 
+--flat_audio keep|auto|on|off (--transport web, default keep) is the one,
+explicit exception to that rule: it unlocks the page's "Flat audio input"
+checkbox (field audioLPF), which says whether the ADC gets flat /
+discriminator audio or de-emphasised speaker audio. 'auto' measures both
+settings during calibration, at the chosen volume and before the demodulator
+search, and keeps the one that decodes better (confirmed by a second batch);
+'on'/'off' force it before the volume search. 'keep' never touches it. See the
+FlatAudioSearch class.
+
 Usage
 -----
   ./test_aprs_wavs.py                          # wavs in cwd, /dev/ttyUSB0
@@ -2061,6 +2070,156 @@ _CATALOG = {
     },
 }
 
+# --flat_audio (Flat / discriminator audio input selection)
+_CATALOG["es"].update({
+        'flat (discriminator)':
+            'plana (discriminador)',
+        'de-emphasised (speaker)':
+            'con de-énfasis (parlante)',
+        '  [flat %d/3] %-44s mm=%d ok=%d diff=%d hdr=%d miss=%d extra=%d  score=%.1f%%':
+            '  [plana %d/3] %-44s mm=%d ok=%d dif=%d enc=%d falt=%d extra=%d  puntaje=%.1f%%',
+        'FLAT / DISCRIMINATOR AUDIO INPUT (Radiomodem page, unlocked by --flat_audio %s)':
+            'ENTRADA DE AUDIO PLANA / DISCRIMINADOR (página Radiomodem, desbloqueada por --flat_audio %s)',
+        '  Station setting before calibration: %s':
+            '  Valor de la estación antes de la calibración: %s',
+        '  Gain %.3f (%+.1f dB), up to 3 probe(s) of %d packet(s)':
+            '  Ganancia %.3f (%+.1f dB), hasta 3 sondeo(s) de %d paquete(s)',
+        '\nFlat audio selection interrupted - keeping the setting the measurements so far support.':
+            '\nSelección de audio plano interrumpida - se conserva el valor que respaldan las mediciones hechas hasta ahora.',
+        '  Kept: %s - nothing changed.':
+            '  Se conserva: %s - no se cambió nada.',
+        'current: %s':
+            'actual: %s',
+        '  Nothing decoded with the current setting - no basis to compare; leaving it unchanged.':
+            '  No se decodificó nada con el valor actual - no hay base para comparar; se deja sin cambios.',
+        'alternative: %s':
+            'alternativa: %s',
+        '  The alternative is not clearly better (%.1f%% vs %.1f%%): the current setting stays.':
+            '  La alternativa no es claramente mejor (%.1f%% vs %.1f%%): se mantiene el valor actual.',
+        'confirmation: %s':
+            'confirmación: %s',
+        '  Confirmation did not hold (pooled %.1f%% vs %.1f%%): the current setting stays.':
+            '  La confirmación no se sostuvo (acumulado %.1f%% vs %.1f%%): se mantiene el valor actual.',
+        '      better (%.1f%% -> pooled %.1f%%): kept':
+            '      mejor (%.1f%% -> acumulado %.1f%%): se conserva',
+        '  Flat audio input selection (--flat_audio) FAILED: %s':
+            '  Selección de entrada de audio plana (--flat_audio) FALLIDA: %s',
+        '  -- Flat audio input (--flat_audio %s) ------------------------':
+            '  -- Entrada de audio plana (--flat_audio %s) ------------------',
+        '    decode rate %.1f%% %s, %.1f%% %s (%d probe(s))':
+            '    tasa de decodificación %.1f%% %s, %.1f%% %s (%d sondeo(s))',
+        '    Kept: %s - nothing changed.':
+            '    Se conserva: %s - no se cambió nada.',
+        '  Radiomodem - Flat audio input (unlocked by --flat_audio %s)':
+            '  Radiomodem - Entrada de audio plana (desbloqueada por --flat_audio %s)',
+        'selection FAILED: %s':
+            'selección FALLIDA: %s',
+        'not applied':
+            'no aplicada',
+        'except %s, unlocked by --flat_audio (see above)':
+            'excepto %s, desbloqueado por --flat_audio (ver arriba)',
+        "  WARNING: --flat_audio %s has no effect with --transport serial (the setting lives on the station's web admin).\n":
+            '  ATENCIÓN: --flat_audio %s no tiene efecto con --transport serial (el ajuste está en la administración web de la estación).\n',
+        '  WARNING: --flat_audio %s is ignored: --no_modem_optimize means the bench changes nothing on the station.\n':
+            '  ATENCIÓN: se ignora --flat_audio %s: --no_modem_optimize significa que el banco no cambia nada en la estación.\n',
+        "  WARNING: Flat audio input selection failed (%s) - continuing with the station's setting from before it.\n":
+            '  ATENCIÓN: falló la selección de entrada de audio plana (%s) - se continúa con el valor que tenía la estación antes.\n',
+        'Flat / discriminator audio input (--flat_audio)':
+            'Entrada de audio plana / discriminador (--flat_audio)',
+        'Flat audio input stays locked unless it is explicitly allowed':
+            'la entrada de audio plana sigue bloqueada salvo que se permita explícitamente',
+        '--flat_audio auto switches to the input type that decodes better':
+            '--flat_audio auto cambia al tipo de entrada que decodifica mejor',
+        '--flat_audio changes nothing else on the page, and the guard accepts it':
+            '--flat_audio no cambia nada más en la página, y la guarda lo acepta',
+        'without the unlock the guard reports Flat audio input as changed':
+            'sin el desbloqueo la guarda informa la entrada de audio plana como cambiada',
+        "--flat_audio auto keeps the station's setting on a tie":
+            '--flat_audio auto conserva el valor de la estación ante un empate',
+        '--flat_audio on / off force the setting without probing':
+            '--flat_audio on / off fuerzan el valor sin sondear',
+        'the pre-test summary shows the Flat audio input choice':
+            'el resumen previo a la prueba muestra la elección de entrada de audio plana',
+        'got %r after %d probe(s)':
+            'se obtuvo %r tras %d sondeo(s)',
+        "with --transport web and without --no_modem_optimize: the Radiomodem page's 'Flat audio input' checkbox (flat / discriminator audio vs de-emphasised speaker audio), the only field outside the Receive demodulator section the bench can be told to change. keep (default): never touched. auto: during calibration, after the volume is chosen and before the demodulator search, both settings are measured on the same audio and the better one (confirmed by a second batch) is kept for the real test. on / off: forced to flat / de-emphasised before the auto-volume calibration. The value chosen is listed before the real test and in the final report.":
+            "con --transport web y sin --no_modem_optimize: la casilla 'Entrada de audio plana' de la página Radiomodem (audio plano / de discriminador frente a audio de parlante con de-énfasis), el único campo fuera de la sección Demodulador de recepción que se le puede indicar al banco que cambie. keep (por omisión): nunca se toca. auto: durante la calibración, tras elegir el volumen y antes de la búsqueda del demodulador, se miden ambos valores con el mismo audio y se conserva el mejor (confirmado con un segundo lote) para la prueba real. on / off: se fuerza a plana / con de-énfasis antes de la calibración automática de volumen. El valor elegido se muestra antes de la prueba real y en el informe final.",
+})
+_CATALOG["it"].update({
+        'flat (discriminator)':
+            'piatto (discriminatore)',
+        'de-emphasised (speaker)':
+            'con de-enfasi (altoparlante)',
+        '  [flat %d/3] %-44s mm=%d ok=%d diff=%d hdr=%d miss=%d extra=%d  score=%.1f%%':
+            '  [piatto %d/3] %-44s mm=%d ok=%d diff=%d int=%d manc=%d extra=%d  punteggio=%.1f%%',
+        'FLAT / DISCRIMINATOR AUDIO INPUT (Radiomodem page, unlocked by --flat_audio %s)':
+            'INGRESSO AUDIO PIATTO / DISCRIMINATORE (pagina Radiomodem, sbloccato da --flat_audio %s)',
+        '  Station setting before calibration: %s':
+            '  Valore della stazione prima della calibrazione: %s',
+        '  Gain %.3f (%+.1f dB), up to 3 probe(s) of %d packet(s)':
+            '  Guadagno %.3f (%+.1f dB), fino a 3 sondaggi da %d pacchetti',
+        '\nFlat audio selection interrupted - keeping the setting the measurements so far support.':
+            "\nSelezione dell'audio piatto interrotta - si mantiene il valore sostenuto dalle misure fatte finora.",
+        '  Kept: %s - nothing changed.':
+            '  Mantenuto: %s - nulla è cambiato.',
+        'current: %s':
+            'attuale: %s',
+        '  Nothing decoded with the current setting - no basis to compare; leaving it unchanged.':
+            '  Nulla decodificato con il valore attuale - nessuna base di confronto; resta invariato.',
+        'alternative: %s':
+            'alternativa: %s',
+        '  The alternative is not clearly better (%.1f%% vs %.1f%%): the current setting stays.':
+            "  L'alternativa non è chiaramente migliore (%.1f%% vs %.1f%%): resta il valore attuale.",
+        'confirmation: %s':
+            'conferma: %s',
+        '  Confirmation did not hold (pooled %.1f%% vs %.1f%%): the current setting stays.':
+            '  La conferma non ha retto (cumulato %.1f%% vs %.1f%%): resta il valore attuale.',
+        '      better (%.1f%% -> pooled %.1f%%): kept':
+            '      migliore (%.1f%% -> cumulato %.1f%%): mantenuto',
+        '  Flat audio input selection (--flat_audio) FAILED: %s':
+            "  Selezione dell'ingresso audio piatto (--flat_audio) FALLITA: %s",
+        '  -- Flat audio input (--flat_audio %s) ------------------------':
+            '  -- Ingresso audio piatto (--flat_audio %s) -------------------',
+        '    decode rate %.1f%% %s, %.1f%% %s (%d probe(s))':
+            '    tasso di decodifica %.1f%% %s, %.1f%% %s (%d sondaggi)',
+        '    Kept: %s - nothing changed.':
+            '    Mantenuto: %s - nulla è cambiato.',
+        '  Radiomodem - Flat audio input (unlocked by --flat_audio %s)':
+            '  Radiomodem - Ingresso audio piatto (sbloccato da --flat_audio %s)',
+        'selection FAILED: %s':
+            'selezione FALLITA: %s',
+        'not applied':
+            'non applicata',
+        'except %s, unlocked by --flat_audio (see above)':
+            'eccetto %s, sbloccato da --flat_audio (vedi sopra)',
+        "  WARNING: --flat_audio %s has no effect with --transport serial (the setting lives on the station's web admin).\n":
+            "  AVVISO: --flat_audio %s non ha effetto con --transport serial (l'impostazione è nell'amministrazione web della stazione).\n",
+        '  WARNING: --flat_audio %s is ignored: --no_modem_optimize means the bench changes nothing on the station.\n':
+            '  AVVISO: --flat_audio %s viene ignorato: --no_modem_optimize significa che il banco non cambia nulla sulla stazione.\n',
+        "  WARNING: Flat audio input selection failed (%s) - continuing with the station's setting from before it.\n":
+            "  AVVISO: selezione dell'ingresso audio piatto fallita (%s) - si prosegue con il valore che la stazione aveva prima.\n",
+        'Flat / discriminator audio input (--flat_audio)':
+            'Ingresso audio piatto / discriminatore (--flat_audio)',
+        'Flat audio input stays locked unless it is explicitly allowed':
+            "l'ingresso audio piatto resta bloccato se non è consentito esplicitamente",
+        '--flat_audio auto switches to the input type that decodes better':
+            '--flat_audio auto passa al tipo di ingresso che decodifica meglio',
+        '--flat_audio changes nothing else on the page, and the guard accepts it':
+            "--flat_audio non cambia nient'altro nella pagina, e la guardia lo accetta",
+        'without the unlock the guard reports Flat audio input as changed':
+            "senza lo sblocco la guardia segnala l'ingresso audio piatto come modificato",
+        "--flat_audio auto keeps the station's setting on a tie":
+            '--flat_audio auto mantiene il valore della stazione in caso di parità',
+        '--flat_audio on / off force the setting without probing':
+            '--flat_audio on / off forzano il valore senza sondaggi',
+        'the pre-test summary shows the Flat audio input choice':
+            "il riepilogo prima della prova mostra la scelta dell'ingresso audio piatto",
+        'got %r after %d probe(s)':
+            'ottenuto %r dopo %d sondaggi',
+        "with --transport web and without --no_modem_optimize: the Radiomodem page's 'Flat audio input' checkbox (flat / discriminator audio vs de-emphasised speaker audio), the only field outside the Receive demodulator section the bench can be told to change. keep (default): never touched. auto: during calibration, after the volume is chosen and before the demodulator search, both settings are measured on the same audio and the better one (confirmed by a second batch) is kept for the real test. on / off: forced to flat / de-emphasised before the auto-volume calibration. The value chosen is listed before the real test and in the final report.":
+            "con --transport web e senza --no_modem_optimize: la casella 'Ingresso audio piatto' della pagina Radiomodem (audio piatto / da discriminatore contro audio da altoparlante con de-enfasi), l'unico campo fuori dalla sezione Demodulatore di ricezione che si può chiedere al banco di cambiare. keep (predefinito): mai toccato. auto: durante la calibrazione, dopo la scelta del volume e prima della ricerca del demodulatore, si misurano entrambi i valori sullo stesso audio e si mantiene il migliore (confermato da un secondo lotto) per la prova reale. on / off: forzato a piatto / con de-enfasi prima della calibrazione automatica del volume. Il valore scelto è riportato prima della prova reale e nel rapporto finale.",
+})
+
 # pyserial is only needed by --transport serial. --transport web reads the
 # console through the station's web admin alone and must not depend on,
 # import-fail on, or open anything serial.
@@ -3720,14 +3879,18 @@ def post_radio_rx_only(session, base_url: str, before: dict, changes: dict,
                                  "checkbox(es) %s - posting without them would switch "
                                  "them OFF on the station" % ", ".join(missing))
     for name in changes:
-        if name not in RX_DEMOD_KIND or name not in allowed:
+        # _WRITABLE_KIND = the Receive demodulator fields plus the ones an
+        # operator can unlock explicitly (--flat_audio). An unlocked field is
+        # still refused unless the caller names it in `allowed`, and the
+        # default `allowed` is the Receive demodulator section alone.
+        if name not in _WRITABLE_KIND or name not in allowed:
             raise ModemOptimizeError("refusing to change %s: not an allowed Receive "
                                      "demodulator field" % name)
     state = dict(before)
     for name, value in changes.items():
         if name not in state:
             continue            # firmware too old to render this field
-        state[name] = bool(value) if RX_DEMOD_KIND[name] == "bool" else str(int(value))
+        state[name] = bool(value) if _WRITABLE_KIND[name] == "bool" else str(int(value))
     body = radio_post_data(state)
     for name, value in before.items():
         if name in allowed:
@@ -3852,9 +4015,18 @@ class RadioPageGuard:
     section against it; if something differs, restore_outside() puts exactly
     those fields back to their snapshot values (and only them)."""
 
-    def __init__(self, session, base_url: str) -> None:
+    def __init__(self, session, base_url: str, unlocked=()) -> None:
         self._session = session
         self.base_url = base_url
+        # Fields the guard treats as "inside": the Receive demodulator
+        # section, plus any field the operator unlocked explicitly
+        # (--flat_audio -> FLAT_AUDIO_FIELD). Only those may differ from the
+        # snapshot without stopping the run.
+        bad = [n for n in unlocked if n not in UNLOCKABLE_FIELDS]
+        if bad:
+            raise ModemOptimizeError("cannot unlock %s" % ", ".join(bad))
+        self.unlocked = tuple(unlocked)
+        self.inside = frozenset(RX_DEMOD_KIND) | frozenset(self.unlocked)
         self.snapshot = self._read()
         missing = [c for c in RADIO_POST_CHECKBOXES if c not in self.snapshot]
         if missing:
@@ -3885,12 +4057,12 @@ class RadioPageGuard:
         return out
 
     def outside_names(self) -> List[str]:
-        return [n for n in self.snapshot if n not in RX_DEMOD_KIND]
+        return [n for n in self.snapshot if n not in self.inside]
 
     def verify(self) -> List[str]:
         now = self._read()
         self.last = now
-        self.drift = radio_fields_changed_outside(self.snapshot, now, RX_DEMOD_KIND)
+        self.drift = radio_fields_changed_outside(self.snapshot, now, self.inside)
         return self.drift
 
     def restore_outside(self) -> None:
@@ -3900,7 +4072,7 @@ class RadioPageGuard:
         now = self._read()
         state = dict(now)
         for name, value in self.snapshot.items():
-            if name not in RX_DEMOD_KIND:
+            if name not in self.inside:
                 state[name] = value
         url = self.base_url + "/radio"
         try:
@@ -4207,6 +4379,16 @@ RX_DEMOD_FIELDS = [
 ]
 RX_DEMOD_KIND = {name: kind for name, kind, _label in RX_DEMOD_FIELDS}
 RX_DEMOD_LABEL = {name: label for name, _kind, label in RX_DEMOD_FIELDS}
+
+# Radiomodem field OUTSIDE the Receive demodulator section that the operator
+# may unlock explicitly with --flat_audio (see FlatAudioSearch). The form's
+# "Flat audio input" checkbox, rendered by page_radio_get() as audioLPF.
+FLAT_AUDIO_FIELD = "audioLPF"
+FLAT_AUDIO_LABEL = "Flat audio input"
+UNLOCKABLE_FIELDS = {FLAT_AUDIO_FIELD: "bool"}
+# Every field post_radio_rx_only() can ever be asked to change.
+_WRITABLE_KIND = dict(RX_DEMOD_KIND)
+_WRITABLE_KIND.update(UNLOCKABLE_FIELDS)
 # The subset the search varies (see the section comment for what is left
 # alone and why).
 RX_DEMOD_SEARCHED = ("rxEqPreset", "rxBpfLoHz", "rxBpfHiHz", "rxBpfTaps", "rxGateMv",
@@ -4533,7 +4715,8 @@ def print_calibration_summary(start_volume: float, final_volume: float,
                               volume_mode: str,
                               rx_start: Optional[dict], rx_final: Optional[dict],
                               rx_note: Optional[str] = None,
-                              guard: Optional["RadioPageGuard"] = None) -> None:
+                              guard: Optional["RadioPageGuard"] = None,
+                              flat: Optional["FlatAudioSearch"] = None) -> None:
     """Printed once, after every calibration step and before the real test:
     the playback volume and every Receive demodulator value the test will
     run with, each marked as modified (with its value before calibration) or
@@ -4576,9 +4759,25 @@ def print_calibration_summary(start_volume: float, final_volume: float,
                 "touched.") % n_mod)
         if rx_note:
             print("    " + rx_note)
+    if flat is not None:
+        print(T("  Radiomodem - Flat audio input (unlocked by --flat_audio %s)") % flat.mode)
+        if flat.applied and flat.original is not None and flat.final is not None:
+            if flat.final != flat.original:
+                print("    %-34s %s -> %s   %s" %
+                      (T(FLAT_AUDIO_LABEL), _fmt_flat(flat.original), _fmt_flat(flat.final),
+                       T("[MODIFIED]")))
+            else:
+                print("    %-34s %s   %s" %
+                      (T(FLAT_AUDIO_LABEL), _fmt_flat(flat.final), T("[unchanged]")))
+        else:
+            print("    " + (T("selection FAILED: %s") % flat.error if flat.error
+                            else T("not applied")))
     if guard is not None:
         names = guard.outside_names()
         print(T("  Radiomodem - outside the Receive demodulator section (never changed)"))
+        if guard.unlocked:
+            print("    " + T("except %s, unlocked by --flat_audio (see above)") %
+                  ", ".join(guard.unlocked))
         if guard.drift and not guard.restored:
             print("    " + T("DIFFERS from the start of the run: %s") % ", ".join(guard.drift))
         elif guard.restored:
@@ -4611,6 +4810,219 @@ def print_demod_search(ds: Optional[DemodSearch]) -> None:
         print(T("    The starting settings were kept - nothing changed."))
         return
     for _name, label, before, after in ds.changes:
+        print("    %-28s %s -> %s" % (T(label), before, after))
+
+
+# --------------------------------------------------------------------------
+# --transport web: Flat / discriminator audio input (--flat_audio)
+# --------------------------------------------------------------------------
+#
+# The Radiomodem page's "Flat audio input" checkbox (audioLPF) tells the
+# modem what kind of audio reaches the ADC:
+#   * on  - flat / discriminator audio: a 9600/data port or a discriminator
+#           tap, no de-emphasis applied by the radio;
+#   * off - de-emphasised audio: the speaker / headphone output.
+# Getting it wrong tilts the two AFSK tones against each other by roughly
+# 20*log10(2200/1200) = 5.3 dB (the 6 dB/octave FM pre-/de-emphasis slope),
+# which is exactly the twist the demodulator then has to fight. Which one is
+# right for a bench depends on how the WAV set was recorded (discriminator or
+# speaker) and on the sound card path, so it is worth measuring.
+#
+# The field is OUTSIDE the Receive demodulator section, so the bench's hard
+# rule keeps it untouched - unless the operator unlocks it on purpose:
+#   --flat_audio keep  never read for change, never written (default);
+#   --flat_audio on    forced to flat before the auto-volume calibration;
+#   --flat_audio off   forced to de-emphasised before the auto-volume
+#                      calibration;
+#   --flat_audio auto  after the volume is chosen and BEFORE the Receive
+#                      demodulator search (which then tunes the EQ on top of
+#                      the right input type), the current setting and the
+#                      other one are each measured on the same audio; the
+#                      other one is kept only if it decodes at least one
+#                      packet and DEMOD_MIN_GAIN_PCT points more AND a second,
+#                      fresh batch pooled with the first still beats the
+#                      current setting. A tie keeps the station as it was.
+# Unlocking adds exactly this one field to what the RadioPageGuard accepts
+# as changed; every other field outside the Receive demodulator section is
+# still verified after every probe and every test file, and every POST is
+# still the whole form with only the allowed field replaced.
+FLAT_AUDIO_MODES = ("keep", "auto", "on", "off")
+
+
+def _fmt_flat(value) -> str:
+    return T("flat (discriminator)") if value else T("de-emphasised (speaker)")
+
+
+class FlatAudioSearch:
+    """Selects the Radiomodem page's "Flat audio input" setting (see the
+    section comment above). mode 'on'/'off' only applies it; mode 'auto'
+    measures both at `volume` through `prober` (a VolumeSearch used as the
+    probe engine, like DemodSearch) and keeps the better one."""
+
+    def __init__(self, session, base_url: str, prober: Optional["VolumeSearch"],
+                 volume: float, mode: str = "auto", batch_size: int = AUTO_VOLUME_BATCH,
+                 settle: float = DEMOD_SETTLE_SECONDS, quiet: bool = False) -> None:
+        if mode not in ("auto", "on", "off"):
+            raise ValueError("FlatAudioSearch mode must be auto, on or off")
+        if mode == "auto" and prober is None:
+            raise ValueError("FlatAudioSearch mode auto needs a prober")
+        self._session = session
+        self.base_url = base_url
+        self.prober = prober
+        self.volume = volume
+        self.mode = mode
+        self.batch_size = batch_size
+        self.settle = settle
+        self.quiet = quiet
+        self.original = None     # type: Optional[bool]
+        self.final = None        # type: Optional[bool]
+        self.baseline = None     # type: Optional[dict]   # current setting
+        self.alt_m = None        # type: Optional[dict]   # the other one
+        self.best_m = None       # type: Optional[dict]   # what was kept
+        self.probes_used = 0
+        # (name, label, before, after) when the setting changed, else empty.
+        self.changes = []        # type: List[Tuple[str, str, str, str]]
+        self.applied = False
+        self.interrupted = False
+        self.error = None        # type: Optional[str]
+
+    def _say(self, msg: str) -> None:
+        if not self.quiet:
+            say(msg)
+
+    def _state(self) -> dict:
+        url = self.base_url + "/radio"
+        try:
+            resp = self._session.get(url, timeout=10)
+        except Exception as exc:
+            raise ModemOptimizeError("%s: %s" % (url, exc))
+        if resp.status_code != 200:
+            raise ModemOptimizeError("%s: HTTP %d" % (url, resp.status_code))
+        state = scrape_radio_form(resp.text)
+        if not isinstance(state.get(FLAT_AUDIO_FIELD), bool):
+            raise ModemOptimizeError("GET /radio: no '%s' checkbox (%s) in the page"
+                                     % (FLAT_AUDIO_LABEL, FLAT_AUDIO_FIELD))
+        return state
+
+    def read(self) -> bool:
+        return self._state()[FLAT_AUDIO_FIELD]
+
+    def apply(self, flat: bool) -> bool:
+        """Put `flat` on the station (only that field, whole-form POST) and
+        return what it stored. No POST - and no flash write - when the
+        station already holds that value."""
+        before = self._state()
+        if before[FLAT_AUDIO_FIELD] is bool(flat):
+            return bool(flat)
+        after = post_radio_rx_only(self._session, self.base_url, before,
+                                   {FLAT_AUDIO_FIELD: bool(flat)},
+                                   allowed=(FLAT_AUDIO_FIELD,))
+        stored = after.get(FLAT_AUDIO_FIELD)
+        if stored is not bool(flat):
+            raise ModemOptimizeError("the station stored %s=%r after asking for %r"
+                                     % (FLAT_AUDIO_FIELD, stored, bool(flat)))
+        if self.settle > 0:
+            sleep_or_stop(self.settle)
+        return stored
+
+    def _measure(self, flat: bool, desc: str) -> dict:
+        self.apply(flat)
+        m = self.prober._probe(self.volume, to_db(self.volume), self.batch_size)
+        m["score"] = 100.0 * m["success"] / max(1, m["trials"])
+        self.probes_used += 1
+        self._say(T("  [flat %d/3] %-44s mm=%d ok=%d diff=%d hdr=%d miss=%d extra=%d  "
+                    "score=%.1f%%") %
+                  (self.probes_used, desc, m["mm"], m["ok"], m["mismatch"], m["corrupt"],
+                   m["missing"], m["extra"], m["score"]) +
+                  (T("  (over-range reported)") if m.get("warns", 0) > 0 else ""))
+        return m
+
+    def run(self) -> bool:
+        self._say("\n" + "=" * 72)
+        self._say(T("FLAT / DISCRIMINATOR AUDIO INPUT (Radiomodem page, unlocked by "
+                    "--flat_audio %s)") % self.mode)
+        self._say("=" * 72)
+        self.original = self.read()
+        self.final = self.original
+        self._say(T("  Station setting before calibration: %s") % _fmt_flat(self.original))
+        try:
+            if self.mode == "auto":
+                self._say(T("  Gain %.3f (%+.1f dB), up to 3 probe(s) of %d packet(s)") %
+                          (self.volume, to_db(self.volume), self.batch_size))
+                self._search()
+            else:
+                self.final = (self.mode == "on")
+        except KeyboardInterrupt:
+            self.interrupted = True
+            self._say(T("\nFlat audio selection interrupted - keeping the setting the "
+                        "measurements so far support."))
+        except ModemOptimizeError:
+            try:
+                self.apply(self.original)
+            except Exception:
+                pass
+            raise
+        self.final = self.apply(self.final)
+        self.applied = True
+        if self.final != self.original:
+            self.changes = [(FLAT_AUDIO_FIELD, FLAT_AUDIO_LABEL,
+                             _fmt_flat(self.original), _fmt_flat(self.final))]
+            self._say("    %-28s %s -> %s" % (T(FLAT_AUDIO_LABEL), _fmt_flat(self.original),
+                                             _fmt_flat(self.final)))
+        else:
+            self._say(T("  Kept: %s - nothing changed.") % _fmt_flat(self.final))
+        self._say("=" * 72)
+        return self.final
+
+    def _search(self) -> None:
+        cur = self.original
+        alt = not cur
+        self.baseline = self._measure(cur, T("current: %s") % _fmt_flat(cur))
+        self.best_m = self.baseline
+        if self.baseline["trials"] <= 0:
+            self._say(T("  Nothing decoded with the current setting - no basis to compare; "
+                        "leaving it unchanged."))
+            return
+        self.alt_m = self._measure(alt, T("alternative: %s") % _fmt_flat(alt))
+        if not DemodSearch._better(self.alt_m, self.baseline):
+            self._say(T("  The alternative is not clearly better (%.1f%% vs %.1f%%): the "
+                        "current setting stays.") %
+                      (self.alt_m["score"], self.baseline["score"]))
+            return
+        m2 = self._measure(alt, T("confirmation: %s") % _fmt_flat(alt))
+        pooled = {"success": self.alt_m["success"] + m2["success"],
+                  "trials": self.alt_m["trials"] + m2["trials"]}
+        pooled["score"] = 100.0 * pooled["success"] / max(1, pooled["trials"])
+        if pooled["score"] <= self.baseline["score"]:
+            self._say(T("  Confirmation did not hold (pooled %.1f%% vs %.1f%%): the current "
+                        "setting stays.") % (pooled["score"], self.baseline["score"]))
+            return
+        for k in ("ok", "mismatch", "corrupt", "missing", "extra", "mm"):
+            pooled[k] = self.alt_m.get(k, 0) + m2.get(k, 0)
+        self._say(T("      better (%.1f%% -> pooled %.1f%%): kept") %
+                  (self.baseline["score"], pooled["score"]))
+        self.final = alt
+        self.best_m = pooled
+
+
+def print_flat_audio(fa: Optional[FlatAudioSearch]) -> None:
+    """Part of the final report: the Flat audio input selection. Silent
+    when --flat_audio was keep."""
+    if fa is None:
+        return
+    if not fa.applied:
+        if fa.error:
+            print(T("  Flat audio input selection (--flat_audio) FAILED: %s") % fa.error)
+        return
+    print(T("  -- Flat audio input (--flat_audio %s) ------------------------") % fa.mode)
+    if fa.baseline is not None and fa.alt_m is not None:
+        print(T("    decode rate %.1f%% %s, %.1f%% %s (%d probe(s))") %
+              (fa.baseline["score"], _fmt_flat(fa.original), fa.alt_m["score"],
+               _fmt_flat(not fa.original), fa.probes_used))
+    if not fa.changes:
+        print(T("    Kept: %s - nothing changed.") % _fmt_flat(fa.final))
+        return
+    for _name, label, before, after in fa.changes:
         print("    %-28s %s -> %s" % (T(label), before, after))
 
 
@@ -7781,6 +8193,87 @@ def selftest() -> int:
           prober.calls <= 3 and ds.applied and st.cfg["dutyCycleEn"] is True,
           T("%d probe(s)") % prober.calls)
 
+    print(T("Flat / discriminator audio input (--flat_audio)"))
+
+    class _FlatProber:
+        """Decode rate depends on the Flat audio input setting only."""
+
+        def __init__(self, station, ok_flat: int, ok_deemph: int) -> None:
+            self.station = station
+            self.ok = {True: ok_flat, False: ok_deemph}
+            self.calls = 0
+
+        def _probe(self, volume, key, target):
+            self.calls += 1
+            ok = min(self.ok[bool(self.station.cfg[FLAT_AUDIO_FIELD])], target)
+            return {"volume": volume, "db": key, "ok": ok, "mismatch": 0, "corrupt": 0,
+                    "missing": target - ok, "extra": 0, "mm": target,
+                    "success": ok, "trials": target, "warns": 0, "clip_rate": 0.0}
+
+    st = _FakeRadioStation()
+    try:
+        post_radio_rx_only(_FakeSession(st), "http://x", scrape_radio_form(st.html()),
+                           {FLAT_AUDIO_FIELD: True})
+        refused3 = False
+    except ModemOptimizeError:
+        refused3 = True
+    check(T("Flat audio input stays locked unless it is explicitly allowed"),
+          refused3 and st.cfg[FLAT_AUDIO_FIELD] is False)
+
+    st = _FakeRadioStation()
+    sess = _FakeSession(st)
+    before_all = dict(st.cfg)
+    guard = RadioPageGuard(sess, "http://x", unlocked=(FLAT_AUDIO_FIELD,))
+    fp = _FlatProber(st, ok_flat=47, ok_deemph=38)
+    fa = FlatAudioSearch(sess, "http://x", fp, 1.0, mode="auto", batch_size=50,
+                         settle=0.0, quiet=True)
+    fa.run()
+    outside = [n for n in before_all if n != FLAT_AUDIO_FIELD and st.cfg[n] != before_all[n]]
+    check(T("--flat_audio auto switches to the input type that decodes better"),
+          st.cfg[FLAT_AUDIO_FIELD] is True and fa.final is True and fa.applied and
+          len(fa.changes) == 1 and fp.calls == 3,
+          T("got %r after %d probe(s)") % (st.cfg[FLAT_AUDIO_FIELD], fp.calls))
+    check(T("--flat_audio changes nothing else on the page, and the guard accepts it"),
+          not outside and st.cfg["adcSelfBias"] is True and not guard.verify(),
+          T("changed: %r") % (outside,))
+    st = _FakeRadioStation()
+    locked_guard = RadioPageGuard(_FakeSession(st), "http://x")
+    st.cfg[FLAT_AUDIO_FIELD] = True
+    check(T("without the unlock the guard reports Flat audio input as changed"),
+          locked_guard.verify() == [FLAT_AUDIO_FIELD])
+
+    st = _FakeRadioStation()
+    fp = _FlatProber(st, ok_flat=40, ok_deemph=40)
+    fa = FlatAudioSearch(_FakeSession(st), "http://x", fp, 1.0, mode="auto", batch_size=50,
+                         settle=0.0, quiet=True)
+    fa.run()
+    check(T("--flat_audio auto keeps the station's setting on a tie"),
+          st.cfg[FLAT_AUDIO_FIELD] is False and not fa.changes and fp.calls == 2,
+          T("got %r after %d probe(s)") % (st.cfg[FLAT_AUDIO_FIELD], fp.calls))
+
+    st = _FakeRadioStation()
+    fa = FlatAudioSearch(_FakeSession(st), "http://x", None, 1.0, mode="on",
+                         settle=0.0, quiet=True)
+    fa.run()
+    on_ok = st.cfg[FLAT_AUDIO_FIELD] is True
+    fa = FlatAudioSearch(_FakeSession(st), "http://x", None, 1.0, mode="off",
+                         settle=0.0, quiet=True)
+    fa.run()
+    check(T("--flat_audio on / off force the setting without probing"),
+          on_ok and st.cfg[FLAT_AUDIO_FIELD] is False and st.cfg["dutyCycleEn"] is True)
+
+    st = _FakeRadioStation()
+    fp = _FlatProber(st, ok_flat=47, ok_deemph=38)
+    fa = FlatAudioSearch(_FakeSession(st), "http://x", fp, 1.0, mode="auto", batch_size=50,
+                         settle=0.0, quiet=True)
+    fa.run()
+    buf = _io.StringIO()
+    with _ctx.redirect_stdout(buf):
+        print_calibration_summary(1.0, 1.0, "auto", None, None, None, flat=fa)
+    check(T("the pre-test summary shows the Flat audio input choice"),
+          T(FLAT_AUDIO_LABEL) in buf.getvalue() and T("[MODIFIED]") in buf.getvalue(),
+          buf.getvalue())
+
     print("")
     if failures:
         print(T("SELFTEST FAILED: %d of the checks above did not pass") % len(failures))
@@ -8619,6 +9112,18 @@ def build_parser() -> argparse.ArgumentParser:
                            "the Receive demodulator search that runs after the volume is "
                            "chosen, in probes of --auto_volume_batch packets (default %d; "
                            "0 skips the search)") % DEMOD_SEARCH_MAX_ROUNDS)
+    ap.add_argument("--flat_audio", choices=FLAT_AUDIO_MODES, default="keep",
+                    help=T("with --transport web and without --no_modem_optimize: the "
+                           "Radiomodem page's 'Flat audio input' checkbox (flat / "
+                           "discriminator audio vs de-emphasised speaker audio), the only "
+                           "field outside the Receive demodulator section the bench can be "
+                           "told to change. keep (default): never touched. auto: during "
+                           "calibration, after the volume is chosen and before the "
+                           "demodulator search, both settings are measured on the same "
+                           "audio and the better one (confirmed by a second batch) is kept "
+                           "for the real test. on / off: forced to flat / de-emphasised "
+                           "before the auto-volume calibration. The value chosen is listed "
+                           "before the real test and in the final report."))
     ap.add_argument("--audio_device", default=None,
                     help=T("PipeWire output (sink) wired to the ESP32 audio input: its "
                            "node name, serial, or a unique part of its description "
@@ -8807,6 +9312,15 @@ def run_with_args(args: argparse.Namespace) -> int:
     if args.demod_max_rounds < 0:
         sys.stderr.write(T("--demod_max_rounds must be >= 0 (got %d)\n") % args.demod_max_rounds)
         return 2
+    if args.flat_audio != "keep" and not args.no_play:
+        if args.transport != "web":
+            sys.stderr.write(T("  WARNING: --flat_audio %s has no effect with --transport "
+                               "serial (the setting lives on the station's web admin).\n")
+                             % args.flat_audio)
+        elif args.no_modem_optimize:
+            sys.stderr.write(T("  WARNING: --flat_audio %s is ignored: --no_modem_optimize "
+                               "means the bench changes nothing on the station.\n")
+                             % args.flat_audio)
     if not (0.0 < args.volume_min < args.volume_max):
         sys.stderr.write(T("--volume_min must be > 0 and < --volume_max (got %g and %g)\n") %
                          (args.volume_min, args.volume_max))
@@ -9025,6 +9539,12 @@ def run_with_args(args: argparse.Namespace) -> int:
     # it after calibration and at the end of the run, and put back if it ever
     # differs. Without this snapshot the bench writes nothing at all.
     page_guard = None  # type: Optional[RadioPageGuard]
+    # --flat_audio: the one field outside the Receive demodulator section the
+    # operator may unlock. Only then does the page guard accept it changing.
+    flat_active = (args.flat_audio != "keep" and args.transport == "web"
+                   and not args.no_modem_optimize and not args.no_play)
+    flat_unlocked = (FLAT_AUDIO_FIELD,) if flat_active else ()
+    flat = None  # type: Optional[FlatAudioSearch]
     global _WEB_JOURNAL_PATH
     if not args.no_play and isinstance(col, WebLogCollector) and args.web_journal:
         _WEB_JOURNAL_PATH = os.path.abspath(args.web_journal)
@@ -9032,7 +9552,8 @@ def run_with_args(args: argparse.Namespace) -> int:
         print(T("Web journal (every Radiomodem page read/write): %s") % _WEB_JOURNAL_PATH)
     if not args.no_play and isinstance(col, WebLogCollector):
         try:
-            page_guard = RadioPageGuard(col._session, col.base_url)
+            page_guard = RadioPageGuard(col._session, col.base_url,
+                                        unlocked=flat_unlocked)
             if "adcSelfBias" in page_guard.snapshot:
                 say(T("Radiomodem page read before any change: ADC input self-bias is %s "
                       "on the station (the bench never changes it).") %
@@ -9078,6 +9599,26 @@ def run_with_args(args: argparse.Namespace) -> int:
             modem_opt.error = str(exc)
             sys.stderr.write(T("  WARNING: Radiomodem calibration failed (%s) - "
                                "continuing with the station's current settings.\n") % exc)
+        sys.stdout.flush()
+
+    def _flat_failed(fa: "FlatAudioSearch", exc: Exception) -> None:
+        fa.error = str(exc)
+        sys.stderr.write(T("  WARNING: Flat audio input selection failed (%s) - continuing "
+                           "with the station's setting from before it.\n") % exc)
+
+    # -- Flat audio input, forced (--flat_audio on|off) -----------------
+    # Applied before the auto-volume calibration so the level (and later the
+    # demodulator search) is measured with the input type the test will use.
+    if (flat_active and args.flat_audio in ("on", "off") and modem_opt is not None
+            and modem_opt.applied and isinstance(col, WebLogCollector)):
+        flat = FlatAudioSearch(col._session, col.base_url, None, args.volume,
+                               mode=args.flat_audio)
+        try:
+            flat.run()
+        except ModemOptimizeError as exc:
+            _flat_failed(flat, exc)
+        except KeyboardInterrupt:
+            flat.interrupted = True
         sys.stdout.flush()
 
     # -- Auto-volume calibration --------------------------------------
@@ -9136,11 +9677,8 @@ def run_with_args(args: argparse.Namespace) -> int:
     # page is ever changed (see DemodSearch); it runs only when the
     # Radiomodem calibration above ran and succeeded, i.e. never with
     # --no_modem_optimize.
-    demod = None  # type: Optional[DemodSearch]
-    if (modem_opt is not None and modem_opt.applied and args.demod_max_rounds > 0
-            and isinstance(col, WebLogCollector)):
-        _LIVE_STATS.reset(T("Calibration"))
-        prober = VolumeSearch(
+    def _make_prober() -> "VolumeSearch":
+        p = VolumeSearch(
             wavs, route, args.tail, args.match_window, col,
             mm_extra, final_volume,
             batch_size=args.auto_volume_batch,
@@ -9149,9 +9687,41 @@ def run_with_args(args: argparse.Namespace) -> int:
             normalise=args.normalise,
             offset_auto=offset_auto,
             dw=dw_setup, reference=args.reference)
-        prober.offset = offset_seed
-        prober.dw_offset = dw_offset_seed
-        prober.watch = watch
+        p.offset = offset_seed
+        p.dw_offset = dw_offset_seed
+        p.watch = watch
+        return p
+
+    # -- Flat audio input, measured (--flat_audio auto) -----------------
+    # At the level just chosen, and before the demodulator search so that
+    # the EQ/band-pass search tunes on top of the right input type.
+    if (flat_active and args.flat_audio == "auto" and modem_opt is not None
+            and modem_opt.applied and isinstance(col, WebLogCollector)):
+        _LIVE_STATS.reset(T("Calibration"))
+        prober = _make_prober()
+        flat = FlatAudioSearch(col._session, col.base_url, prober, final_volume,
+                               mode="auto", batch_size=args.auto_volume_batch)
+        try:
+            flat.run()
+        except StationStateError as exc:
+            return _station_abort(exc)
+        except ModemOptimizeError as exc:
+            _flat_failed(flat, exc)
+        except KeyboardInterrupt:
+            flat.interrupted = True
+        except DirewolfError as exc:
+            sys.stderr.write("\n[dw] %s\n" % exc)
+            col.stop()
+            return 2
+        offset_seed = prober.offset or offset_seed
+        dw_offset_seed = prober.dw_offset or dw_offset_seed
+        sys.stdout.flush()
+
+    demod = None  # type: Optional[DemodSearch]
+    if (modem_opt is not None and modem_opt.applied and args.demod_max_rounds > 0
+            and isinstance(col, WebLogCollector)):
+        _LIVE_STATS.reset(T("Calibration"))
+        prober = _make_prober()
         demod = DemodSearch(col._session, col.base_url, prober, final_volume,
                             batch_size=args.auto_volume_batch,
                             max_rounds=args.demod_max_rounds)
@@ -9202,7 +9772,8 @@ def run_with_args(args: argparse.Namespace) -> int:
         if page_guard is not None:
             _check_radio_page(page_guard)
         print_calibration_summary(args.volume, final_volume, vol_mode,
-                                  rx_start, rx_final, rx_note, guard=page_guard)
+                                  rx_start, rx_final, rx_note, guard=page_guard,
+                                  flat=flat)
 
     results = []  # type: List[FileResult]
     dw_failed = False
@@ -9271,6 +9842,7 @@ def run_with_args(args: argparse.Namespace) -> int:
         return 2
     rc = print_summary(results, final_volume)
     print_modem_optimisation(modem_opt)
+    print_flat_audio(flat)
     print_demod_search(demod)
     if dw_setup is not None:
         dw_rc = print_dw_summary(results, dw_setup, args.reference)
