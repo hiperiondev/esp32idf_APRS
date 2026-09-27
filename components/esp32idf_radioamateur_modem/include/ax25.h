@@ -115,7 +115,8 @@
  */
 enum Ax25DecodeReason {
     AX25_DECODE_OK = 0,       /**< Frame decoded successfully; msg is fully populated. */
-    AX25_DECODE_MALFORMED,    /**< Frame too short, or its address field ran past the end of the buffer: corrupted or truncated reception. */
+    AX25_DECODE_MALFORMED,    /**< Frame too short, its address field ran past the end of the buffer, or one of its addresses does not hold a legal
+                                 callsign (upper-case letters and digits, space-padded on the right only): corrupted or truncated reception. */
     AX25_DECODE_NOT_UI,       /**< Well-formed frame whose Control field is not ::AX25_CTRL_UI: legacy connected-mode AX.25 traffic on the channel. */
     AX25_DECODE_NOT_NOLAYER3, /**< Well-formed UI frame whose PID is not ::AX25_PID_NOLAYER3: non-APRS UI traffic on the channel. */
 };
@@ -145,11 +146,42 @@ enum Ax25RxStage {
 };
 
 /**
+ * @brief Default CSMA slot time, in milliseconds (::Ax25ProtoConfig::csmaSlotTime).
+ *
+ * 100 ms is the common AX.25/KISS SlotTime default.
+ */
+#define AX25_CSMA_SLOT_TIME_DEFAULT_MS 100
+
+/**
+ * @brief Default busy-channel wait limit, in milliseconds
+ *        (::Ax25ProtoConfig::csmaBusyTimeout).
+ *
+ * Thirty seconds comfortably outlasts an APRS packet together with every
+ * digipeat of it, so a frame only goes out over traffic when the channel has
+ * been occupied far longer than normal APRS use explains - a stuck carrier or
+ * a continuous signal on the frequency.
+ */
+#define AX25_CSMA_BUSY_TIMEOUT_DEFAULT_MS 30000u
+
+/**
+ * @brief Default TXTail, in milliseconds (::Ax25ProtoConfig::txTailLength).
+ *
+ * The transmitter stays keyed for this long after the closing flag of a frame,
+ * sending further flags. The pre-emphasis and filters of a transceiver's audio
+ * chain delay the signal, and many radios cut the audio a few milliseconds
+ * before the carrier when they switch back to receive, so without a tail the
+ * last bits of the frame can be lost on the air even though the modem clocked
+ * them out. 20 ms is three flags at 1200 Bd, twenty-four at 9600 Bd and one at
+ * 300 Bd (the flag count is rounded up).
+ */
+#define AX25_TX_TAIL_DEFAULT_MS 20
+
+/**
  * @brief Runtime configuration of the AX.25 protocol layer.
  */
 struct Ax25ProtoConfig {
     uint16_t txDelayLength; /**< TXDelay (preamble) length, in milliseconds. */
-    uint16_t txTailLength;  /**< TXTail (postamble) length, in milliseconds. */
+    uint16_t txTailLength;  /**< TXTail (postamble) length, in milliseconds: flags sent after the closing flag of a frame before PTT is released. */
     uint16_t quietTime;     /**< Channel quiet time required before transmitting, in milliseconds. */
     /**
      * Minimum PTT-off (unkeyed) hold time enforced between the end of one
@@ -159,12 +191,24 @@ struct Ax25ProtoConfig {
      */
     uint16_t minUnkeyTime;
     /**
-     * CSMA slot time, in milliseconds: once the channel is heard clear, this
+     * CSMA slot time, in milliseconds: once the quiet time has elapsed, this
      * is how long Ax25TransmitCheck() waits between each persistence roll
      * (see `persist` below) and between each re-check of a busy channel.
-     * Matches the standard AX.25/KISS "SlotTime" parameter.
+     * Matches the standard AX.25/KISS "SlotTime" parameter. Ax25Init() sets
+     * it to ::AX25_CSMA_SLOT_TIME_DEFAULT_MS; modem_set_modem() then applies
+     * the configured value.
      */
     uint16_t csmaSlotTime;
+    /**
+     * Longest time, in milliseconds, a queued frame waits for a busy channel
+     * to clear before it is transmitted anyway, or 0 to wait for as long as
+     * the channel stays busy, as a standard KISS TNC does. Measured from the
+     * first slot that found the carrier detect asserted. This limit is
+     * independent of the cap on missed persistence rolls, which only counts
+     * consecutive slots on a clear channel. Ax25Init() sets it to
+     * ::AX25_CSMA_BUSY_TIMEOUT_DEFAULT_MS.
+     */
+    uint32_t csmaBusyTimeout;
     /**
      * CSMA persistence parameter (standard AX.25/KISS "Persist"): once the
      * channel is heard clear, Ax25TransmitCheck() transmits immediately with
@@ -326,17 +370,17 @@ uint8_t Ax25TxFramesPending(void);
 
 /**
  * @brief Count how many times the CSMA/p-persistent anti-starvation floor
- *        has forced a transmission on a channel that was clear throughout.
+ *        has forced a transmission on a clear channel.
  *
- * Cumulative since boot: bumped every time Ax25TransmitCheck() reaches
- * MAX_TRANSMIT_RETRY_COUNT backoff slots in which DCD never asserted once and
- * every persistence roll missed, and transmits anyway. Because the channel was
- * free the whole time, this figure measures only the transmit probability:
- * with the standard `persist` of 63 roughly one key-up in ten ends this way,
- * and a markedly higher share points at `persist` being set too low for the
- * amount of traffic this station originates.
+ * Cumulative since boot: bumped every time Ax25TransmitCheck() sees eight
+ * consecutive slots in which the channel was clear and the persistence roll
+ * missed, and transmits anyway. A busy slot restarts that count, so this
+ * figure measures only the transmit probability: with the standard `persist`
+ * of 63 roughly one key-up in ten ends this way, and a markedly higher share
+ * points at `persist` being set too low for the amount of traffic this
+ * station originates.
  *
- * Runs that included even one busy slot are reported by
+ * Transmissions forced by a channel that stayed busy are reported by
  * Ax25GetChannelBusyCount() instead, so the two never double-count and a
  * congested channel cannot inflate this one.
  *
@@ -346,15 +390,15 @@ uint8_t Ax25TxFramesPending(void);
 uint32_t Ax25GetPersistenceMissedCount(void);
 
 /**
- * @brief Count how many times the CSMA/p-persistent anti-starvation floor
- *        has forced a transmission over a channel that was in use.
+ * @brief Count how many times a frame has been transmitted over a channel
+ *        that stayed busy for the whole busy-channel wait.
  *
- * Cumulative since boot: bumped every time Ax25TransmitCheck() reaches
- * MAX_TRANSMIT_RETRY_COUNT backoff slots of which at least one found DCD
- * asserted, and transmits anyway rather than holding the frame indefinitely.
- * This is a congestion figure - the frame goes out on top of whatever else was
- * on the air - and it climbing means the channel is busy for longer than
- * MAX_TRANSMIT_RETRY_COUNT slot times at a stretch.
+ * Cumulative since boot: bumped every time Ax25TransmitCheck() has waited
+ * ::Ax25ProtoConfig::csmaBusyTimeout from the first busy slot, finds the
+ * carrier detect still asserted and transmits anyway rather than holding the
+ * frame any longer. Never bumped while that limit is 0. The frame goes out on
+ * top of whatever else is on the air, so a climbing figure means the channel
+ * is occupied far longer than ordinary packet traffic explains.
  *
  * @return Total number of forced transmissions over a busy channel since boot.
  */
@@ -463,7 +507,18 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV);
 uint8_t Ax25GetTxBit(void);
 
 /**
- * @brief Queue the frame currently held in the TX buffer for transmission.
+ * @brief Arm the key-up state machine for the oldest frame in the TX ring.
+ *
+ * Moves the transmitter from idle to waiting for channel access, starting the
+ * quiet-time deadline, when the ring holds a frame and nothing is keyed up.
+ * Otherwise it does nothing.
+ *
+ * @warning Call it only from the task that polls Ax25TransmitCheck(), which
+ *          calls it itself on every poll. That task and the DAC interrupt are
+ *          the only writers of the key-up state, and the ordering between the
+ *          two is what keeps a new key-up from starting inside the key-down of
+ *          the previous one. A frame written with Ax25WriteTxFrame() is picked
+ *          up on the next poll without any further call.
  */
 void Ax25TransmitBuffer(void);
 
@@ -471,13 +526,27 @@ void Ax25TransmitBuffer(void);
  * @brief Attempt to start transmitting a queued frame when the channel
  *        conditions allow it.
  *
- * Must be polled periodically from a task; it is not triggered by an
- * interrupt.
+ * Must be polled periodically from a single task; it is not triggered by an
+ * interrupt. It never keys up while the previous key-up is still running
+ * (getTransmit() true) or while that key-up's deferred teardown is still owed
+ * (ModemTxTeardownPending() true), and it holds the transmitter off for at
+ * least one poll after every key-down plus Ax25ProtoConfig::minUnkeyTime.
  */
 void Ax25TransmitCheck(void);
 
 /**
  * @brief Initialize the AX.25 protocol layer.
+ *
+ * Restores every ::Ax25ProtoConfig field to its default (duplex mode excepted)
+ * and empties both frame rings, discarding every frame still queued for
+ * transmission or waiting to be read.
+ *
+ * @warning Nothing else may touch the rings while this runs: the modulator must
+ *          be stopped, no task may be inside Ax25WriteTxFrame(),
+ *          Ax25ReadNextRxFrame() or Ax25TransmitCheck(), and the receive task
+ *          must not be demodulating. modem_set_modem() quiesces all of them
+ *          before it rebuilds the modem.
+ *
  * @param fx25Mode FX.25 mode selector: 0 = disabled, 1 = RX only, 2 = RX+TX.
  */
 void Ax25Init(uint8_t fx25Mode);
@@ -498,13 +567,39 @@ void Ax25TransmitAbort(void);
 
 /**
  * @brief Set the TXDelay (preamble) duration used before transmitting.
+ *
+ * The duration is converted to whole flag bytes at the current baud rate,
+ * rounded up.
+ *
  * @param delay_ms Preamble duration, in milliseconds.
  */
 void Ax25TxDelay(uint16_t delay_ms);
 
 /**
+ * @brief Set the TXTail duration: how long the transmitter stays keyed,
+ *        sending flags, after the closing flag of a frame.
+ *
+ * The duration is converted to whole flag bytes at the current baud rate,
+ * rounded up, so any non-zero value sends at least one flag. 0 releases PTT on
+ * the last bit of the closing flag. A change takes effect from the next tail
+ * byte, so it may be made while the modem runs.
+ *
+ * @param tail_ms Tail duration, in milliseconds.
+ */
+void Ax25TxTail(uint16_t tail_ms);
+
+/**
  * @brief Set the CSMA time slot (quiet time) duration.
- * @param ts Time slot duration, in milliseconds.
+ *
+ * Stores @p ts as Ax25ProtoConfig::quietTime, the wait every later frame
+ * observes before channel access begins, and re-arms the pending deadline.
+ * A non-zero value arms that deadline @p ts plus a random 100-1000 ms from
+ * now, so identically configured stations started together do not stay in
+ * step. 0 disables the quiet time altogether: the pending deadline is cleared
+ * and no later frame, digipeated ones included, waits before the CSMA
+ * persistence check.
+ *
+ * @param ts Time slot duration, in milliseconds; 0 disables the quiet time.
  */
 void Ax25TimeSlot(uint16_t ts);
 
@@ -539,10 +634,20 @@ void Ax25MinUnkeyTime(uint16_t ms);
  *               malformed/corrupted reception from a well-formed frame that
  *               is simply not APRS (legacy connected-mode traffic or a
  *               non-APRS PID sharing the channel).
+ * Every address - destination, source and each repeater - is validated as it
+ * is decoded, with the same rules the bit-repair plausibility test applies:
+ * one to six upper-case letters or digits, left-aligned and padded on the
+ * right with spaces, and no extension bit inside the callsign characters. A
+ * frame whose FCS is valid can still carry any byte there, and none of the
+ * callers that render callsigns into TNC2 text, message parsers or APRS-IS
+ * headers has to re-check them.
+ *
  * @return true if the frame was a well-formed UI frame with a "no layer 3"
  *         PID (i.e. a decodable APRS frame - @p msg is fully populated,
  *         including @c info / @c len). false if the frame is shorter than a
- *         minimal UI header, if its address field runs past @p len, or if
+ *         minimal UI header, if its address field runs past @p len, if an
+ *         address does not hold a legal callsign (::AX25_DECODE_MALFORMED;
+ *         the fields of @p msg are then only partially written), or if
  *         decoding stopped early because the control field wasn't UI or the
  *         PID wasn't AX25_PID_NOLAYER3 (corrupted frame, or legitimate
  *         non-APRS AX.25 traffic) - in that case only @c dst / @c src /
@@ -554,6 +659,12 @@ bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg, enum
 
 /**
  * @brief Parse a TNC2-style monitor string into an ::ax25_frame_t structure.
+ *
+ * The end-of-address bit (bit 0 of the SSID octet) is set on the last
+ * address in use and cleared on every other one: on the source when there
+ * is no digipeater path, on the last digipeater otherwise, including when
+ * all eight digipeater slots are filled. Up to eight digipeaters are kept;
+ * any further path entries are ignored.
  *
  * @p txt is rewritten in place: the digipeater path is compacted to the front
  * of the buffer and tokenized there, so the caller must pass a scratch copy it
@@ -573,6 +684,14 @@ char ax25_encode(ax25_frame_t *frame, char *txt, int size);
 
 /**
  * @brief Serialize an ::ax25_frame_t structure into a raw AX.25 frame.
+ *
+ * The end-of-address bit is recomputed from @p pkg before serializing, so the
+ * caller does not have to set it: it goes on the address before the first
+ * empty slot of @p pkg->header, or on @c header[9] when destination, source
+ * and all eight digipeaters are present. Serialization stops at that
+ * address, so the address field always ends exactly where the control byte
+ * begins.
+ *
  * @param outbuf     Destination buffer for the serialized frame.
  * @param outbuf_len Size, in bytes, of @p outbuf.
  * @param ctx        AX.25 codec context to use/update while serializing.

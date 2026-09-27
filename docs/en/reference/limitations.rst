@@ -83,11 +83,12 @@ Modem / Layer-2
      - ✅
      - ✅
      - DCD-gated p-persistent access: configurable Persist (``csma_persist``,
-       1-255), quiet time before access begins (``tx_timeslot``) and
-       preamble/TXDelay, plus an eight-slot anti-starvation floor so a channel
-       that never clears cannot hold a queued frame forever. The dashboard
-       reports how often that floor fired, split between a busy channel and a
-       clear one, as *CSMA FORCED (BUSY/PERSIST)*
+       1-255), SlotTime (``csma_slot_ms``, 10-2550 ms), quiet time before
+       access begins (``tx_timeslot``) and preamble/TXDelay. A busy channel is
+       waited out for up to ``csma_busy_max_s`` (default 30 s, 0 = unlimited)
+       and eight consecutive missed rolls on a clear channel transmit anyway.
+       The dashboard reports how often each limit fired as *CSMA FORCED
+       (BUSY/PERSIST)*
    * - Long-term transmit duty-cycle ceiling
      - ⚠️ (rare outside commercial/regulated gear)
      - ✅
@@ -120,6 +121,12 @@ Modem / Layer-2
      - ``rf_tx_buffers``: how many frames may wait in the RF TX ring before new
        packets are discarded rather than queued; read on every transmit, so it
        takes effect without a reboot
+   * - TX tail (TXTail) after each frame
+     - ✅
+     - ✅
+     - ``tx_tail``, 0-500 ms (default 20 ms), sent as flags after the closing
+       flag so the radio's audio chain and its return to receive do not cut the
+       end of the frame
    * - Minimum PTT unkey hold between frames
      - ⚠️ (TXTAIL on some TNCs)
      - ✅

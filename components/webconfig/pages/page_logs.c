@@ -24,6 +24,17 @@
 // perform, so it reads Start while nothing is being captured and Stop while
 // something is.
 //
+// Pressing Start disables the button and clears the status line beside it
+// for the length of the request, then reports whatever the station answers:
+// the ring's allocation is the largest a web page makes and can lose out to
+// heap pressure elsewhere on the station, and a request that never reaches
+// the station at all - a dropped connection, a rejected origin - looks the
+// same to the operator as one that silently failed to start. Both are told
+// apart from a normal start by the status text next to the button rather
+// than by the button doing nothing, which is what every other live control
+// on the admin UI already does on its own failure path (see page_wireless.c's
+// wifiScan()).
+//
 // Capture never outlives the page. The script posts /logs/stop as it loads,
 // so a mirror left running by an earlier visit is switched off and the Start
 // the button shows is the truth rather than a guess; leaving the page stops
@@ -167,18 +178,19 @@ esp_err_t page_logs_get(httpd_req_t *req) {
     // is nothing but a view. Its three endpoints admit the read-only role for
     // the same reason.
     web_raw(req, "<div class='log-actions'><button type='button' id='logBtn' class='ro-ok' "
-                 "onclick='logToggle()'>" TR_LOGS_BTN_START "</button></div>");
+                 "onclick='logToggle()'>" TR_LOGS_BTN_START "</button> <span id='logStatus'></span></div>");
     web_raw(req, "<pre id='logBox' class='log-box'></pre>");
     web_fieldset_close(req);
 
-    // The two button captions and the window depth are the only values the
-    // script cannot hard-code: the captions are translated, and the depth is
-    // the firmware's own ring size, so trimming the browser's copy of the
-    // window to anything else would show a number of rows the station never
-    // agreed to keep.
+    // The button captions, the two failure messages and the window depth are
+    // the only values the script cannot hard-code: the captions and messages
+    // are translated, and the depth is the firmware's own ring size, so
+    // trimming the browser's copy of the window to anything else would show a
+    // number of rows the station never agreed to keep.
     {
-        char vars[256];
-        snprintf(vars, sizeof(vars), "<script>var LOG_START=\"%s\",LOG_STOP=\"%s\",LOG_MAX=%d;", TR_LOGS_BTN_START, TR_LOGS_BTN_STOP, LOGCAPTURE_CAPACITY);
+        char vars[384];
+        snprintf(vars, sizeof(vars), "<script>var LOG_START=\"%s\",LOG_STOP=\"%s\",LOG_MAX=%d,LOG_ERR_START=\"%s\",LOG_ERR_NET=\"%s\";", TR_LOGS_BTN_START,
+                 TR_LOGS_BTN_STOP, LOGCAPTURE_CAPACITY, TR_LOGS_ERR_START, TR_LOGS_ERR_NETWORK);
         web_raw(req, vars);
     }
 
@@ -231,11 +243,15 @@ esp_err_t page_logs_get(httpd_req_t *req) {
                                   "}"
                                   "function logToggle(){"
                                   "if(logRun){logStop(false);return;}"
+                                  "var btn=document.getElementById('logBtn');"
+                                  "var status=document.getElementById('logStatus');"
+                                  "btn.disabled=true;status.textContent='';"
                                   "fetch('/logs/start',{method:'POST'}).then(function(r){return "
                                   "r.json();}).then(function(v){"
-                                  "if(!v.ok)return;"
+                                  "btn.disabled=false;"
+                                  "if(!v.ok){status.textContent=' '+LOG_ERR_START;return;}"
                                   "logSeq=v.seq;logLines=[];logRender();logRun=true;logButton();"
-                                  "}).catch(function(){});"
+                                  "}).catch(function(){btn.disabled=false;status.textContent=' '+LOG_ERR_NET;});"
                                   "}"
                                   "logButton();"
                                   "fetch('/logs/stop',{method:'POST'}).catch(function(){});"

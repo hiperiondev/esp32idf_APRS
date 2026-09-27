@@ -52,7 +52,7 @@ AX.25 y acceso al canal (cap. 3)
      - Se decodifica y se vuelve a codificar respetando el bit de retransmitido. El decodificador recorre el campo de direcciones contra el largo de la trama, así que una cabecera que promete más repetidoras de las que la trama trae se rechaza en vez de leerse de más. Los constructores de ruta aplican el límite de 8 direcciones.
    * - Acceso al canal CSMA p-persistente
      - ✅
-     - Detección de portadora más un valor de persistencia y un TXDelay configurables, con un piso anti-inanición para que un canal ocupado no bloquee una trama para siempre. Las transmisiones forzadas se cuentan por separado según sea canal ocupado o sorteo de persistencia fallido.
+     - Detección de portadora más persistencia, SlotTime y TXDelay configurables. Se espera a que se libere un canal ocupado hasta un límite configurable (0 = sin límite) y una tanda de sorteos de persistencia fallidos con el canal libre está acotada, así que ninguno de los dos puede bloquear una trama para siempre. Las transmisiones forzadas se cuentan por separado para cada caso.
    * - Corrección de errores FX.25
      - ✅
      - Tres modos: apagado, solo recepción, y recepción y transmisión. Las 11 etiquetas de correlación. Los bloques transmitidos siguen siendo legibles para un receptor AX.25 común.

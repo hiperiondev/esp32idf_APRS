@@ -349,7 +349,7 @@ static volatile uint32_t s_bulletin_window_s = TELEGRAM_APP_BULLETIN_WINDOW_DEFA
 //
 // message.c's frame-decoding path calls telegram_app_notify_station_message()
 // for every received message it decodes and telegram_app_notify_bulletin()
-// for every bulletin, and that path runs on the modem's own RX task, which
+// for every bulletin, and that path runs on the radio receive task, which
 // carries none of the stack a TLS handshake needs. So the call sites only
 // ever format a line and push it onto s_notify_queue; the shared worker task,
 // spawned on demand and draining this queue as the last thing it does before

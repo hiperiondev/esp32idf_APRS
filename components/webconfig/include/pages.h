@@ -251,6 +251,10 @@ esp_err_t page_radio_looptest_post(httpd_req_t *req);
  * the modem's diagnostics, so it is a state-changing request and has to go through the same-origin check in web_check_auth(). @param req Incoming request.
  * @return ESP_OK or an esp_err_t error. */
 esp_err_t page_radio_level_post(httpd_req_t *req);
+/** @brief POST /radio/capture?s=N - binary stream of afsk_capture_block_t records (the AFSK demodulator input with the front-end state of each 20 ms
+ * block) for N seconds, default 60, at most 7200. Occupies the web server while it runs. POST, not GET: it claims a modem resource, so it has to go
+ * through the same-origin check in web_check_auth(). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+esp_err_t page_radio_capture_post(httpd_req_t *req);
 /** @brief POST /radio/txtest - JSON result of a bounded transmit burst, for setting the transmit level against a deviation meter. POST, not GET: it keys the
  * transmitter. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_radio_txtest_post(httpd_req_t *req);

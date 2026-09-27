@@ -35,8 +35,9 @@
 
 #include "app_config.h"
 #include "aprs_coord.h" // aprs_symbol_table_is_valid()/aprs_symbol_code_is_valid(): the symbol pair accepted on air
-// RF_TX_BUFFERS_MIN/MAX, RF_PREAMBLE_MS_MIN/MAX, RF_TX_TIMESLOT_MS_MAX,
-// PTT_MIN_UNKEY_MS_MAX, CSMA_PERSIST_MIN: the same bounds the Radiomodem form
+// RF_TX_BUFFERS_MIN/MAX, RF_PREAMBLE_MS_MIN/MAX, RF_TX_TAIL_MS_MAX, RF_TX_TIMESLOT_MS_MAX,
+// PTT_MIN_UNKEY_MS_MAX, CSMA_PERSIST_MIN, CSMA_SLOT_MS_*, CSMA_BUSY_MAX_S_*:
+// the same bounds the Radiomodem form
 // enforces, so what is loaded from flash and what is saved from the web admin
 // can never accept different values.
 #include "aprs_service.h"
@@ -482,10 +483,13 @@ void app_config_set_defaults(app_config_t *c) {
     c->audio_modem_en = true;
     c->audio_lpf = true;
     c->preamble = 300;
+    c->tx_tail = RF_TX_TAIL_MS_DEFAULT;
     c->afsk_modem_type = 1; // default 1200 Bd (AFSK/Bell202) - standard APRS audio modem
     c->fx25_mode = 0;
     c->tx_timeslot = 2000;
-    c->csma_persist = 63;     // ~25% transmit chance per clear slot, the standard AX.25/KISS Persist default
+    c->csma_persist = 63; // ~25% transmit chance per clear slot, the standard AX.25/KISS Persist default
+    c->csma_slot_ms = CSMA_SLOT_MS_DEFAULT;
+    c->csma_busy_max_s = CSMA_BUSY_MAX_S_DEFAULT;
     c->rf_tx_buffers = 1;     // see RF_TX_BUFFERS_MIN/MAX in aprs_service.h
     c->duty_cycle_en = false; // long-term duty-cycle limiter off by default (opt-in) - see DUTY_CYCLE_PCT_MIN/MAX in aprs_service.h
     c->duty_cycle_pct = 25;   // ceiling once enabled: 25% of the rolling window aprs_service.c measures it over
@@ -788,9 +792,12 @@ static void section_write_radio(jw_t *d, const app_config_t *c) {
     jadd_num(d, "afskModem", c->afsk_modem_type);
     jadd_num(d, "fx25Mode", c->fx25_mode);
     jadd_num(d, "rfPreamble", c->preamble);
+    jadd_num(d, "rfTxTail", c->tx_tail);
     jadd_num(d, "rfTxBuffers", c->rf_tx_buffers);
     jadd_num(d, "txTimeSlot", c->tx_timeslot);
     jadd_num(d, "csmaPersist", c->csma_persist);
+    jadd_num(d, "csmaSlotTime", c->csma_slot_ms);
+    jadd_num(d, "csmaBusyMax", c->csma_busy_max_s);
     jadd_num(d, "pttMinUnkeyMs", c->ptt_min_unkey_ms);
     jadd_bool(d, "dutyCycleEn", c->duty_cycle_en);
     jadd_num(d, "dutyCyclePct", c->duty_cycle_pct);
@@ -812,6 +819,7 @@ static void section_write_radio(jw_t *d, const app_config_t *c) {
     jadd_num(d, "rxAgcMode", c->rx_tuning.agc_mode);
     jadd_num(d, "rxAgcGainDb", c->rx_tuning.agc_fixed_gain_db);
     jadd_num(d, "rxFixBits", c->rx_tuning.fix_bits);
+    jadd_bool(d, "rxBlank", c->rx_tuning.impulse_blank);
     fputc('}', d->f);
 }
 
@@ -1319,6 +1327,15 @@ static void section_read_radio(cJSON *d, app_config_t *c) {
         ESP_LOGW(TAG, "rfPreamble %u out of range, clamped to %d..%d ms", (unsigned)c->preamble, RF_PREAMBLE_MS_MIN, RF_PREAMBLE_MS_MAX);
         c->preamble = (c->preamble < RF_PREAMBLE_MS_MIN) ? RF_PREAMBLE_MS_MIN : RF_PREAMBLE_MS_MAX;
     }
+    // Read as a double so a negative or oversized number in the file is caught
+    // before the narrowing cast wraps it into range. An absent key keeps the
+    // default, so a configuration saved before the setting existed gets it.
+    double tx_tail_in = jget_num(d, "rfTxTail", c->tx_tail);
+    if ((tx_tail_in < RF_TX_TAIL_MS_MIN) || (tx_tail_in > RF_TX_TAIL_MS_MAX)) {
+        ESP_LOGW(TAG, "rfTxTail %.0f out of range, clamped to %d..%d ms", tx_tail_in, RF_TX_TAIL_MS_MIN, RF_TX_TAIL_MS_MAX);
+        tx_tail_in = (tx_tail_in < RF_TX_TAIL_MS_MIN) ? RF_TX_TAIL_MS_MIN : RF_TX_TAIL_MS_MAX;
+    }
+    c->tx_tail = (uint16_t)tx_tail_in;
     c->rf_tx_buffers = (uint8_t)jget_num(d, "rfTxBuffers", c->rf_tx_buffers);
     if (c->rf_tx_buffers < RF_TX_BUFFERS_MIN)
         c->rf_tx_buffers = RF_TX_BUFFERS_MIN;
@@ -1332,6 +1349,20 @@ static void section_read_radio(cJSON *d, app_config_t *c) {
     c->csma_persist = (uint8_t)jget_num(d, "csmaPersist", c->csma_persist);
     if (c->csma_persist < CSMA_PERSIST_MIN)
         c->csma_persist = CSMA_PERSIST_MIN;
+    // Read as a double so a negative or oversized number in the file is caught
+    // before the narrowing cast wraps it into range.
+    double csma_slot_in = jget_num(d, "csmaSlotTime", c->csma_slot_ms);
+    if ((csma_slot_in < CSMA_SLOT_MS_MIN) || (csma_slot_in > CSMA_SLOT_MS_MAX)) {
+        ESP_LOGW(TAG, "csmaSlotTime %.0f out of range, clamped to %d..%d ms", csma_slot_in, CSMA_SLOT_MS_MIN, CSMA_SLOT_MS_MAX);
+        csma_slot_in = (csma_slot_in < CSMA_SLOT_MS_MIN) ? CSMA_SLOT_MS_MIN : CSMA_SLOT_MS_MAX;
+    }
+    c->csma_slot_ms = (uint16_t)csma_slot_in;
+    double csma_busy_in = jget_num(d, "csmaBusyMax", c->csma_busy_max_s);
+    if ((csma_busy_in < CSMA_BUSY_MAX_S_MIN) || (csma_busy_in > CSMA_BUSY_MAX_S_MAX)) {
+        ESP_LOGW(TAG, "csmaBusyMax %.0f out of range, clamped to %d..%d s", csma_busy_in, CSMA_BUSY_MAX_S_MIN, CSMA_BUSY_MAX_S_MAX);
+        csma_busy_in = (csma_busy_in < CSMA_BUSY_MAX_S_MIN) ? CSMA_BUSY_MAX_S_MIN : CSMA_BUSY_MAX_S_MAX;
+    }
+    c->csma_busy_max_s = (uint16_t)csma_busy_in;
     c->ptt_min_unkey_ms = (uint16_t)jget_num(d, "pttMinUnkeyMs", c->ptt_min_unkey_ms);
     if (c->ptt_min_unkey_ms > PTT_MIN_UNKEY_MS_MAX)
         c->ptt_min_unkey_ms = PTT_MIN_UNKEY_MS_MAX;
@@ -1383,6 +1414,7 @@ static void section_read_radio(cJSON *d, app_config_t *c) {
     t->agc_mode = (modem_rx_agc_mode_t)jget_clamped(d, "rxAgcMode", t->agc_mode, 0, 255);
     t->agc_fixed_gain_db = (int8_t)jget_clamped(d, "rxAgcGainDb", t->agc_fixed_gain_db, -128, 127);
     t->fix_bits = (uint8_t)jget_clamped(d, "rxFixBits", t->fix_bits, 0, 255);
+    t->impulse_blank = jget_bool(d, "rxBlank", t->impulse_blank);
     modem_rx_tuning_sanitize(t);
 }
 

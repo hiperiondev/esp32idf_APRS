@@ -213,6 +213,8 @@ Valori di fabbrica notevoli
      - 300 ms / 2000 ms
    * - Persistenza CSMA
      - 63 (~25 % di probabilità di trasmettere per slot libero)
+   * - Slot temporale CSMA / attesa max. canale occupato
+     - 100 ms / 30 s
    * - Buffer di TX RF
      - 1
    * - Risponditore di query

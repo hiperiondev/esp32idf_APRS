@@ -48,11 +48,11 @@
  * costs a task switch rather than a wait for its next scheduled pass.
  *
  * @note The two entry points are safe to call concurrently, which the two
- * receive paths do: RF queries arrive on the modem task and APRS-IS queries on
- * the IGate task. The request queue and the per-callsign table the directed
- * limiter keeps are each serialized internally; the per-source rate-limit
- * timers need no serialization, since a source is only ever stamped by the one
- * task that receives it.
+ * receive paths do: RF queries arrive on the radio receive task and APRS-IS
+ * queries on the IGate task. The request queue and the per-callsign table the
+ * directed limiter keeps are each serialized internally; the per-source
+ * rate-limit timers need no serialization, since a source is only ever stamped
+ * by the one task that receives it.
  */
 
 #ifndef QUERY_H

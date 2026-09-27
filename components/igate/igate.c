@@ -247,6 +247,10 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "TX packet too long";
         case DROP_TX_DUTY_CYCLE:
             return "duty-cycle ceiling reached";
+        case DROP_TX_SELF_TEST:
+            return "RF TX held off by LOOP TEST";
+        case DROP_RX_QUEUE_FULL:
+            return "RX queue full";
         case ERR_MODEM_SEND_FAIL:
             return "modem send failed";
         case ERR_AX25_DECODE:
@@ -603,8 +607,8 @@ static const char *qConstructFor(const char *srcCall, uint16_t localWindowSec) {
 //
 // The gate-call list is web-configurable (IGate page, parallel to the callsign
 // whitelist/blacklist). It is snapshotted under the config lock because this
-// runs on the modem RX task and a concurrent web save could otherwise rewrite
-// the list mid-check.
+// runs on the radio receive task and a concurrent web save could otherwise
+// rewrite the list mid-check.
 //
 // @p report tells the two callers apart: igateProcess() is deciding whether to
 // gate the frame and counts its verdict, while igate_log_accepts_frame() is
@@ -958,8 +962,8 @@ int igateProcess(ax25_msg_t *packet) {
 
     // Snapshot the own-station identity that goes into the qAR/qAO header,
     // together with the last-heard window the construct is decided over. This
-    // runs on the modem RX task; a concurrent web save could otherwise rewrite
-    // aprs_mycall mid-snprintf or move the window between the two reads.
+    // runs on the radio receive task; a concurrent web save could otherwise
+    // rewrite aprs_mycall mid-snprintf or move the window between the two reads.
     char cfg_mycall[10];
     uint8_t cfg_ssid;
     uint16_t cfg_window;

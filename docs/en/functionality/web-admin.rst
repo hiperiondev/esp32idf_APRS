@@ -353,7 +353,11 @@ The pages
        all, which is why the mirror also stops itself once nothing has read it
        for ten seconds. Nothing is written to flash and nothing is recorded -
        only what arrives while the window is open is shown. Live lines via
-       ``/logs/read``, polled every second.
+       ``/logs/read``, polled every second. The button is disabled for the
+       length of a *Start* request and a status line beside it reports
+       whether the station could not start capturing - the allocation for
+       the window can lose out to heap pressure elsewhere on the station -
+       or could not be reached at all.
    * - **Bulletins**
      - Up to five bulletins (addressee identifier and group, text, RF/INET,
        initial interval, decay ramp, expiry).
@@ -378,7 +382,8 @@ The pages
    * - **Radiomodem**
      - FX.25 on receive; audio modem enable, modulation (300 / 1200 Bell202 /
        1200 V.23 / 9600 G3RUH), flat/discriminator audio input, preamble ms, TX
-       time-slot ms, TX buffers, extra PTT unkey hold, CSMA persistence and the
+       tail ms, TX time-slot ms, TX buffers, extra PTT unkey hold, CSMA persistence, CSMA
+       slot time, busy-channel max wait and the
        long-term duty-cycle limiter (enable plus ceiling percentage); plus an
        *Audio interface* fieldset (ADC input self-bias, receive over-range
        warning, transmit output swing, transmit sample rate, transmitter
@@ -444,10 +449,10 @@ of ``igate_en``/``digi_en``:
      - The current RF TX ring backlog and the effective *TX buffers* cap, so the
        dashboard reads like the console's "n/n pending" line.
    * - ``csma_busy_forced`` / ``csma_persist_forced``
-     - How often the eight-slot anti-starvation floor forced a transmission,
-       split by whether any slot saw the channel busy or every slot found it
-       clear. Shown as *CSMA FORCED (BUSY/PERSIST)*. These are transmissions,
-       not drops.
+     - How often a frame was transmitted anyway: over a channel still busy
+       after the *Busy channel max wait*, or after eight consecutive missed
+       persistence rolls on a clear channel. Shown as *CSMA FORCED
+       (BUSY/PERSIST)*. These are transmissions, not drops.
    * - ``tx_duty_cycle_pct`` / ``duty_cycle_limit_pct``
      - Measured transmit duty cycle over the rolling 10-minute window against
        the configured ceiling, as *TX DUTY CYCLE*. The limit reads ``0`` when

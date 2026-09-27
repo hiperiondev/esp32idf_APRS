@@ -70,7 +70,7 @@ void heap_monitor_bracket(const char *phase, const char *what) {
 // Upper bound on how many tasks one report can describe. uxTaskGetSystemState()
 // fills a caller-provided array and refuses outright rather than truncating if
 // the array is too small, so this has to stay above the number of tasks alive
-// at once: this firmware's own eight resident tasks, the two idle tasks, the
+// at once: this firmware's own nine resident tasks, the two idle tasks, the
 // timer service, and the handful the IDF runs for WiFi, lwIP, events and
 // inter-processor calls - a little over twenty in the configuration that ships.
 #define APRS_STACK_REPORT_MAX_TASKS 28

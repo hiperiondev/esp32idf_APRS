@@ -55,11 +55,11 @@
 /**
  * @name Channel-access timing valid ranges
  *
- * Inclusive valid ranges for the four channel-access settings on the
+ * Inclusive valid ranges for the channel-access settings on the
  * Radiomodem page, shared by page_radio.c (which builds the inputs and clamps
  * the posted form value) and app_config.c (which clamps what it loads from
  * flash), so a value that reaches aprs_service_build_modem_config() - which
- * copies all four straight into the modem's runtime configuration - is always
+ * copies them straight into the modem's runtime configuration - is always
  * one the radio can sanely transmit with.
  *
  * The preamble ceiling is the one that matters most on a shared channel:
@@ -68,16 +68,31 @@
  * carrier ahead of *every* frame. ::RF_PREAMBLE_MS_MAX keeps that worst case
  * at two seconds; the floor keeps enough preamble for a receiving
  * demodulator's PLL and AGC to settle before the first data bit.
+ *
+ * The TX tail is the mirror image at the end of the frame: Ax25TxTail() keeps
+ * the carrier up for that long after the closing flag, so the transceiver's
+ * audio filters and its switch back to receive do not take the closing flag
+ * or the last FCS bits off the air. A few flags are enough; ::RF_TX_TAIL_MS_MAX
+ * only bounds a mistaken value.
  * @{
  */
-#define RF_PREAMBLE_MS_MIN    50    /**< Shortest TXDelay, ms: enough preamble for a distant receiver to lock. */
-#define RF_PREAMBLE_MS_MAX    2000  /**< Longest TXDelay, ms: caps the dead carrier sent ahead of every frame. */
-#define RF_TX_TIMESLOT_MS_MIN 0     /**< Shortest CSMA slot, ms (0 = transmit as soon as the channel is heard clear). */
-#define RF_TX_TIMESLOT_MS_MAX 10000 /**< Longest CSMA slot, ms. */
-#define PTT_MIN_UNKEY_MS_MIN  0     /**< Shortest extra PTT-off hold, ms (0 = only the fixed one-tick release holdoff). */
-#define PTT_MIN_UNKEY_MS_MAX  5000  /**< Longest extra PTT-off hold, ms. */
-#define CSMA_PERSIST_MIN      1     /**< Lowest p-persistence: 0 is refused, it would suppress transmission entirely. */
-#define CSMA_PERSIST_MAX      255   /**< Highest p-persistence: transmit on the first clear slot every time. */
+#define RF_PREAMBLE_MS_MIN      50    /**< Shortest TXDelay, ms: enough preamble for a distant receiver to lock. */
+#define RF_PREAMBLE_MS_MAX      2000  /**< Longest TXDelay, ms: caps the dead carrier sent ahead of every frame. */
+#define RF_TX_TAIL_MS_MIN       0     /**< Shortest TXTail, ms (0 = PTT released on the last bit of the closing flag). */
+#define RF_TX_TAIL_MS_MAX       500   /**< Longest TXTail, ms: caps the flags sent after every frame. */
+#define RF_TX_TAIL_MS_DEFAULT   20    /**< Default TXTail, ms: three flags at 1200 Bd; the modem's own ::AX25_TX_TAIL_DEFAULT_MS. */
+#define RF_TX_TIMESLOT_MS_MIN   0     /**< Shortest CSMA quiet time, ms (0 = channel access begins as soon as a frame is queued). */
+#define RF_TX_TIMESLOT_MS_MAX   10000 /**< Longest CSMA quiet time, ms. */
+#define PTT_MIN_UNKEY_MS_MIN    0     /**< Shortest extra PTT-off hold, ms (0 = only the fixed one-tick release holdoff). */
+#define PTT_MIN_UNKEY_MS_MAX    5000  /**< Longest extra PTT-off hold, ms. */
+#define CSMA_PERSIST_MIN        1     /**< Lowest p-persistence: 0 is refused, it would suppress transmission entirely. */
+#define CSMA_PERSIST_MAX        255   /**< Highest p-persistence: transmit on the first clear slot every time. */
+#define CSMA_SLOT_MS_MIN        10    /**< Shortest CSMA SlotTime, ms: one KISS SlotTime unit. */
+#define CSMA_SLOT_MS_MAX        2550  /**< Longest CSMA SlotTime, ms: the largest value a KISS SlotTime byte can express. */
+#define CSMA_SLOT_MS_DEFAULT    100   /**< Default CSMA SlotTime, ms: the common AX.25/KISS default. */
+#define CSMA_BUSY_MAX_S_MIN     0     /**< Shortest busy-channel wait, s: 0 means wait for as long as the channel stays busy. */
+#define CSMA_BUSY_MAX_S_MAX     600   /**< Longest finite busy-channel wait, s. */
+#define CSMA_BUSY_MAX_S_DEFAULT 30    /**< Default busy-channel wait, s: outlasts a packet and all of its digipeats. */
 /** @} */
 
 /**
@@ -97,9 +112,10 @@
  * being used as one.
  *
  * The transmitter time-out is a failsafe, not a scheduler: the longest
- * legitimate key-up is ::RF_PREAMBLE_MS_MAX of preamble plus a maximum-length
- * frame at the lowest baud rate - a few seconds at 1200 Bd, longer with FX.25
- * redundancy - so useful settings sit far above that, and a value close to
+ * legitimate key-up is ::RF_PREAMBLE_MS_MAX of preamble, a maximum-length
+ * frame and ::RF_TX_TAIL_MS_MAX of tail at the lowest baud rate - a few
+ * seconds at 1200 Bd, longer with FX.25 redundancy - so useful settings sit
+ * far above that, and a value close to
  * ::TX_MAX_KEYED_MS_MIN cuts real transmissions short.
  * @{
  */
@@ -324,11 +340,11 @@ typedef struct {
                                   saturated RF leg (see the drain-wait in aprs_service_send_tnc2()). */
     uint32_t tx_queue_limit;   /**< The effective "TX buffers" cap (g_config.rf_tx_buffers, clamped): new frames are dropped once tx_queue_depth reaches this.
                                   Shown alongside tx_queue_depth so the dashboard reads like the console's "n/n pending" line. */
-    uint32_t csma_busy_forced; /**< Key-ups in which the CSMA anti-starvation floor transmitted over a channel that was still busy after the whole backoff
-                                  run. A congestion figure about the frequency: the frame was sent, nothing was lost. Read live from
-                                  modem_channel_busy_count(). */
-    uint32_t csma_persist_forced;  /**< Key-ups in which the CSMA anti-starvation floor transmitted after a backoff run that found the channel clear every
-                                      slot and missed the persistence roll every time. This one measures only the configured CSMA persistence: with the
+    uint32_t csma_busy_forced; /**< Key-ups in which a frame was transmitted over a channel still busy after the configured busy-channel wait
+                                  (g_config.csma_busy_max_s, never when that is 0). A report about the frequency, occupied far longer than packet traffic
+                                  explains: the frame was sent, nothing was lost. Read live from modem_channel_busy_count(). */
+    uint32_t csma_persist_forced;  /**< Key-ups in which the CSMA anti-starvation floor transmitted after eight consecutive clear-channel slots that all missed
+                                      the persistence roll. This one measures only the configured CSMA persistence: with the
                                       standard value of 63 about one key-up in ten lands here, so a figure near a tenth of PACKET TX is normal and a much
                                       larger share means persistence is set too low. Read live from modem_persistence_missed_count(). */
     uint32_t tx_duty_cycle_pct;    /**< This station's own estimated transmit airtime right now, as a percentage of the rolling window
@@ -500,12 +516,16 @@ bool aprs_loop_test_run(char *msg, size_t msg_len);
  * the whole window), @c dcd and @c adc_samples, followed by the receive
  * statistics of modem_get_rx_stats(): @c demods (active demodulators),
  * @c decoded and @c unique (arrays of @c demods entries, one per
- * demodulator), @c delivered, @c repaired, @c fifo_drops and @c pool_ovf.
+ * demodulator), @c delivered, @c repaired, @c fifo_drops and @c pool_ovf,
+ * the receive DSP load of afskGetDspLoad() in thousandths: @c dsp_mean
+ * and @c dsp_peak over the window, @c dsp_max since the receive statistics
+ * were last reset, and @c impulses, the raw samples the impulse blanker has
+ * replaced over the same span (afskGetImpulsesRepaired()).
  *
  * @c level is a one-word verdict: @c "clip" when the raw extremes reached
  * ::AFSK_RAW_CLIP_LOW or ::AFSK_RAW_CLIP_HIGH, otherwise @c "idle" when no
  * demodulator detected a carrier during the window, otherwise @c "low" when
- * the peak tone-band level stayed below 100 mV RMS and @c "good" when it did
+ * the peak tone-band level stayed below 20 mV RMS and @c "good" when it did
  * not.
  *
  * Every value is produced locally, so nothing received off the air is ever

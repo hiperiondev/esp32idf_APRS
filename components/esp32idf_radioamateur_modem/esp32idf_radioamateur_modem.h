@@ -51,6 +51,20 @@
 #define MODEM_DELAY_TICKS(ms) ((pdMS_TO_TICKS(ms) > 0) ? pdMS_TO_TICKS(ms) : 1)
 
 /**
+ * @brief Longest time, in milliseconds, modem_set_modem() lets a key-up in
+ *        progress finish before a receive-chain rebuild abandons it.
+ *
+ * Six seconds cover the longest 1200 Bd key-up the web admin allows - two
+ * seconds of preamble, a maximum-length frame with worst-case bit stuffing
+ * (under 2.7 s) and half a second of tail - so at that baud rate a rebuild
+ * never cuts a frame short. A key-up that lasts longer, possible only at
+ * 300 Bd or with a stalled transmitter, is released and its frame discarded.
+ */
+#ifndef MODEM_REBUILD_TX_WAIT_MS
+#define MODEM_REBUILD_TX_WAIT_MS 6000
+#endif
+
+/**
  * @brief Selectable modem profiles.
  */
 typedef enum {
@@ -97,7 +111,8 @@ typedef enum {
  * | SINGLE        | 0 dB                       | +3 dB                         |
  * | DIVERSITY2    | 0, -5 dB                   | 0, +5 dB                      |
  * | DIVERSITY3    | +4, 0, -5 dB               | 0, +3, +6 dB                  |
- * | MULTISLICE    | +5, -9 dB; +9 .. -15.5 dB  | +9, -4 dB; +16 .. -8.5 dB     |
+ * | MULTISLICE    | +6, -5, -14 dB; +9 .. -15.5 dB | +13, +2, -7 dB; +16 .. -8.5 dB |
+ * | MULTISLICE2   | +5, -9 dB; +9 .. -15.5 dB  | +9, -4 dB; +16 .. -8.5 dB     |
  *
  * Tone twist on the air ranges well beyond what one prefilter can absorb:
  * a transmitter that pre-emphasizes its audio arrives on a discriminator
@@ -106,9 +121,11 @@ typedef enum {
  * shifts both by the receiver's de-emphasis, with the audio chain in front of
  * the ADC adding a slope of its own. The SINGLE to CUSTOM presets cover that
  * range with several prefilters of different tilt, each with its own
- * correlator and demodulator. ::MODEM_RX_EQ_MULTISLICE covers it with two
- * prefilters, tilted towards the two ends of the range, each read by half of
- * ::MODEM_RX_SLICER_COUNT slicers. A slicer compares the mark tone magnitude
+ * correlator and demodulator. ::MODEM_RX_EQ_MULTISLICE covers it with three
+ * prefilters, each tilted to the centre of its part of the range and read by
+ * three, three and two of the ::MODEM_RX_SLICER_COUNT slicers (the multi-slicer
+ * cell of the table lists the prefilter tilts and the range of the set's
+ * compensation). A slicer compares the mark tone magnitude
  * against the space tone magnitude weighted by the difference between its
  * target and the tilt its prefilter actually realized, so the set's twist
  * compensation (prefilter tilt plus slicer weight) steps 3.5 dB across the
@@ -116,15 +133,18 @@ typedef enum {
  * same effect on the decision as a prefilter tilt, reaches values a short
  * prefilter cannot, and costs a fraction of the CPU time of separate
  * correlators; the tilted prefilters keep a loud tone from leaking into the
- * other tone's correlator, which no weighting can undo.
+ * other tone's correlator, which no weighting can undo, and keep every slicer
+ * weight within about 4 dB of unity, beyond which a slicer loses sensitivity
+ * on weak signals.
  */
 typedef enum {
     MODEM_RX_EQ_LEGACY = 0, /**< Two demodulators with the fixed 8-tap tables: a tilted or flat band-pass, depending on flat_audio, and an unfiltered one. */
     MODEM_RX_EQ_SINGLE = 1, /**< One demodulator, one band-pass prefilter. */
-    MODEM_RX_EQ_DIVERSITY2 = 2, /**< Two demodulators with different prefilter tilts. */
-    MODEM_RX_EQ_DIVERSITY3 = 3, /**< Three demodulators with different prefilter tilts. */
-    MODEM_RX_EQ_CUSTOM = 4,     /**< custom_count demodulators with the tilts in custom_tilt_db[]. */
-    MODEM_RX_EQ_MULTISLICE = 5, /**< Two tilted prefilters and ::MODEM_RX_SLICER_COUNT slicers whose twist compensation is spread over the tone twist range. */
+    MODEM_RX_EQ_DIVERSITY2 = 2,  /**< Two demodulators with different prefilter tilts. */
+    MODEM_RX_EQ_DIVERSITY3 = 3,  /**< Three demodulators with different prefilter tilts. */
+    MODEM_RX_EQ_CUSTOM = 4,      /**< custom_count demodulators with the tilts in custom_tilt_db[]. */
+    MODEM_RX_EQ_MULTISLICE = 5,  /**< Three tilted prefilters and ::MODEM_RX_SLICER_COUNT slicers spreading twist compensation over the range. */
+    MODEM_RX_EQ_MULTISLICE2 = 6, /**< The ::MODEM_RX_EQ_MULTISLICE slicers and ranges on two prefilters, four slicers each, for comparison. */
 } modem_rx_eq_preset_t;
 
 /**
@@ -162,13 +182,18 @@ typedef struct {
                                      2 = one corrupted symbol or one single bit. A repaired frame is delivered only when it also passes a strict APRS sanity
                                      check (valid callsign characters, UI control field, no-layer-3 PID, no control characters in the information field).
                                      Every repair accepts a small share of wrongly corrected frames, so this stays off unless the extra decodes are wanted. */
+    bool impulse_blank;           /**< Remove isolated glitches from the raw ADC stream of the AFSK profiles before decimation (see impulse_blanker.h). The
+                                     ESP32's ADC picks up bursts of short glitches every Wi-Fi beacon interval (102.4 ms); after decimation each one is a click
+                                     across the tone band that corrupts the bits under it. The blanker replaces a sample only when it stands far out of its
+                                     neighbours at the ADC rate, where real audio moves little from one conversion to the next, so the audio itself passes
+                                     unchanged. */
 } modem_rx_tuning_t;
 
 /**
  * @brief Build a ::modem_rx_tuning_t initializer with the default receive
  *        tuning: the multi-slicer demodulator set, a 900-2600 Hz band,
  *        31-tap prefilters, a 10 mV receive gate, a 300 Hz high-pass,
- *        automatic gain and no bit repair.
+ *        automatic gain, no bit repair and the impulse blanker on.
  *
  * 31 taps is the longest prefilter and the one that realizes the requested
  * tilts almost exactly, which the multi-slicer set relies on at the ends of
@@ -190,6 +215,7 @@ typedef struct {
         .agc_mode = MODEM_RX_AGC_AUTO,                                                                                                                         \
         .agc_fixed_gain_db = 0,                                                                                                                                \
         .fix_bits = 0,                                                                                                                                         \
+        .impulse_blank = true,                                                                                                                                 \
     }
 
 /**
@@ -229,18 +255,26 @@ typedef struct {
     bool full_duplex;      /**< true: key up immediately and keep receiving while transmitting. */
     bool allow_non_aprs;   /**< true: accept frames whose Control/PID fields are not 0x03/0xF0. */
     uint16_t preamble_ms;  /**< TXDelay (preamble) duration, in milliseconds. */
+    uint16_t tx_tail_ms;   /**< TXTail duration, in milliseconds: how long the transmitter stays keyed, sending flags, after the closing flag of each
+                              frame, rounded up to whole flags. Covers the delay of the transceiver's audio chain and the audio a radio cuts as it switches
+                              back to receive, which would otherwise take the closing flag or the last FCS bits off the air. 0 releases PTT on the last
+                              bit of the closing flag. Default ::AX25_TX_TAIL_DEFAULT_MS. */
     uint16_t slot_time_ms; /**< CSMA quiet time, in milliseconds: how long a queued frame waits before channel access begins. The interval between the
-                              persistence rolls that follow is the fixed AX.25 "SlotTime" held in ::Ax25ProtoConfig::csmaSlotTime, not this value. Ignored in
-                              full duplex mode. */
-    uint8_t persist;       /**< CSMA/p-persistent channel-access probability (standard AX.25/KISS "Persist"): once the quiet time has elapsed and the
-                              channel is heard clear, the modem transmits immediately with probability persist/256 on every slot and otherwise waits one
-                              more slot time before rolling again. 255 transmits on the first clear slot every time (equivalent to plain non-persistent
-                              CSMA); lower values spread contending stations' key-ups further apart. See modem_persistence_missed_count() for the
-                              anti-starvation floor that bounds how long a frame can be held this way. Ignored in full duplex mode. */
-    uint8_t fx25_mode;     /**< FX.25 mode: 0 = off, 1 = RX only, 2 = RX+TX (requires -DENABLE_FX25). */
-    bool ptt_active_high;  /**< true = PTT output active-high, false = active-low. @note There is deliberately no ptt_gpio field: the PTT pin is a fixed
-                              compile-time board wiring choice (::MODEM_PTT_GPIO, like ::MODEM_ADC_GPIO / ::MODEM_DAC_GPIO), not runtime/web-admin selectable;
-                              only the active level is configurable here. */
+                              persistence rolls that follow is csma_slot_ms, not this value. Ignored in full duplex mode. */
+    uint16_t csma_slot_ms; /**< CSMA slot time, in milliseconds (standard AX.25/KISS "SlotTime"): the interval between persistence rolls on a clear channel and
+                              between re-checks of a busy one. Ignored in full duplex mode. */
+    uint32_t csma_busy_max_ms; /**< Longest wait, in milliseconds, for a busy channel to clear before a queued frame is transmitted anyway, measured from the
+                                  first busy slot; 0 waits for as long as the channel stays busy, as a standard KISS TNC does. Independent of the cap on
+                                  missed persistence rolls. See modem_channel_busy_count(). Ignored in full duplex mode. */
+    uint8_t persist;           /**< CSMA/p-persistent channel-access probability (standard AX.25/KISS "Persist"): once the quiet time has elapsed and the
+                                  channel is heard clear, the modem transmits immediately with probability persist/256 on every slot and otherwise waits one
+                                  more csma_slot_ms before rolling again. 255 transmits on the first clear slot every time (equivalent to plain
+                                  non-persistent CSMA); lower values spread contending stations' key-ups further apart. Eight consecutive missed rolls on a
+                                  clear channel transmit anyway (see modem_persistence_missed_count()). Ignored in full duplex mode. */
+    uint8_t fx25_mode;         /**< FX.25 mode: 0 = off, 1 = RX only, 2 = RX+TX (requires -DENABLE_FX25). */
+    bool ptt_active_high;      /**< true = PTT output active-high, false = active-low. @note There is deliberately no ptt_gpio field: the PTT pin is a fixed
+                                  compile-time board wiring choice (::MODEM_PTT_GPIO, like ::MODEM_ADC_GPIO / ::MODEM_DAC_GPIO), not runtime/web-admin selectable;
+                                  only the active level is configurable here. */
     uint16_t min_unkey_ms; /**< Extra minimum PTT-off (unkeyed) time between transmissions, in milliseconds, ON TOP OF the fixed one-modem-service-tick (~10 ms)
                               release Ax25TransmitCheck() always applies. 0 = no extra hold. For radios/repeaters that need a longer guaranteed unkey gap
                               between frames. */
@@ -266,9 +300,10 @@ typedef struct {
 /**
  * @brief Build a ::modem_config_t initializer with sensible default
  *        values: Bell 202 modem, standard (de-emphasized) audio, full
- *        duplex enabled, strict APRS frame filtering, 300 ms preamble, no
- *        CSMA slot time, the standard AX.25/KISS Persist default (63, ~25%
- *        transmit chance per clear slot), FX.25 disabled, the PTT polarity
+ *        duplex enabled, strict APRS frame filtering, 300 ms preamble,
+ *        ::AX25_TX_TAIL_DEFAULT_MS of tail, no CSMA quiet time, the standard AX.25/KISS SlotTime and Persist
+ *        defaults (100 ms and 63, ~25% transmit chance per clear slot), a
+ *        30 s busy-channel wait limit, FX.25 disabled, the PTT polarity
  *        taken from ::MODEM_PTT_ACTIVE_HIGH and no extra unkey hold.
  *
  * The audio interface fields take the values that suit an interface board
@@ -284,7 +319,10 @@ typedef struct {
         .full_duplex = true,                                                                                                                                   \
         .allow_non_aprs = false,                                                                                                                               \
         .preamble_ms = 300,                                                                                                                                    \
+        .tx_tail_ms = AX25_TX_TAIL_DEFAULT_MS,                                                                                                                 \
         .slot_time_ms = 0,                                                                                                                                     \
+        .csma_slot_ms = AX25_CSMA_SLOT_TIME_DEFAULT_MS,                                                                                                        \
+        .csma_busy_max_ms = AX25_CSMA_BUSY_TIMEOUT_DEFAULT_MS,                                                                                                 \
         .persist = 63,                                                                                                                                         \
         .fx25_mode = 0,                                                                                                                                        \
         .ptt_active_high = MODEM_PTT_ACTIVE_HIGH ? true : false,                                                                                               \
@@ -344,6 +382,18 @@ esp_err_t modem_init(const modem_config_t *cfg);
  * Every other setting is applied in place, and calling this again with an
  * unchanged configuration does not disturb reception at all.
  *
+ * Before a rebuild the whole modem is brought to rest, because the rebuild
+ * also resets the AX.25 transmit and receive rings: the service task is held
+ * outside its transmit and receive work, a key-up in progress is allowed to
+ * finish (and abandoned if it outlasts ::MODEM_REBUILD_TX_WAIT_MS), and the
+ * transmit path is locked against new frames. Frames still queued for
+ * transmission at that point are discarded, and a warning reports how many.
+ * A caller that queues a frame while the rebuild holds the transmit path
+ * waits for it like for any other transmitter.
+ *
+ * Calls must not overlap. The receive callback may call it: the service task
+ * is then already outside its transmit and receive work and is not held.
+ *
  * @param cfg New configuration to apply.
  */
 void modem_set_modem(const modem_config_t *cfg);
@@ -351,12 +401,38 @@ void modem_set_modem(const modem_config_t *cfg);
 /**
  * @brief Install the callback invoked whenever a frame is received.
  *
- * The callback runs in the context of the internal service task.
+ * The callback runs in the context of the internal service task, the same
+ * task that moves the transmit state machine forward: quiet time, carrier
+ * detect, p-persistence, key-up, modulator teardown and the transmitter
+ * time-out are all serviced between two callbacks. It should therefore
+ * return promptly - typically by copying the frame and its metadata into a
+ * queue drained by an application task. While it blocks, no key-up starts or
+ * ends on schedule, and received frames accumulate in the AX.25 receive ring
+ * until it overflows and further frames are dropped.
  *
  * @param cb  Callback to install, or NULL to remove any existing callback.
  * @param ctx Opaque context pointer passed back to @p cb on every call.
  */
 void modem_set_rx_callback(modem_rx_cb_t cb, void *ctx);
+
+/**
+ * @brief Hold the PTT output idle while transmissions still run.
+ *
+ * With the inhibit on, a queued frame is still keyed up, modulated onto the
+ * DAC output and retired exactly as usual, but the PTT line stays at its idle
+ * level, so a transceiver connected to it never transmits. This is intended
+ * for a bench self-test over a DAC-to-ADC wire.
+ *
+ * Turning the inhibit on releases a PTT line keyed at that moment. Turning it
+ * off never keys the transmitter by itself: the line is next driven at the
+ * following key-up, so a transmission already under way stays off the air
+ * until it ends.
+ *
+ * Safe to call from any task, at any time after modem_init().
+ *
+ * @param inhibit true to hold PTT idle, false to let key-ups drive it again.
+ */
+void modem_set_ptt_inhibit(bool inhibit);
 
 /**
  * @brief Queue a raw AX.25 frame for transmission.
@@ -428,26 +504,27 @@ uint8_t modem_tx_queue_depth(void);
  * @brief Count how many times the CSMA/p-persistent anti-starvation floor
  *        has forced a transmission on a clear channel since boot.
  *
- * Counts only the runs in which the channel stayed free for every backoff
- * slot and the persistence roll missed each time; the modem then transmits
- * rather than holding the frame indefinitely. Nothing is discarded, so this
- * is a channel-access statistic and not a drop: it reflects the configured
- * `persist` probability, and with the standard value of 63 roughly one
- * key-up in ten is expected to end this way.
+ * Counts the key-ups that followed eight consecutive slots in which the
+ * channel was free and the persistence roll missed each time; the modem then
+ * transmits rather than holding the frame indefinitely. A busy slot restarts
+ * the count. Nothing is discarded, so this is a channel-access statistic and
+ * not a drop: it reflects the configured `persist` probability, and with the
+ * standard value of 63 roughly one key-up in ten is expected to end this way.
  * @return Total number of forced transmissions caused by missed persistence
  *         rolls on a clear channel since boot.
  */
 uint32_t modem_persistence_missed_count(void);
 
 /**
- * @brief Count how many times the CSMA/p-persistent anti-starvation floor
- *        has forced a transmission over a busy channel since boot.
+ * @brief Count how many times a frame has been transmitted over a busy
+ *        channel since boot.
  *
- * Counts the runs in which at least one backoff slot found the carrier
- * detect asserted and the channel still had not cleared by the end of the
- * run; the frame is then transmitted on top of the traffic already there.
- * A climbing figure here is a congestion report about the frequency, not a
- * fault in this station.
+ * Counts the key-ups in which the carrier detect was still asserted after
+ * ::modem_config_t::csma_busy_max_ms had elapsed since the first busy slot;
+ * the frame is then transmitted on top of the traffic already there. Stays
+ * at zero while that limit is 0. A climbing figure is a report about the
+ * frequency - a channel occupied far longer than ordinary packet traffic
+ * explains - and not a fault in this station.
  * @return Total number of forced transmissions over a busy channel since boot.
  */
 uint32_t modem_channel_busy_count(void);

@@ -108,17 +108,18 @@ The component's public header (``esp32idf_radioamateur_modem.h``) exposes:
        TX-ring status the RF TX backlog cap reads.
    * - ``modem_persistence_missed_count()``
      - How many times the CSMA anti-starvation floor has forced a transmission
-       after a backoff run that found the channel clear in every slot and missed
-       the persistence roll every time. This measures the configured
-       ``persist`` alone: at the default of 63 roughly one key-up in ten ends
-       this way. Nothing is discarded, so it is a channel-access statistic and
-       not a drop.
+       after eight consecutive slots that found the channel clear and missed the
+       persistence roll every time. A busy slot restarts the count, so this
+       measures the configured ``persist`` alone: at the default of 63 roughly
+       one key-up in ten ends this way. Nothing is discarded, so it is a
+       channel-access statistic and not a drop.
    * - ``modem_channel_busy_count()``
-     - How many times the same floor has forced a transmission after a backoff
-       run in which at least one slot found the carrier detect asserted. This is
-       a congestion report about the frequency: the frame goes out on top of the
-       traffic already there. Runs are charged to exactly one of the two
-       counters, so a busy channel can never inflate the persistence figure.
+     - How many times a frame has been transmitted because the carrier detect
+       was still asserted after ``csma_busy_max_ms`` had elapsed since the first
+       busy slot. This is a report about the frequency — a channel occupied far
+       longer than ordinary packet traffic explains — and the frame goes out on
+       top of the signal already there. It never moves while that limit is 0.
+       Each forced key-up is charged to exactly one of the two counters.
    * - ``modem_measure_adc_rate(ms)``
      - Measure the real ADC sample rate; blocks for the requested window.
 
@@ -169,20 +170,35 @@ boot, the Radio page's Save (live re-apply, no reboot) and the loop test:
    * - ``preamble_ms``
      - ``preamble`` (300)
      - TXDelay
+   * - ``tx_tail_ms``
+     - ``tx_tail`` (20)
+     - TXTail: flags sent after the closing flag before PTT is released, rounded
+       up to whole flags
    * - ``slot_time_ms``
      - ``tx_timeslot`` (2000)
      - CSMA quiet time - how long a queued frame waits before channel access
        begins at all. The interval between the persistence rolls that follow is
-       the fixed AX.25 *SlotTime* the modem keeps internally, not this value.
-       Ignored in full duplex.
+       ``csma_slot_ms``, not this value. Ignored in full duplex.
+   * - ``csma_slot_ms``
+     - ``csma_slot_ms`` (100)
+     - CSMA slot time (standard AX.25/KISS *SlotTime*): the interval between
+       persistence rolls on a clear channel and between re-checks of a busy
+       one. Ignored in full duplex.
+   * - ``csma_busy_max_ms``
+     - ``csma_busy_max_s`` × 1000 (30000)
+     - Longest wait for a busy channel to clear, measured from the first busy
+       slot, before the queued frame is transmitted anyway; 0 waits for as long
+       as the channel stays busy, as a standard KISS TNC does. Ignored in full
+       duplex.
    * - ``persist``
      - ``csma_persist`` (63)
      - CSMA p-persistence (standard AX.25/KISS *Persist*): once the channel is
        heard clear, the modem transmits with probability ``persist``/256 per
        slot and otherwise waits another slot time before rolling again. 255 =
        transmit on the first clear slot every time; lower values spread
-       contending stations apart. Eight missed rolls transmit anyway so a frame
-       is never held indefinitely. Ignored in full duplex.
+       contending stations apart. Eight consecutive missed rolls on a clear
+       channel transmit anyway, so a frame is never held indefinitely by the
+       roll alone; a busy slot restarts that count. Ignored in full duplex.
    * - ``fx25_mode``
      - ``fx25_mode``
      - 0=off, 1=RX only, 2=RX+TX
@@ -244,13 +260,15 @@ transceiver, one direction each.
 **RX LEVEL** (``aprs_rx_level_sample()``, ``POST /radio/level``) watches the
 receive front-end for about a second and reports the tone-band level
 (``afskGetBandRms()``) and the wideband RMS level with their peaks, a one-word
-verdict (clipping, no signal, low below 100 mV RMS of tones, good), the input's
+verdict (clipping, no signal, low below 20 mV RMS of tones, good), the input's
 DC offset, the AGC gain, the raw conversion extremes over the whole window and
 the carrier-detect state, followed by the receive statistics of
 ``modem_get_rx_stats()`` (frames decoded and decoded only by each demodulator,
-frames delivered and repaired, samples lost). It transmits nothing and changes no modem state, so it
+frames delivered and repaired, samples lost) and the receive DSP load of
+``afskGetDspLoad()`` (mean and peak share of real time over the window, and the
+highest block since the statistics were reset). It transmits nothing and changes no modem state, so it
 can run while real traffic is being decoded. It is what the receive trimmer is
-set against — aim for 250 to 350 mV RMS with the raw range clear of 0 and 4095
+set against — aim for tones of at least 20 mV RMS with the raw range clear of 0 and 4095
 — and what tells an input biased by ``adc_self_bias`` (1200 to 2000 mV) from
 one with no bias at all.
 
@@ -270,7 +288,12 @@ The single most useful bring-up tool in the project. Wire **GPIO25 → GPIO33**,
 open *Radio / Modem*, hit **LOOP TEST**. ``aprs_loop_test_run()``:
 
 #. Builds a small APRS packet carrying a **random one-time token**
-   (``>LOOPTEST <token>``).
+   (``>LOOPTEST <token>``), with the station's own callsign as the source (the
+   IGate callsign, or the digipeater's); it refuses to run without one.
+#. **Takes the transmitter**: frames already queued go out normally first, then
+   every other producer is refused (``DROP_TX_SELF_TEST``) until the test ends.
+#. **Inhibits PTT** (``modem_set_ptt_inhibit()``): the frame is modulated onto
+   the DAC, but a connected transceiver is never keyed.
 #. **Diverts** decoded frames to its own hook so the test frame is never
    digipeated, uplinked, or logged as real traffic.
 #. Switches the modem to **full duplex** — a DAC→ADC wire means the node always
@@ -282,8 +305,8 @@ open *Radio / Modem*, hit **LOOP TEST**. ``aprs_loop_test_run()``:
    still busy at the cap is logged and the test transmits anyway.
 #. Transmits, then waits up to ``LOOP_TEST_TIMEOUT_MS`` (**4000 ms**) for the
    ADC → demodulator → HDLC → AX.25 chain to hand the same frame back.
-#. **Always restores** the real hook and the configured duplex mode before
-   returning.
+#. **Always restores** the real hook and the configured duplex mode, then lifts
+   the PTT inhibit and releases the transmitter, before returning.
 
 Meanwhile a monitor task latches diagnostics the component exposes only
 instantaneously: a passive raw-ADC snapshot mid-preamble, peak RMS, peak AGC

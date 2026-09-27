@@ -189,6 +189,29 @@ void ModemSetRxTuning(const modem_rx_tuning_t *t);
 uint8_t ModemDcdState(void);
 
 /**
+ * @brief Clear the Data Carrier Detect state of every demodulator.
+ *
+ * Zeroes the DCD bitmap returned by ModemDcdState() together with the
+ * per-demodulator lock flag and pulse counter it is built from, and turns the
+ * DCD status LED off.
+ *
+ * The DCD state is only ever updated by MODEM_DECODE(), so it keeps its last
+ * value for as long as no samples reach the demodulators. The receive path
+ * calls this function at each point where that happens - when the receive
+ * gate closes, and after a half-duplex transmission during which the input
+ * was discarded - so that a lock left over from the last demodulated block
+ * cannot report a busy channel on a channel that is in fact quiet.
+ *
+ * @warning Must be called from the receive task, the same context that runs
+ *          MODEM_DECODE(), so the reset can never interleave with a sample
+ *          being demodulated. Work done in another task, such as the
+ *          transmit teardown in AFSK_ServiceTx(), raises a request that the
+ *          receive task honours between blocks instead of calling this
+ *          directly.
+ */
+void ModemResetDcd(void);
+
+/**
  * @brief Configure and start a transmission.
  *
  * Used internally by the AX.25 protocol layer when a frame is ready to be
@@ -206,18 +229,17 @@ void ModemTransmitStop(void);
 
 /**
  * @brief Check whether the deferred teardown from the previous transmission
- *        (releasing PTT, parking the DAC) has finished yet.
+ *        (stopping the DAC sample clock, parking the DAC) has finished yet.
  *
- * Ax25TransmitCheck() must confirm this is false before starting a new
- * transmission: the teardown for a just-finished key-up is only performed by
- * AFSK_ServiceTx() in task context, one modem-service-loop tick after the DAC
- * ISR requests it, so a new transmission started in between would - via
- * setTransmit(true)'s side effect of clearing the pending-teardown flag -
- * silently cancel that PTT release, leaving PTT continuously asserted across
- * what should be two separate keyups.
+ * Ax25TransmitCheck() must confirm this is false, and getTransmit() false as
+ * well, before starting a new transmission: the teardown for a just-finished
+ * key-up is only performed by AFSK_ServiceTx() in task context, at most one
+ * modem-service-loop tick after the DAC ISR requests it, so a new transmission
+ * started in between would - via setTransmit(true)'s side effect of clearing
+ * the pending-teardown flag - silently cancel that teardown.
  *
  * @return true if a teardown is still pending and it is not yet safe to key
- *         up again; false once PTT has actually been released.
+ *         up again; false once the teardown has run.
  */
 bool ModemTxTeardownPending(void);
 

@@ -68,7 +68,8 @@ Repository layout
    │   │   ├── src/modem.c                     ← correlators, DPLL, tone tables, DCD, calibration
    │   │   ├── src/ax25.c                      ← HDLC framer, NRZI, bit-stuffing, AX.25 codec, TX queue
    │   │   ├── src/fx25.c, lwfec/rs.c/.h, lwfec/gf.c/.h ← FX.25 Reed–Solomon FEC
-   │   │   └── src/crc_ccit.c                  ← FCS
+   │   │   ├── src/crc_ccit.c                  ← FCS
+   │   │   └── test/host/                      ← host regression test of the HDLC transmitter (real ax25.c + stand-in IDF headers, ASan/UBSan)
    │   │
    │   ├── igate/          ← APRS-IS TCP client, login, filters, dedup, RF→INET / INET→RF
    │   ├── digirepeater/   ← n-N path logic driven by the operator's alias table, plus optional legacy destination-SSID routing
@@ -126,7 +127,8 @@ Where to start reading
    * - The boot order and task layout
      - ``main/main.c``, then ``main/aprs_service.c``
    * - How a received frame is dispatched
-     - ``aprs_msg_callback()`` in ``main/aprs_service.c``
+     - ``on_rx_frame()`` → ``rxTask()`` → ``aprs_msg_callback()`` in
+       ``main/aprs_service.c``
    * - The DSP / why the sample rates are chosen
      - ``…_modem_config.h``, then ``src/modem.c`` / ``src/afsk.c``
    * - Gatewaying and filtering

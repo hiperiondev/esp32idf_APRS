@@ -234,6 +234,8 @@
 #define TR_F_RX_EQ_DIV3 "3 filters"
 /** Form label for the "Multi-slicer (recommended)" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_EQ_MULTI "Multi-slicer (recommended)"
+/** Form label for the "Multi-slicer, 2 filters (comparison)" option of the demodulator set: the multi-slicer demodulators on two prefilters, for comparison. */
+#define TR_F_RX_EQ_MULTI2 "Multi-slicer, 2 filters (comparison)"
 /** Form label for the "Custom" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_EQ_CUSTOM "Custom"
 /** Form label for the "Custom: demodulators" field or fieldset, rendered on the configuration forms. */
@@ -264,6 +266,8 @@
 #define TR_F_RX_AGC_GAIN_DB "Fixed receive gain (dB)"
 /** Form label for the "Bit repair" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_FIX_BITS "Bit repair"
+/** Form label: remove isolated glitches from the raw ADC samples before decimation. */
+#define TR_F_RX_IMPULSE_BLANK "Impulse blanker"
 /** Form label for the "One symbol" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_FIX_SYMBOL "One symbol"
 /** Form label for the "One symbol or one bit" field or fieldset, rendered on the configuration forms. */
@@ -387,6 +391,8 @@
 #define TR_F_POSITION "Position"
 /** Form label for the "preamble ms" field or fieldset, rendered on the configuration forms. */
 #define TR_F_PREAMBLE_MS "Preamble (ms)"
+/** Form label for the "tx tail ms" field or fieldset, rendered on the configuration forms. */
+#define TR_F_TX_TAIL_MS "TX tail (ms)"
 /** Selector entry meaning the feature or pin is switched off. */
 #define TR_DISABLED "Disabled"
 /** Format string for a GPIO selector entry that is already claimed, taking the pin number and the claiming peripheral. */
@@ -439,6 +445,10 @@
 #define TR_F_PTT_MIN_UNKEY_MS "PTT minimum unkey time (ms)"
 /** Form label for the "csma persistence" field or fieldset, rendered on the configuration forms. */
 #define TR_F_CSMA_PERSISTENCE "CSMA persistence (p, 1-255)"
+/** Form label for the "csma slot time ms" field or fieldset, rendered on the configuration forms. */
+#define TR_F_CSMA_SLOT_TIME_MS "CSMA slot time (ms)"
+/** Form label for the "csma busy max s" field or fieldset, rendered on the configuration forms. */
+#define TR_F_CSMA_BUSY_MAX_S "Busy channel max wait (s, 0 = unlimited)"
 /** Form label for the "send receive via internet" field or fieldset, rendered on the configuration forms. */
 #define TR_F_SEND_RECEIVE_VIA_INTERNET "Send/receive via Internet"
 /** Form label for the "send receive via rf" field or fieldset, rendered on the configuration forms. */
@@ -1146,13 +1156,15 @@
 #define TR_RADIO_RX_STATS_LOST "samples lost"
 /** RX level label: RMS level of the tone band (900-2600 Hz). */
 #define TR_RADIO_RX_TONES "tones"
+/** RX level label: raw ADC samples the impulse blanker has replaced. */
+#define TR_RADIO_RX_IMPULSES "glitches removed"
 /** RX level label: one-word verdict on the receive level. */
 #define TR_RADIO_RX_LEVEL "level"
 /** RX level verdict: the ADC input reached over-range. */
 #define TR_RADIO_RX_LEVEL_CLIP "clipping"
 /** RX level verdict: no carrier detected during the measurement. */
 #define TR_RADIO_RX_LEVEL_IDLE "no signal"
-/** RX level verdict: tones below 100 mV RMS, raise the receive level. */
+/** RX level verdict: tones below 20 mV RMS, raise the receive level. */
 #define TR_RADIO_RX_LEVEL_LOW "low"
 /** RX level verdict: tones well above the ADC noise, no over-range. */
 #define TR_RADIO_RX_LEVEL_GOOD "good"
@@ -1907,6 +1919,10 @@
 #define TR_LOGS_BTN_START "Start"
 /** Caption of the button while the console log is being captured, rendered on the Logs page. */
 #define TR_LOGS_BTN_STOP "Stop"
+/** Status line shown beside the button when the station could not start capture, rendered on the Logs page. */
+#define TR_LOGS_ERR_START "Could not start capture (low memory)."
+/** Status line shown beside the button when the start request could not be completed, rendered on the Logs page. */
+#define TR_LOGS_ERR_NETWORK "Request failed."
 
 /** @} */
 
@@ -2167,6 +2183,10 @@
 #define TR_H_F_RX_FIX_BITS                                                                                                                                     \
     "Repairs frames with one corrupted symbol (or bit) when that is the only explanation and the result looks like valid APRS. It adds decodes "               \
     "but also a small share of wrong ones; keep it off on an IGate."
+/** Contextual help for the "Impulse blanker" option. */
+#define TR_H_F_RX_IMPULSE_BLANK                                                                                                                                \
+    "Removes isolated glitches from the raw ADC stream before decimation, most often the bursts the Wi-Fi radio causes; a discriminator or data port "         \
+    "benefits most. Leave it off if the demodulators already see a clean signal."
 /** Contextual help for the "Flat / discriminator audio input" option. */
 #define TR_H_F_FLAT_AUDIO_INPUT                                                                                                                                \
     "On for a data or discriminator jack (unfiltered, no de-emphasis), off for a speaker or headphone output (already de-emphasized). Selects the "            \
@@ -2212,6 +2232,14 @@
 /** Contextual help for the "CSMA persistence (p, 1-255)" option. */
 #define TR_H_F_CSMA_PERSISTENCE                                                                                                                                \
     "Probability, from 1 to 255, that the modem transmits in a free time slot. Lower values collide less on a busy channel, at the cost of delay."
+/** Contextual help for the "CSMA slot time (ms)" option. */
+#define TR_H_F_CSMA_SLOT_TIME_MS                                                                                                                               \
+    "Interval, in milliseconds, between persistence rolls on a clear channel and between re-checks of a busy one: the standard KISS SlotTime. 100 ms suits "   \
+    "most APRS channels."
+/** Contextual help for the "Busy channel max wait (s, 0 = unlimited)" option. */
+#define TR_H_F_CSMA_BUSY_MAX_S                                                                                                                                 \
+    "Longest wait, in seconds, for a busy channel to clear before a queued frame is sent over it anyway. 0 waits as long as the channel stays busy, as a "     \
+    "standard KISS TNC does."
 /** Contextual help for the "Data interval (s)" option. */
 #define TR_H_F_DATA_INTERVAL_S "Seconds between data transmissions of this service. 0 leaves the service default in force."
 /** Contextual help for the "Digipeat by destination SSID (legacy)" option. */
@@ -2419,6 +2447,9 @@
 /** Contextual help for the "DAO precision extension in position reports" option. */
 #define TR_H_F_POS_DAO                                                                                                                                         \
     "Adds the DAO extension, which restores the precision an ordinary position report rounds away. Receivers that ignore it still read the position."
+/** Contextual help for the "TX tail (ms)" option. */
+#define TR_H_F_TX_TAIL_MS                                                                                                                                      \
+    "How long the transmitter stays keyed after the end of each frame, in milliseconds. It keeps the radio from cutting the last bits off the air."
 /** Contextual help for the "Preamble (ms)" option. */
 #define TR_H_F_PREAMBLE_MS                                                                                                                                     \
     "How long the transmitter is keyed before data starts, in milliseconds. It must be long enough for the receiving stations' squelch to open."
@@ -2530,8 +2561,8 @@
     "Reads the GNSS receiver at every transmission instead of using the fixed position, which stays as the fallback when there is no fix."
 /** Contextual help for the "TX time-slot (ms)" option. */
 #define TR_H_F_TX_TIME_SLOT_MS                                                                                                                                 \
-    "Quiet time the modem waits after each transmission before it may key up again, in milliseconds. It is added to the fixed 100 ms CSMA slot the "           \
-    "persistence is rolled on; 0 removes the wait entirely."
+    "Quiet time the modem waits after each transmission before it may key up again, in milliseconds. It comes before the CSMA slots the persistence is "       \
+    "rolled on; 0 removes the wait entirely."
 /** Contextual help for the "Read-only username" option. */
 #define TR_H_SYS_RO_USERNAME                                                                                                                                   \
     "Login name of the account that may look at the station but not change it. Leave it blank and no such account exists; it can never be the administrator "  \

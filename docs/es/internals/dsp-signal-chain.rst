@@ -22,8 +22,10 @@ La cadena, etapa por etapa
    * - SAR-ADC1 continuo/DMA, tramas de conversión de 128 muestras
      - **76 800 Hz**
      - ISR del controlador en núcleo 0
-   * - ingesta: des-intercambio de pares, eliminación de offset DC, medición RMS
-       de banda ancha
+   * - ingesta: des-intercambio de pares, supresor de impulsos
+       (``impulse_blanker.h``: mediana de cinco, picos reemplazados por
+       interpolación, retardo de dos muestras), eliminación de offset DC,
+       medición RMS de banda ancha
      - 76 800 Hz
      - ``afsk.c``
    * - FIR de diezmado (48 coeficientes, ratio **8:1**), pasa-altos de
@@ -66,6 +68,83 @@ esos bytes son la cola de la trama recibida anteriormente, que si no se
 convertirían en indicativos de repetidora verosímiles dentro de una
 decodificación por lo demás válida.
 
+Qué garantiza el codificador de tramas
+======================================
+
+En transmisión, ``Ax25GetTxBit()`` aplica el bit stuffing a la trama y a su FCS
+como un único campo HDLC continuo: tras cada racha de cinco bits en 1 se inserta
+un 0, y el contador de la racha atraviesa el límite entre el último byte de datos
+y la FCS. Cuando una racha de cinco 1 termina justo en el último bit de la FCS,
+el 0 de relleno se envía igual, *antes* del flag de cierre. Si faltara, el
+receptor tomaría el 0 inicial del flag como el bit de relleno y el flag de cierre
+se completaría con solo seis bits de datos desde el último límite de byte en vez
+de siete. El decodificador propio no cuenta esos bits, pero otros más estrictos
+sí — ``hdlc_rec.c`` de Direwolf descarta esa trama — y con contenido aleatorio el
+caso se da en alrededor de una trama de cada sesenta. Los bloques FX.25 no se ven
+afectados: ``writeFx25Frame()`` rellena la FCS por su cuenta antes de la
+codificación Reed–Solomon.
+
+El campo de direcciones termina siempre en la última dirección en uso.
+``ax25_encode()`` y ``hdlcFrame()`` ponen el bit de fin de dirección (bit 0 del
+octeto SSID) en esa dirección y lo borran en todas las demás, incluido el caso
+completo de destino, origen y ocho digipetidores, en el que no queda ninguna
+ranura vacía detrás de la última. Una trama sin ese bit la rechazan Direwolf y
+los TNC KISS, y el receptor propio tomaría el byte de control como el final del
+campo de direcciones; como el digipetidor vuelve a codificar desde texto TNC2
+cada trama que repite, una trama legal de ocho digipetidores sale tan legal como
+entró.
+
+Cada trama se cierra con una bandera seguida de la cola de TX
+(``Ax25TxTail()``, 20 ms por defecto, redondeada hacia arriba a banderas
+enteras), y solo entonces la ISR libera el PTT. La desactivación publica su
+estado en un orden fijo - desmontaje pendiente, luego transmisor inactivo y PTT
+liberado, luego la etapa de activación de vuelta a reposo - y
+``Ax25TransmitCheck()`` no activa la trama siguiente mientras el modulador
+funcione o el desmontaje siga pendiente. Así una nueva activación nunca puede
+empezar dentro de la desactivación anterior, lo que en dúplex completo (sin
+tiempo de silencio) dejaría el transmisor bloqueado hasta reiniciar.
+
+``Ax25GetTxBit()`` corre en la ISR del temporizador del DAC, que es segura
+frente a la caché (``CONFIG_GPTIMER_ISR_CACHE_SAFE``) y por eso sigue corriendo
+mientras una escritura de LittleFS o una actualización OTA tienen la caché de la
+flash deshabilitada. Todo lo que esa ISR lee está en IRAM o DRAM. En particular
+nunca toca ``Fx25ModeList``, la tabla de modos FX.25 en flash:
+``writeFx25Frame()`` copia la etiqueta de correlación, ``K`` y ``T`` del modo
+elegido en el propio descriptor de la trama, en contexto de tarea, y la ISR
+envía la etiqueta desde esa copia. La misma regla cubre el resto de la cadena de
+llamadas (``MODEM_BAUDRATE_TIMER_HANDLER()``, ``txRetireFrame()``,
+``ModemTransmitStop()``, ``setTransmit()``, ``setPtt()``, ``LED_Status2()``),
+cuyas funciones son ``IRAM_ATTR`` y cuyas tablas y constantes (``sin_table``, el
+número de pin del PTT) son ``DRAM_ATTR``.
+
+Esto lo fija un test de regresión en el host,
+``components/esp32idf_radioamateur_modem/test/host/``. Compila los fuentes reales
+``ax25.c``, ``crc_ccit.c`` y los de FX.25 contra pequeñas cabeceras sustitutas,
+con AddressSanitizer y UndefinedBehaviorSanitizer, y envía 20 000 tramas UI
+aleatorias (30–180 bytes) por ``Ax25WriteTxFrame()`` / ``Ax25TransmitCheck()`` /
+``Ax25GetTxBit()``. Cada transmisión se compara bit a bit con un codificador HDLC
+de referencia y se entrega tanto al receptor propio como a un receptor que sigue
+las reglas de Direwolf; una segunda pasada envía 2 000 tramas como bloques FX.25
+por el receptor propio, con las páginas que contienen ``Fx25ModeList`` sin
+mapear mientras se sacan los bits, así que cualquier lectura de la tabla desde
+la ruta de bits de transmisión falla igual que con la caché deshabilitada. Una
+tercera pasada arma tramas con 0 a 8 digipetidores desde texto TNC2 y verifica
+el bit de fin de dirección, ``ax25_decode()`` y una transmisión completa por el
+receptor propio; una cuarta corre en semidúplex y verifica que una ranura de
+tiempo 0 transmite cada trama de inmediato mientras que una distinta de cero
+retiene cada trama al menos ese tiempo; una quinta verifica que cada longitud de
+cola da exactamente una bandera de cierre más las banderas de la cola, y que una
+trama encolada no se activa mientras el modulador sigue funcionando o su
+desmontaje sigue pendiente. La corrida informa además cuántas tramas
+terminaron su FCS en cinco 1 (unos cientos), así que un PASS siempre cubre el
+caso.
+
+.. code-block:: bash
+
+   cd components/esp32idf_radioamateur_modem/test/host
+   make              # semilla por defecto
+   make SEED=0x2a    # cualquier otra semilla
+
 El ajuste de recepción
 ======================
 
@@ -100,15 +179,20 @@ procesa con una cadena a medio construir.
    correlador de marca: el correlador dura un símbolo, así que su respuesta es
    lo bastante ancha como para que el otro tono se cuele, y sólo un filtro
    previo lo quita. Por eso el juego por omisión ``MODEM_RX_EQ_MULTISLICE``
-   combina dos prefiltros, inclinados hacia los dos extremos del rango (+5 y
-   −9 dB con audio plano, +9 y −4 dB con audio de altavoz), con cuatro
-   comparadores cada uno. Las tablas de ``modem.c`` contienen la compensación
+   usa tres prefiltros, cada uno inclinado hacia el centro de su parte del rango
+   (+6, −5 y −14 dB con audio plano, +13, +2 y −7 dB con audio de altavoz), con
+   tres, tres y dos comparadores; mantener cada peso a no más de unos 4 dB de
+   la unidad importa con señales débiles, donde un peso alejado cuesta
+   sensibilidad. Las tablas de ``modem.c`` contienen la compensación
    con la que debe quedar cada comparador — inclinación del prefiltro más peso
    del comparador — y cada peso se calcula a partir de la inclinación que su
    prefiltro alcanzó de verdad, así que los ocho demoduladores avanzan en pasos
    de 3,5 dB de +9 a −15,5 dB (plano) o de +16 a −8,5 dB (altavoz) sea cual sea
    la longitud del prefiltro. ``ModemLogConfig()`` escribe el resultado cuando
-   la tarea de recepción vuelve a correr. Los juegos de filtros dan a cada
+   la tarea de recepción vuelve a correr. ``MODEM_RX_EQ_MULTISLICE2`` dispone los
+   mismos ocho comparadores sobre dos prefiltros, cuatro cada uno (+5/−9 dB
+   plano, +9/−4 dB altavoz), para comparar las dos disposiciones en una
+   estación real. Los juegos de filtros dan a cada
    demodulador su propio prefiltro y un comparador sin peso, y el juego clásico
    conserva las tablas fijas de 8 coeficientes.
 
@@ -335,7 +419,7 @@ Los archivos fuente del módem
    * - ``src/modem.c`` (~1070 lín)
      - diseño de prefiltros y juegos de demoduladores, correladores, DPLL,
        tablas de tonos, DCD, estimación del desbalance, calibración
-   * - ``src/ax25.c`` (~1910 lín)
+   * - ``src/ax25.c`` (~1940 lín)
      - encuadrador HDLC, NRZI, bit-stuffing, supresión de duplicados,
        reparación de bits, códec AX.25, cola de TX
    * - ``src/esp32idf_radioamateur_modem.c`` (~590 lín)

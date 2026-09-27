@@ -141,9 +141,15 @@ typedef enum {
                                  station's measured transmit airtime over the rolling duty-cycle window has reached the configured ceiling
                                  (g_config.duty_cycle_en/duty_cycle_pct). Message traffic and digipeat repeats are exempt and always transmit; the deferred
                                  frame is simply re-offered on its own next scheduled attempt, so this is a hold-back rather than a permanent loss. */
+    DROP_TX_SELF_TEST,        /**< RF TX refused because the LOOP TEST owns the transmitter: while it runs, the PTT line is inhibited and the modem is in
+                                 full duplex, so no other producer's frame may reach the transmit ring. Every such caller re-offers its traffic on its
+                                 own schedule (periodic reports) or retry (messages). */
+    DROP_RX_QUEUE_FULL,       /**< Received RF frame discarded before dispatch because the application's receive queue was full: the task that
+                                 digipeats, gates and parses received frames had fallen that many frames behind the modem. */
     ERR_MODEM_SEND_FAIL,      /**< modem_send_tnc2() itself returned an error transmitting an RF frame. */
-    ERR_AX25_DECODE,          /**< RX frame too short or with an address field running past the frame end: a malformed/corrupted reception, not a
-                                 well-formed non-APRS frame (see ERR_AX25_NOT_APRS for that case). */
+    ERR_AX25_DECODE,          /**< RX frame too short, with an address field running past the frame end, or with an address that does not hold a
+                                 legal callsign: a malformed/corrupted reception, not a well-formed non-APRS frame (see ERR_AX25_NOT_APRS for that
+                                 case). */
     ERR_AX25_NOT_APRS,        /**< RX frame decoded as a well-formed AX.25 frame but is not APRS: Control field not UI, or UI with a PID other than
                                  "no layer 3". Expected, benign traffic on a channel shared with legacy connected-mode packet stations - distinguished
                                  from ERR_AX25_DECODE so the dashboard can tell "channel has non-APRS traffic on it" apart from "my decoder is broken". */
@@ -165,7 +171,7 @@ typedef enum {
  * One instance is kept inside the component and is only ever read out as a
  * whole, through igate_get_stats(), which returns a copy by value. Working from
  * that copy is what keeps a display self-consistent: the counters are advanced
- * from the modem RX task and the APRS-IS socket task, so a caller that re-read
+ * from the radio receive task and the APRS-IS socket task, so a caller that re-read
  * the live figures between uses could pair a receive count with a transmit
  * count taken a frame later. The copy is a plain structure assignment rather
  * than a locked read, so it is a stable working set for one pass over the

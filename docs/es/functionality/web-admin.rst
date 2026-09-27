@@ -387,7 +387,11 @@ Las páginas
        también se detiene sola cuando nadie la lee durante diez segundos. No
        se escribe nada en la flash ni se graba nada: solo se muestra lo que
        llega mientras la ventana está abierta. Líneas en vivo por
-       ``/logs/read``, consultado cada segundo.
+       ``/logs/read``, consultado cada segundo. El botón queda deshabilitado
+       mientras dura una solicitud de *Iniciar* y una línea de estado junto a
+       él informa si la estación no pudo empezar a capturar - la reserva de
+       memoria de la ventana puede perder frente a la presión de memoria en
+       otra parte de la estación - o si no se pudo alcanzar la estación.
    * - **Bulletins**
      - Hasta cinco boletines (identificador y grupo de destinatario, texto,
        RF/INET, intervalo inicial, rampa de decaimiento, caducidad).
@@ -417,8 +421,9 @@ Las páginas
    * - **Radiomódem**
      - FX.25 en recepción; habilitar módem de audio, modulación (300 /
        1200 Bell202 / 1200 V.23 / 9600 G3RUH), entrada de audio plana / de
-       discriminador, ms de preámbulo, ms de intervalo de tiempo TX, buffers de
-       TX, retención extra de PTT liberado, persistencia CSMA y el limitador de
+       discriminador, ms de preámbulo, ms de cola de TX, ms de intervalo de tiempo TX, buffers de
+       TX, retención extra de PTT liberado, persistencia CSMA, ranura de tiempo
+       CSMA, espera máxima con canal ocupado y el limitador de
        ciclo de trabajo a largo plazo (habilitación más porcentaje de techo);
        además de un conjunto *Interfaz de audio* (polarización interna de la
        entrada del ADC, aviso de audio fuera de rango, amplitud de salida de
@@ -487,10 +492,11 @@ Las estadísticas vienen de ``aprs_service_get_stats()``, rastreadas de forma
        buffers*, para que el panel se lea como la línea "n/n pendientes" de la
        consola.
    * - ``csma_busy_forced`` / ``csma_persist_forced``
-     - Cuántas veces el piso anti-inanición de ocho ranuras forzó una
-       transmisión, separando si alguna ranura vio el canal ocupado o si todas
-       lo encontraron libre. Se muestra como *CSMA FORZADO (OCUP./PERSIST.)*.
-       Son transmisiones, no descartes.
+     - Cuántas veces se transmitió una trama de todos modos: sobre un canal
+       todavía ocupado tras la *Espera máx. con canal ocupado*, o tras ocho
+       sorteos de persistencia fallidos consecutivos con el canal libre. Se
+       muestra como *CSMA FORZADO (OCUP./PERSIST.)*. Son transmisiones, no
+       descartes.
    * - ``tx_duty_cycle_pct`` / ``duty_cycle_limit_pct``
      - Ciclo de trabajo de transmisión medido sobre la ventana deslizante de 10
        minutos frente al techo configurado, como *CICLO DE TRABAJO TX*. El

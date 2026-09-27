@@ -326,6 +326,33 @@ current baud rate. At 1200 Bd, 8 bits take about 6.7 ms, so 300 ms is roughly
    being counted as an error anywhere you can see it. If you are being
    digipeated inconsistently, try raising this before anything else.
 
+TX tail (ms)
+------------
+
+**What it is.** AX.25 *TXTail*: how long the transmitter stays keyed after the
+closing flag of a frame, sending further flag bytes, before PTT is released.
+The radio's audio chain - pre-emphasis, filters and, on many handhelds such as
+the UV-5R, a transmit-to-receive changeover that mutes the audio a few
+milliseconds before the carrier drops - delays or clips the end of what the
+modem sends. Without a tail the closing flag or the last FCS bits can be lost on
+the air even though the modem clocked them out, and the frame is then dropped by
+every receiver. The loop test cannot show this: its wire has no radio in it.
+
+**Range 0–500 ms, default 20 ms.**
+
+``Ax25TxTail()`` converts milliseconds to a flag-byte count against the current
+baud rate, rounding up, so any non-zero value sends at least one flag. 20 ms is
+three flags at 1200 Bd.
+
+**How to choose.**
+
+* 20–30 ms suits most transceivers.
+* Raise it to 50–100 ms if distant stations hear your frames but decode only
+  some of them and a longer preamble did not help, or through a repeater whose
+  audio path adds delay.
+* 0 releases PTT on the last bit of the closing flag. Use it only on a radio
+  whose audio path is known to add no delay.
+
 TX time-slot (ms)
 -----------------
 
@@ -336,15 +363,16 @@ start-up) before it will consider keying up again. When a non-zero value is
 set, a random 100–1000 ms jitter is added to the first deadline, so two
 identically configured stations that come up together do not stay in lockstep.
 
-**Range 0–10000 ms, default 2000 ms.** Setting it to 0 clears the deadline
-entirely: the modem will transmit as soon as the channel is heard clear and the
+**Range 0–10000 ms, default 2000 ms.** Setting it to 0 removes the quiet time
+entirely, for the pending deadline and for every later frame, digipeated ones
+included: the modem will transmit as soon as the channel is heard clear and the
 persistence roll succeeds.
 
 .. note::
 
    The interval between persistence rolls — the classic AX.25 *SlotTime* — is
-   a fixed 100 ms inside the modem and is not exposed on this page. This field
-   is the quiet time on top of it.
+   a separate field, *CSMA slot time*, described below. This field is the
+   quiet time that comes before the first of those slots.
 
 **Examples.**
 
@@ -552,10 +580,13 @@ those key-ups apart in time without any coordination between stations.
    * - 1
      - ~0.4 %. The station will wait a very long time for each transmission.
 
-**Anti-starvation.** The scheduler does not let a frame wait forever: after
-eight consecutive slots lost to either a busy channel or a failed roll, it
-forces the transmission anyway. So even a very low persistence has a bounded
-worst-case delay rather than an unbounded one.
+**Anti-starvation.** A failed roll on a clear channel says nothing about the
+channel, so the scheduler does not let it hold a frame forever: after eight
+consecutive clear slots that all missed the roll, it transmits anyway. So even a
+very low persistence has a bounded worst-case delay rather than an unbounded
+one. A busy slot restarts the count. Waiting out a busy channel is a different
+matter — that is what CSMA is for — and is bounded separately by *Busy channel
+max wait*, below.
 
 .. warning::
 
@@ -571,6 +602,56 @@ worst-case delay rather than an unbounded one.
    answer is more preamble, better audio levels or a better antenna — not a
    higher ``p``.
 
+CSMA slot time (ms)
+-------------------
+
+**What it is.** The standard AX.25/KISS *SlotTime*: the interval between one
+persistence roll and the next on a clear channel, and between one check of a
+busy channel and the next. It starts counting once the quiet time set by
+*TX time-slot* has elapsed.
+
+**Range 10–2550 ms, default 100 ms.** The range is what a KISS SlotTime byte
+can express. With the default persistence of 63, a clear channel is taken on
+average after about four slots; a longer slot spreads contending stations
+further apart at the cost of latency on every frame.
+
+**Examples.**
+
+* Any shared 1200 Bd APRS channel → keep **100 ms**. Every other TNC on the
+  channel is almost certainly using the same value.
+* Dedicated 9600 Bd link where you are the only transmitter → **10 ms**
+  together with persistence 255.
+
+Busy channel max wait (s, 0 = unlimited)
+----------------------------------------
+
+**What it is.** How long a queued frame waits for a busy channel to clear
+before it is transmitted on top of the signal anyway, counted from the first
+slot that found the carrier detect asserted. **0** waits for as long as the
+channel stays busy, which is what a standard KISS TNC does.
+
+**Range 0–600 s, default 30 s.** An APRS packet together with all of its
+digipeats keeps a channel busy for a few seconds, so the default only fires
+when the channel has been occupied far longer than normal use explains — a
+stuck carrier, a continuous voice or data signal on the frequency. Each time it
+fires the first figure of *CSMA FORCED (BUSY/PERSIST)* on the dashboard goes up
+and a warning with the time waited is logged.
+
+**Examples.**
+
+* Home IGate or digipeater on the national APRS frequency → keep **30 s**.
+* Shared frequency with long voice or data transmissions that you must never
+  talk over → **0**. A frame then waits for as long as necessary, and a
+  permanent carrier holds the transmit queue until it clears.
+* Station that must get a message out even through interference → **10 s**.
+
+.. note::
+
+   The carrier detect is cleared whenever the receiver stops demodulating: when
+   the *Receive gate* closes and, in half duplex, after each of this station's
+   own transmissions. So a channel that has gone quiet is always seen as clear,
+   and this limit only ever measures real signal on the frequency.
+
 Receive demodulator
 ===================
 
@@ -580,7 +661,12 @@ field is applied live on *Save*. When anything here other than *Bit repair*,
 the modulation or *Flat / discriminator audio input* changes, the demodulators
 are rebuilt while the receive task is held — a frame arriving at that moment is
 lost — and the receive statistics shown by **RX LEVEL** restart; saving the page
-with those settings unchanged leaves reception untouched.
+with those settings unchanged leaves reception untouched. A rebuild also resets
+the transmit queue: a frame already on the air is allowed to finish first (up
+to six seconds, then it is cut), frames still waiting to go out are discarded
+and the log reports how many, and nothing new is queued or received until the
+rebuild is done. The LOOP TEST rebuilds twice, switching to full duplex and
+back.
 
 Demodulator set
 ---------------
@@ -623,6 +709,10 @@ prefilters with different tilts covers it together.
      - 0, +3, +6 dB
    * - Multi-slicer (default)
      - 8
+     - prefilters +6, −5, −14 dB; compensation +9 … −15.5 dB
+     - prefilters +13, +2, −7 dB; compensation +16 … −8.5 dB
+   * - Multi-slicer, 2 filters (comparison)
+     - 8
      - prefilters +5, −9 dB; compensation +9 … −15.5 dB
      - prefilters +9, −4 dB; compensation +16 … −8.5 dB
    * - Custom
@@ -630,23 +720,33 @@ prefilters with different tilts covers it together.
      - *Custom: tilt* fields
      - *Custom: tilt* fields
 
-**How to choose.** Keep **Multi-slicer**. It pairs two prefilters, tilted
-towards the two ends of the twist range, with four decision thresholds each.
+**How to choose.** Keep **Multi-slicer**. It runs three prefilters, each
+tilted to the centre of its own part of the twist range, with three, three and
+two decision thresholds.
 Each threshold (slicer weight) is computed from the tilt its prefilter really
 reached, so the eight demodulators together compensate twist in even 3.5 dB
 steps — the *compensation* column above, prefilter tilt plus slicer weight —
 whatever the *Band-pass length*. The tilted prefilters keep a loud tone from
-leaking into the other tone's correlator, which no threshold can undo. It costs
-less CPU than the three-filter set while running eight HDLC decoders.
+leaking into the other tone's correlator, which no threshold can undo, and keep
+every threshold within about 4 dB of neutral, beyond which a threshold loses
+sensitivity on weak signals. It costs about the same CPU as the three-filter
+set while running eight HDLC decoders.
 
 In a host simulation of a noisy FM channel with the twist applied by the
 receiver's audio stage, the speaker set decodes nearly every frame from
-−14 dB (space tone below mark) to +6 dB, and the flat set does the same from
+−16 dB (space tone below mark) to +10 dB, and the flat set does the same from
 −10 to +12 dB. A
 speaker output with its own audio chain reaches −15 dB in practice. The
 *RX LEVEL* statistics show what each demodulator contributes on your own
 channel, and the log lists the effective compensation of each one whenever
 the set is rebuilt.
+
+**Multi-slicer, 2 filters** runs the same eight slicers over the same ranges on
+two prefilters, four slicers each. Its outer slicers carry weights of up to
+about ±6 dB, so in simulation it trails the three-prefilter set on weak
+signals. It is there to compare the two layouts on your own station without
+reflashing — switch, save, and compare the *RX LEVEL* statistics — and it is
+what ``audio_test/rx_diag.py`` switches between on the device.
 
 **Custom: demodulators** and **Custom: tilt, demodulator 1–3 (dB)** apply only
 to the *Custom* preset: the number of demodulators (1–3) and the tilt of each
@@ -683,6 +783,10 @@ hold it. The demodulators are fed while that level has stayed above the
 threshold for a few 20 ms blocks and until it falls below half of it. The blocks received while the gate was deciding to open
 are kept and demodulated first, so the start of a transmission still reaches
 the demodulators. Range 0–50 mV, default 10 mV.
+
+When the gate closes the carrier detect of every demodulator is cleared, since
+no further audio reaches them to let it decay; a false lock taken on the noise
+at the end of a transmission therefore never outlives the gate.
 
 **How to choose.** With a squelch-independent data or discriminator port the
 input never falls silent, so the gate only costs a decision; set **0** to feed
@@ -738,6 +842,26 @@ wrongly corrected frames, and a wrongly corrected frame is still delivered —
 an IGate forwards it to APRS-IS and a digipeater retransmits it. Enable it on
 a receive-only monitor, or to measure what it would add; the *RX LEVEL*
 statistics count repaired frames separately.
+
+Impulse blanker
+---------------
+
+**What it is.** A filter on the raw ADC samples of the AFSK profiles, ahead of
+everything else in the receive chain. While its Wi-Fi radio is active the
+ESP32's ADC picks up short glitches, in bursts that repeat with the Wi-Fi
+beacon interval (every 102.4 ms), whether the board runs as an access point or
+as a station. Each glitch lasts one or two conversions, but the decimation
+filter spreads it over the whole tone band, where it is strong enough to
+corrupt the bits under it; with every packet catching several bursts, weak and
+medium signals would be lost almost entirely without it. The blanker compares each sample
+with the median of the two samples on either side of it. At 76.8 kHz real
+audio moves very little between conversions, so a sample far from that median
+is a glitch; it is replaced by an interpolation from the clean neighbours.
+
+**How to choose.** On by default; leave it on. It replaces nothing on a clean
+input, and the **RX LEVEL** statistics count the samples it has replaced, so
+its work is visible. Turning it off is only useful to measure what it
+recovers.
 
 Audio interface
 ===============
@@ -948,16 +1072,31 @@ LOOP TEST
 ---------
 
 **What it does.** Builds a small APRS status frame carrying a random one-time
-token (``SELFTST>APLT1T:>LOOPTEST <token>``), diverts decoded frames to its own
+token and this station's own callsign as the source
+(``<callsign>>APLT1T:>LOOPTEST <token>``), diverts decoded frames to its own
 private hook so the test frame is never digipeated or uplinked to APRS-IS,
-switches the modem to full duplex for the duration, transmits it, and waits up
-to 4 seconds for the ADC / demodulator / decoder chain to hand the same frame
-back. The real hook and the configured duplex mode are restored whatever the
-outcome.
+switches the modem to full duplex for the duration, modulates the frame onto
+the DAC output, and waits up to 4 seconds for the ADC / demodulator / decoder
+chain to hand the same frame back. The real hook and the configured duplex mode
+are restored whatever the outcome.
 
-Before keying up, it waits up to 3 seconds for the channel to go quiet, so a
-real station on the air does not cause a spurious failure. If the channel never
-clears, it transmits anyway rather than hanging.
+The source is the IGate callsign and SSID, or the digipeater's when the IGate
+callsign is not set. With neither set (``NOCALL`` or empty) the test refuses to
+run and says so.
+
+**The transmitter is never keyed.** For the whole run the PTT line is held at
+its idle level: the frame is modulated and clocked out exactly as usual, but a
+transceiver left connected to the PTT output stays in receive. The test also
+takes the transmitter for itself: anything queued before it starts is first
+allowed to go out normally, in half duplex and with PTT (the test gives up with
+a message if that takes more than 5 seconds), and while it runs every other
+transmission — beacons, messages, IGate relays — is refused and counted under
+*RF TX held off by LOOP TEST* in the dashboard's *Drop Breakdown*. Periodic
+reports go out again on their next interval and messages on their next retry.
+
+Before sending, it waits up to 3 seconds for the channel to go quiet, so a
+real station heard on the audio input does not cause a spurious failure. If the
+channel never clears, it sends anyway rather than hanging.
 
 **What it requires.** A physical **audio loopback**: the DAC pin wired to the
 ADC pin (through the interface board's own attenuators, or directly), with a
@@ -969,9 +1108,11 @@ it is a bench test of the board, not of the radio.
 
    Full duplex is forced during the test because a wire loop means the modem
    permanently hears its own carrier, and CSMA would therefore never find a
-   clear channel. This is a deliberate, temporary override — but it does mean
-   the test transmits without regard to what is on the channel. Do not run it
-   with an antenna connected on a busy frequency.
+   clear channel. This is a deliberate, temporary override, and it is why PTT
+   is inhibited and every other transmission is held off for the duration.
+   The audio still appears on the DAC output, so a transceiver that keys
+   itself from the audio line (VOX) would still transmit it: disable VOX, or
+   disconnect the radio, before running the test.
 
 **Reading a PASS.** A pass reports the RX level in mV RMS, the raw ADC swing
 with the converter's rails (0/4095) for reference, and the AGC's peak gain.
@@ -1042,9 +1183,9 @@ against.
        converter's limits — lower the receive level. **no signal**: no
        demodulator detected a carrier during the window, so there is nothing
        to judge; press again while a packet arrives. **low** (orange): a
-       carrier was there but the tones peaked below 100 mV RMS, too close to
+       carrier was there but the tones peaked below 20 mV RMS, too close to
        the ESP32 ADC's own noise — raise the receive level. **good** (green):
-       tones at or above 100 mV RMS with no over-range.
+       tones at or above 20 mV RMS with no over-range.
    * - ``tones``
      - Mean and peak RMS level of the tone band, 900–2600 Hz, at the ADC pin.
        This is what the demodulators actually work with, and the figure to
@@ -1099,13 +1240,25 @@ demodulator set was last changed:
        receive task is not keeping up (CPU clock below 240 MHz, or another
        task starving it). Every loss is also reported on the console, at most
        once a minute, as ``RX samples lost``.
+   * - ``DSP``
+     - Load of the receive DSP: the time the receive task spends on each
+       20 ms block of audio, as a share of those 20 ms. Mean and peak over
+       the measurement window, and the highest single block since the
+       statistics were last reset. It includes the time other tasks on the
+       same core take while a block is being processed, so it is the figure
+       that decides whether the receiver keeps up: a peak near 100 % means
+       samples are about to be lost.
+   * - ``glitches removed``
+     - Raw ADC samples the *Impulse blanker* has replaced since the
+       statistics were last reset. It rises in steps while the Wi-Fi radio
+       is active and stays near zero on a clean input.
 
 **Typical procedure.** Unsquelch the radio, press **RX LEVEL**, and check that
 the DC offset is centred. Then press it while packets arrive and adjust the
 radio's volume and the receive trimmer until the verdict reads **good** — tones
-of at least 100 mV RMS — without ever reading **clipping**. With a speaker
-output this usually means a fairly high volume setting: its tones sit well
-below its overall level. Then squelch normally, wait
+of at least 20 mV RMS — without ever reading **clipping**. With a speaker
+output, judge by the ``tones`` figure rather than the wideband one: its tones
+sit well below its overall level. Then squelch normally, wait
 for real traffic, and confirm ``DCD yes`` appears and the dashboard shows
 decodes.
 
@@ -1119,7 +1272,8 @@ TX TEST
 -------
 
 **What it does.** Keys the transmitter, modulates a short APRS status frame
-(``SELFTST>APLT1T:>TXTEST``) and unkeys, waiting for nothing to come back. It
+identified with this station's callsign (``<callsign>>APLT1T:>TXTEST``, the
+same source the LOOP TEST uses) and unkeys, waiting for nothing to come back. It
 is the transmit-side counterpart of RX LEVEL: what you set the transmit level
 against when a transceiver, rather than a wire loop, is connected.
 
@@ -1141,8 +1295,9 @@ transmit level trimmer for **2.5–3.5 kHz**.
    while adjusting a trimmer — use a dummy load for the adjustment and one
    on-air burst to confirm.
 
-If it refuses, the message says why: the modem is not enabled, another
-diagnostic is running, or the channel-access path discarded the frame — which
+If it refuses, the message says why: the modem is not enabled, no callsign is
+set, another diagnostic is running, or the channel-access path discarded the
+frame — which
 in practice means a duty-cycle ceiling that is already reached, or a full
 transmit queue. The event log names which.
 
@@ -1320,6 +1475,14 @@ Field reference
      - 1–255
      - 63
      - Live
+   * - CSMA slot time
+     - 10–2550 ms
+     - 100 ms
+     - Live
+   * - Busy channel max wait
+     - 0–600 s (0 = unlimited)
+     - 30 s
+     - Live
    * - ADC input self-bias
      - on / off
      - off
@@ -1341,7 +1504,7 @@ Field reference
      - 0 (off)
      - Live
    * - Demodulator set
-     - Legacy / 1 / 2 / 3 filters / Multi-slicer / Custom
+     - Legacy / 1 / 2 / 3 filters / Multi-slicer / Multi-slicer, 2 filters / Custom
      - Multi-slicer
      - Live
    * - Custom: demodulators
@@ -1379,6 +1542,10 @@ Field reference
    * - Bit repair
      - off / one symbol / one symbol or one bit
      - off
+     - Live
+   * - Impulse blanker
+     - on / off
+     - on
      - Live
 
 Every numeric field is clamped in three places against the same constants in
@@ -1425,9 +1592,6 @@ nothing.
    * - Duplicate suppression
      - One switch and one pair of controls for the whole firmware, on the
        *IGate* page.
-   * - CSMA slot interval
-     - Fixed at 100 ms inside the modem. *TX time-slot* on this page is the
-       quiet time, which is the parameter worth adjusting.
 
 Troubleshooting
 ===============

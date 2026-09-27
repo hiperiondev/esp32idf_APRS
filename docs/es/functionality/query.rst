@@ -85,7 +85,7 @@ soporte de punto flotante, ``aprs_coord_format()``, el constructor de path y lue
 toda la cadena ``aprs_service_send_tnc2()`` → ``modem_send_tnc2()`` →
 ``ax25_encode()``, apilando en cada nivel su propio buffer de 300–450 bytes —
 justamente el árbol de llamadas para el que ``beacon_scheduler.c`` dimensiona su
-stack de 14336 bytes. Las consultas, en cambio, llegan por ``modem_svc`` (RF) e
+stack de 14336 bytes. Las consultas, en cambio, llegan por ``aprs_rx`` (RF) e
 ``igate_task`` (APRS-IS), cuyos stacks son una fracción de aquel. Por eso el
 trabajo corre en la tarea cuyo presupuesto lo cubre y no en la que haya recibido
 la pregunta, y los constructores pueden crecer sin obligar a revisar de nuevo

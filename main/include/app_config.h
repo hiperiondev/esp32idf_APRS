@@ -1108,23 +1108,35 @@ typedef struct {
     uint8_t wx_sensor_ch[WX_SENSOR_NUM];  /**< Per-field source sensor channel, indexed by ::wx_field_id_t (::SENSOR_LOCAL_CH_NONE = "(none)"); persisted by
                                              driver name. */
 
-    bool audio_modem_en;     /**< Enable the audio ADC/DAC AFSK modem. */
-    bool audio_lpf;          /**< Flat (discriminator) audio input. Set when the receive audio comes from a data/discriminator jack, which is unfiltered and
-                                carries no de-emphasis, and cleared when it comes from a speaker or headphone output, which is already de-emphasized. Selects
-                                the prefilter tilt and slicer weight tables of the demodulator presets (see modem_rx_eq_preset_t) and, for the legacy
-                                set, which fixed prefilter demodulator 0 runs. Stored under the JSON key "audioLPF". */
-    uint16_t preamble;       /**< TXDelay (preamble) length, ms. */
-    uint8_t afsk_modem_type; /**< Audio AFSK modulation (::modem_mode_t: 0=AFSK300, 1=Bell202, 2=V.23, 3=G3RUH); used for both RX and TX. */
-    uint8_t fx25_mode;       /**< FX.25 mode: 0=off, 1=RX only, 2=RX+TX. */
-    uint16_t tx_timeslot;    /**< CSMA quiet time, ms: how long a queued frame waits before channel access begins at all. The interval between the individual
-                                persistence rolls that follow is the fixed AX.25 "SlotTime" the modem keeps internally, not this value. */
-    uint8_t csma_persist;    /**< CSMA/p-persistent channel-access probability (standard AX.25/KISS "Persist"): once the quiet time has elapsed and the
-                                channel is heard clear, the modem transmits immediately with probability csma_persist/256 on every slot and otherwise waits
-                                one more slot time before rolling again. 255 transmits on the first clear slot every time (equivalent to plain
-                                non-persistent CSMA); lower values spread contending stations' key-ups further apart. A run of eight missed rolls transmits
-                                anyway so a frame is never held indefinitely, which at the default of 63 happens on roughly one key-up in ten and is
-                                reported as the second CSMA figure on the dashboard. Web-configurable (Radiomodem page, Audio/AFSK section), applied live via
-                                aprs_service_apply_modem_config(). Range 1..255. */
+    bool audio_modem_en;      /**< Enable the audio ADC/DAC AFSK modem. */
+    bool audio_lpf;           /**< Flat (discriminator) audio input. Set when the receive audio comes from a data/discriminator jack, which is unfiltered and
+                                 carries no de-emphasis, and cleared when it comes from a speaker or headphone output, which is already de-emphasized. Selects
+                                 the prefilter tilt and slicer weight tables of the demodulator presets (see modem_rx_eq_preset_t) and, for the legacy
+                                 set, which fixed prefilter demodulator 0 runs. Stored under the JSON key "audioLPF". */
+    uint16_t preamble;        /**< TXDelay (preamble) length, ms. */
+    uint16_t tx_tail;         /**< TXTail length, ms: how long the transmitter stays keyed, sending flags, after the closing flag of each frame, so the
+                                 radio's audio chain and its switch back to receive do not cut the end of the frame. Web-configurable (Radiomodem page),
+                                 applied live via aprs_service_apply_modem_config(). Range RF_TX_TAIL_MS_MIN..RF_TX_TAIL_MS_MAX (aprs_service.h), default
+                                 RF_TX_TAIL_MS_DEFAULT. Stored under the JSON key "rfTxTail". */
+    uint8_t afsk_modem_type;  /**< Audio AFSK modulation (::modem_mode_t: 0=AFSK300, 1=Bell202, 2=V.23, 3=G3RUH); used for both RX and TX. */
+    uint8_t fx25_mode;        /**< FX.25 mode: 0=off, 1=RX only, 2=RX+TX. */
+    uint16_t tx_timeslot;     /**< CSMA quiet time, ms: how long a queued frame waits before channel access begins at all. The interval between the individual
+                                 persistence rolls that follow is csma_slot_ms, not this value. */
+    uint16_t csma_slot_ms;    /**< CSMA slot time, ms (standard AX.25/KISS "SlotTime"): the interval between persistence rolls on a clear channel and between
+                                 re-checks of a busy one. Web-configurable (Radiomodem page), applied live via aprs_service_apply_modem_config(). Range
+                                 CSMA_SLOT_MS_MIN..CSMA_SLOT_MS_MAX (aprs_service.h), default CSMA_SLOT_MS_DEFAULT. Stored under the JSON key "csmaSlotTime". */
+    uint16_t csma_busy_max_s; /**< Longest time, s, a queued frame waits for a busy channel to clear before it is transmitted anyway, measured from the first
+                                 busy slot; 0 waits for as long as the channel stays busy, as a standard KISS TNC does. A frame sent this way is counted as
+                                 the first CSMA figure on the dashboard. Web-configurable (Radiomodem page), applied live. Range
+                                 CSMA_BUSY_MAX_S_MIN..CSMA_BUSY_MAX_S_MAX (aprs_service.h), default CSMA_BUSY_MAX_S_DEFAULT. Stored under the JSON key
+                                 "csmaBusyMax". */
+    uint8_t csma_persist;     /**< CSMA/p-persistent channel-access probability (standard AX.25/KISS "Persist"): once the quiet time has elapsed and the
+                                 channel is heard clear, the modem transmits immediately with probability csma_persist/256 on every slot and otherwise waits
+                                 one more csma_slot_ms before rolling again. 255 transmits on the first clear slot every time (equivalent to plain
+                                 non-persistent CSMA); lower values spread contending stations' key-ups further apart. Eight consecutive missed rolls on a
+                                 clear channel transmit anyway so a frame is never held indefinitely, which at the default of 63 happens on roughly one
+                                 key-up in ten and is reported as the second CSMA figure on the dashboard. A busy slot restarts that count. Web-configurable
+                                 (Radiomodem page, Audio/AFSK section), applied live via aprs_service_apply_modem_config(). Range 1..255. */
 
     uint8_t rf_tx_buffers; /**< Max frames allowed to sit in the RF TX ring before aprs_service_send_tnc2() starts discarding new packets. Web-configurable and
                               applied live (read on every transmit). Range RF_TX_BUFFERS_MIN..RF_TX_BUFFERS_MAX (aprs_service.h), default 1. */

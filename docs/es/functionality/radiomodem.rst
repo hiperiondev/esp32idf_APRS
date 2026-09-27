@@ -340,6 +340,34 @@ transmite**.
    la trama falla sin contabilizarse como error en ningún sitio visible. Si le
    digipitean de forma inconsistente, pruebe a subir esto antes que nada.
 
+Cola de TX (ms)
+---------------
+
+**Qué es.** El *TXTail* de AX.25: cuánto tiempo sigue activo el transmisor
+después de la bandera de cierre de una trama, enviando más bytes de bandera,
+antes de liberar el PTT. La cadena de audio de la radio - preénfasis, filtros y,
+en muchos portátiles como el UV-5R, una conmutación de transmisión a recepción
+que silencia el audio unos milisegundos antes de que caiga la portadora -
+retrasa o recorta el final de lo que envía el módem. Sin cola, la bandera de
+cierre o los últimos bits del FCS pueden perderse en el aire aunque el módem los
+haya emitido, y entonces todos los receptores descartan la trama. La prueba de
+lazo no puede mostrarlo: en su cable no hay radio.
+
+**Rango 0–500 ms, por defecto 20 ms.**
+
+``Ax25TxTail()`` convierte los milisegundos en una cantidad de bytes de bandera
+según la velocidad actual, redondeando hacia arriba, así que cualquier valor
+distinto de cero envía al menos una bandera. 20 ms son tres banderas a 1200 Bd.
+
+**Cómo elegirlo.**
+
+* 20–30 ms sirve para la mayoría de los transceptores.
+* Súbalo a 50–100 ms si estaciones lejanas oyen sus tramas pero decodifican solo
+  algunas y un preámbulo más largo no ayudó, o a través de un repetidor cuyo
+  camino de audio añade retardo.
+* 0 libera el PTT en el último bit de la bandera de cierre. Úselo solo con una
+  radio cuyo camino de audio se sepa que no añade retardo.
+
 Intervalo de tiempo TX (ms)
 ----------------------------
 
@@ -352,14 +380,15 @@ aleatoria de 100–1000 ms al primer plazo, para que dos estaciones configuradas
 igual que arranquen a la vez no queden sincronizadas.
 
 **Rango 0–10000 ms, por omisión 2000 ms.** Ponerlo a 0 elimina por completo el
-plazo: el módem transmitirá en cuanto oiga el canal libre y la tirada de
-persistencia tenga éxito.
+tiempo de silencio, tanto el plazo pendiente como el de cada trama posterior,
+incluidas las digipetidas: el módem transmitirá en cuanto oiga el canal libre y
+la tirada de persistencia tenga éxito.
 
 .. note::
 
    El intervalo entre tiradas de persistencia — el clásico *SlotTime* de AX.25 —
-   está fijado en 100 ms dentro del módem y no se expone en esta página. Este
-   campo es el tiempo de silencio que se suma a aquél.
+   es un campo aparte, *Ranura de tiempo CSMA*, descrito más abajo. Este campo
+   es el tiempo de silencio que precede a la primera de esas ranuras.
 
 **Ejemplos.**
 
@@ -576,10 +605,13 @@ coordinación entre estaciones.
    * - 1
      - ~0,4 %. La estación esperará muchísimo por cada transmisión.
 
-**Antiinanición.** El planificador no deja que una trama espere para siempre:
-tras ocho ranuras consecutivas perdidas por canal ocupado o por tirada fallida,
-fuerza la transmisión de todos modos. Así, incluso una persistencia muy baja
-tiene un retardo de peor caso acotado en vez de ilimitado.
+**Antiinanición.** Una tirada fallida con el canal libre no dice nada del
+canal, así que el planificador no deja que retenga una trama para siempre: tras
+ocho ranuras libres consecutivas con la tirada fallida, transmite de todos
+modos. Así, incluso una persistencia muy baja tiene un retardo de peor caso
+acotado en vez de ilimitado. Una ranura ocupada reinicia la cuenta. Esperar a
+que se libere un canal ocupado es otra cosa — para eso existe el CSMA — y lo
+acota por separado *Espera máx. con canal ocupado*, más abajo.
 
 .. warning::
 
@@ -596,6 +628,58 @@ tiene un retardo de peor caso acotado en vez de ilimitado.
    respuesta es más preámbulo, mejores niveles de audio o mejor antena, no una
    ``p`` más alta.
 
+Ranura de tiempo CSMA (ms)
+--------------------------
+
+**Qué es.** El *SlotTime* estándar de AX.25/KISS: el intervalo entre una
+tirada de persistencia y la siguiente con el canal libre, y entre una
+comprobación de un canal ocupado y la siguiente. Empieza a contar una vez
+transcurrido el tiempo de silencio fijado en *Intervalo de tiempo TX*.
+
+**Rango 10–2550 ms, por omisión 100 ms.** El rango es lo que puede expresar un
+byte de SlotTime de KISS. Con la persistencia por omisión de 63, un canal libre
+se toma en promedio tras unas cuatro ranuras; una ranura más larga separa más a
+las estaciones que compiten, a costa de latencia en cada trama.
+
+**Ejemplos.**
+
+* Cualquier canal APRS compartido de 1200 Bd → mantenga **100 ms**. Casi con
+  seguridad todos los demás TNC del canal usan el mismo valor.
+* Enlace dedicado de 9600 Bd donde usted es el único transmisor → **10 ms**
+  junto con persistencia 255.
+
+Espera máx. con canal ocupado (s, 0 = sin límite)
+-------------------------------------------------
+
+**Qué es.** Cuánto espera una trama encolada a que se libere un canal ocupado
+antes de transmitirse igualmente por encima de la señal, contado desde la
+primera ranura que encontró la detección de portadora activa. **0** espera
+mientras el canal siga ocupado, que es lo que hace un TNC KISS estándar.
+
+**Rango 0–600 s, por omisión 30 s.** Un paquete APRS junto con todos sus
+digipetidos mantiene el canal ocupado unos pocos segundos, así que el valor por
+omisión sólo actúa cuando el canal lleva ocupado mucho más de lo que explica el
+uso normal: una portadora trabada, una señal continua de voz o datos en la
+frecuencia. Cada vez que actúa sube la primera cifra de *CSMA FORZADO
+(OCUP./PERSIST.)* en el panel y se registra un aviso con el tiempo esperado.
+
+**Ejemplos.**
+
+* IGate o digipetidor doméstico en la frecuencia APRS nacional → mantenga
+  **30 s**.
+* Frecuencia compartida con transmisiones largas de voz o datos sobre las que
+  nunca debe hablar → **0**. Una trama espera entonces lo que haga falta, y una
+  portadora permanente retiene la cola de transmisión hasta que desaparezca.
+* Estación que debe sacar un mensaje incluso a través de interferencia →
+  **10 s**.
+
+.. note::
+
+   La detección de portadora se borra siempre que el receptor deja de
+   demodular: al cerrarse el *Umbral de recepción* y, en half duplex, después
+   de cada transmisión propia. Así un canal que quedó en silencio se ve
+   siempre libre, y este límite sólo mide señal real en la frecuencia.
+
 Demodulador de recepción
 ========================
 
@@ -607,7 +691,11 @@ la *Entrada de audio plana / de discriminador*, los demoduladores se
 reconstruyen con la tarea de recepción detenida — una trama que llegue en ese
 instante se pierde — y las estadísticas de recepción que muestra **NIVEL RX**
 vuelven a cero; guardar la página sin cambiar esos ajustes no toca la
-recepción.
+recepción. La reconstrucción también reinicia la cola de transmisión: una trama
+que ya esté en el aire puede terminar primero (hasta seis segundos; después se
+corta), las tramas que aún esperaban salir se descartan y el registro informa
+cuántas, y no se encola ni se recibe nada nuevo hasta que termina. La PRUEBA DE
+LAZO reconstruye dos veces, al pasar a dúplex completo y al volver.
 
 Juego de demoduladores
 ----------------------
@@ -651,6 +739,10 @@ entre todos.
      - 0, +3, +6 dB
    * - Multicomparador (por omisión)
      - 8
+     - prefiltros +6, −5, −14 dB; compensación +9 … −15,5 dB
+     - prefiltros +13, +2, −7 dB; compensación +16 … −8,5 dB
+   * - Multicomparador, 2 filtros (comparación)
+     - 8
      - prefiltros +5, −9 dB; compensación +9 … −15,5 dB
      - prefiltros +9, −4 dB; compensación +16 … −8,5 dB
    * - Personalizado
@@ -658,24 +750,34 @@ entre todos.
      - campos *Personalizado: inclinación*
      - campos *Personalizado: inclinación*
 
-**Cómo elegir.** Mantenga **Multicomparador**. Combina dos prefiltros,
-inclinados hacia los dos extremos del rango de desbalance, con cuatro umbrales
-de decisión cada uno. Cada umbral (peso del comparador) se calcula a partir de
+**Cómo elegir.** Mantenga **Multicomparador**. Usa tres prefiltros, cada uno
+inclinado hacia el centro de su propia parte del rango de desbalance, con tres,
+tres y dos umbrales de decisión. Cada umbral (peso del comparador) se calcula a partir de
 la inclinación que su prefiltro alcanzó de verdad, así que los ocho
 demoduladores juntos compensan el desbalance en pasos iguales de 3,5 dB — la
 columna de *compensación* de arriba, inclinación del prefiltro más peso del
 comparador — sea cual sea la *Longitud del pasabanda*. Los prefiltros
 inclinados impiden que un tono fuerte se filtre en el correlador del otro
-tono, algo que ningún umbral puede deshacer. Cuesta menos CPU que el juego de
-tres filtros aunque corra ocho decodificadores HDLC.
+tono, algo que ningún umbral puede deshacer, y mantienen cada umbral a no más de
+unos 4 dB del neutro, más allá de lo cual un umbral pierde sensibilidad con
+señales débiles. Cuesta más o menos la misma CPU que el juego de tres filtros
+aunque corra ocho decodificadores HDLC.
 
 En una simulación de un canal FM ruidoso con el desbalance aplicado por la
 etapa de audio del receptor, el juego de altavoz decodifica casi todas las
-tramas de −14 dB (tono de espacio por debajo del de marca) a +6 dB, y el juego
+tramas de −16 dB (tono de espacio por debajo del de marca) a +10 dB, y el juego
 plano hace lo mismo de −10 a +12 dB. Una salida de altavoz con su propia cadena de
 audio llega en la práctica a −15 dB. Las estadísticas de *NIVEL RX* muestran lo
 que aporta cada demodulador en su propio canal, y el registro indica la
 compensación efectiva de cada uno cada vez que se reconstruye el juego.
+
+**Multicomparador, 2 filtros** corre los mismos ocho comparadores sobre los
+mismos rangos con dos prefiltros, cuatro comparadores cada uno. Sus
+comparadores extremos llevan pesos de hasta unos ±6 dB, así que en simulación
+queda por detrás del juego de tres prefiltros con señales débiles. Está para
+comparar las dos disposiciones en su propia estación sin volver a grabar el
+firmware — cambie, guarde y compare las estadísticas de *NIVEL RX* — y es entre
+lo que alterna ``audio_test/rx_diag.py`` en el equipo.
 
 **Personalizado: demoduladores** y **Personalizado: inclinación, demodulador
 1–3 (dB)** sólo se aplican al preajuste *Personalizado*: el número de
@@ -716,6 +818,10 @@ unos cuantos bloques de 20 ms y hasta que cae por debajo de la mitad. Los bloque
 mientras el umbral decidía abrirse se guardan y se demodulan primero, así que el
 comienzo de una transmisión sigue llegando a los demoduladores. Rango 0–50 mV,
 por omisión 10 mV.
+
+Al cerrarse el umbral se borra la detección de portadora de todos los
+demoduladores, porque ya no les llega audio que la deje decaer; un falso
+enganche sobre el ruido del final de una transmisión nunca sobrevive al cierre.
 
 **Cómo elegir.** Con un puerto de datos o de discriminador independiente del
 squelch la entrada nunca queda en silencio, así que el umbral sólo cuesta una
@@ -774,6 +880,27 @@ pequeña proporción de tramas mal corregidas, y una trama mal corregida se
 entrega igualmente: un IGate la reenvía a APRS-IS y un digipetidor la
 retransmite. Actívelo en un monitor sólo de recepción, o para medir lo que
 aportaría; las estadísticas de *NIVEL RX* cuentan aparte las tramas reparadas.
+
+Supresor de impulsos
+--------------------
+
+**Qué es.** Un filtro sobre las muestras crudas del ADC de los perfiles AFSK,
+antes que todo lo demás en la cadena de recepción. Mientras su radio Wi-Fi
+está activa, el ADC del ESP32 capta picos breves, en ráfagas que se repiten
+con el intervalo de balizas Wi-Fi (cada 102,4 ms), tanto si la placa funciona
+como punto de acceso como si funciona como estación. Cada pico dura una o dos
+conversiones, pero el filtro de diezmado lo reparte por toda la banda de tonos,
+donde tiene fuerza suficiente para corromper los bits que caen debajo; como
+cada paquete recibe varias ráfagas, sin él las señales débiles y medias se
+perderían casi por completo. El supresor compara cada muestra con la mediana de las dos
+muestras a cada lado. A 76,8 kHz el audio real apenas cambia entre
+conversiones, así que una muestra lejos de esa mediana es un pico; se reemplaza
+por una interpolación a partir de las vecinas limpias.
+
+**Cómo elegir.** Activado por omisión; déjelo activado. Con una entrada limpia
+no reemplaza nada, y las estadísticas de **NIVEL RX** cuentan las muestras que
+reemplazó, así que su trabajo queda a la vista. Desactivarlo sólo sirve para
+medir lo que recupera.
 
 Interfaz de audio
 =================
@@ -997,16 +1124,33 @@ PRUEBA DE BUCLE
 ---------------
 
 **Qué hace.** Construye una pequeña trama de estado APRS con un testigo
-aleatorio de un solo uso (``SELFTST>APLT1T:>LOOPTEST <testigo>``), desvía las
-tramas decodificadas a un gancho privado propio para que la trama de prueba no
-se digipitee ni se suba nunca a APRS-IS, conmuta el módem a dúplex completo
-mientras dura, la transmite y espera hasta 4 segundos a que la cadena
+aleatorio de un solo uso y el indicativo propio de la estación como origen
+(``<indicativo>>APLT1T:>LOOPTEST <testigo>``), desvía las tramas decodificadas a
+un gancho privado propio para que la trama de prueba no se digipitee ni se suba
+nunca a APRS-IS, conmuta el módem a dúplex completo mientras dura, modula la
+trama en la salida del DAC y espera hasta 4 segundos a que la cadena
 ADC / demodulador / decodificador le devuelva la misma trama. El gancho real y
 el modo dúplex configurado se restauran sea cual sea el resultado.
 
-Antes de activar el PTT espera hasta 3 segundos a que el canal quede en
-silencio, para que una estación real en el aire no cause un fallo espurio. Si el
-canal no se libera nunca, transmite igualmente en vez de quedarse colgado.
+El origen es el indicativo y SSID del IGate, o el del digipetidor si el del
+IGate no está configurado. Si no hay ninguno (``NOCALL`` o vacío), la prueba se
+niega a ejecutarse y lo indica.
+
+**El transmisor nunca se activa.** Durante toda la prueba la línea PTT se
+mantiene en su nivel de reposo: la trama se modula y se emite igual que siempre,
+pero un transceptor que siga conectado a la salida PTT permanece en recepción.
+La prueba además toma el transmisor para sí: lo que ya estuviera en cola antes
+de empezar sale primero con normalidad, en semidúplex y con PTT (si eso tarda
+más de 5 segundos la prueba desiste con un mensaje), y mientras dura se rechaza
+cualquier otra transmisión — balizas, mensajes, retransmisiones del IGate —,
+contabilizada como *RF TX held off by LOOP TEST* en el *Drop Breakdown* del
+panel. Los informes periódicos vuelven a salir en su siguiente intervalo y los
+mensajes en su siguiente reintento.
+
+Antes de emitir espera hasta 3 segundos a que el canal quede en silencio, para
+que una estación real que se oiga en la entrada de audio no cause un fallo
+espurio. Si el canal no se libera nunca, emite igualmente en vez de quedarse
+colgado.
 
 **Qué requiere.** Un **bucle de audio** físico: el pin del DAC cableado al pin
 del ADC (a través de los atenuadores de la propia placa de interfaz, o
@@ -1019,9 +1163,11 @@ no de la radio.
 
    El dúplex completo se fuerza durante la prueba porque un bucle de cable hace
    que el módem oiga permanentemente su propia portadora, y CSMA no encontraría
-   nunca un canal libre. Es una anulación deliberada y temporal, pero implica que
-   la prueba transmite sin atender a lo que hay en el canal. No la ejecute con
-   una antena conectada en una frecuencia concurrida.
+   nunca un canal libre. Es una anulación deliberada y temporal, y es la razón
+   por la que el PTT queda inhibido y toda otra transmisión se retiene mientras
+   dura. El audio sigue apareciendo en la salida del DAC, así que un transceptor
+   que se active solo con el audio (VOX) lo transmitiría igualmente: desactive
+   el VOX, o desconecte la radio, antes de ejecutar la prueba.
 
 **Cómo leer un PASS.** Un resultado correcto informa del nivel de RX en mV RMS,
 de la excursión del ADC en bruto con los raíles del conversor (0/4095) como
@@ -1099,8 +1245,8 @@ audio.
        **sin señal**: ningún demodulador detectó portadora durante la ventana,
        así que no hay nada que juzgar; púlselo de nuevo mientras llega un
        paquete. **bajo** (naranja): hubo portadora pero los tonos no pasaron de
-       100 mV RMS, demasiado cerca del ruido propio del ADC del ESP32 — suba el
-       nivel de recepción. **bueno** (verde): tonos de 100 mV RMS o más sin
+       20 mV RMS, demasiado cerca del ruido propio del ADC del ESP32 — suba el
+       nivel de recepción. **bueno** (verde): tonos de 20 mV RMS o más sin
        salirse de rango.
    * - ``tonos``
      - Nivel RMS medio y de pico de la banda de tonos, 900–2600 Hz, en el pin
@@ -1158,14 +1304,26 @@ La lectura incluye además las **estadísticas de recepción**, reunidas desde e
        (reloj de CPU por debajo de 240 MHz, u otra tarea que la acapara). Cada
        pérdida se informa además en la consola, como mucho una vez por minuto,
        como ``RX samples lost``.
+   * - ``DSP``
+     - Carga del DSP de recepción: el tiempo que la tarea de recepción dedica
+       a cada bloque de 20 ms de audio, como fracción de esos 20 ms. Media y
+       pico en la ventana de medida, y el bloque más alto desde el último
+       reinicio de las estadísticas. Incluye el tiempo que otras tareas del
+       mismo núcleo ocupan mientras se procesa un bloque, así que es la cifra
+       que decide si el receptor da abasto: un pico cerca del 100 % significa
+       que se están por perder muestras.
+   * - ``impulsos eliminados``
+     - Muestras crudas del ADC que el *Supresor de impulsos* reemplazó desde
+       el último reinicio de las estadísticas. Sube a saltos mientras la radio
+       Wi-Fi está activa y queda cerca de cero con una entrada limpia.
 
 **Procedimiento típico.** Quite el squelch de la radio, pulse **NIVEL RX** y
 compruebe que el desplazamiento de continua está centrado. Después púlselo
 mientras llegan paquetes y ajuste el volumen de la radio y el potenciómetro de
-recepción hasta que el veredicto diga **bueno** — tonos de al menos 100 mV
-RMS — sin llegar nunca a **saturado**. Con una salida de altavoz esto suele
-significar un volumen bastante alto: sus tonos quedan muy por debajo de su
-nivel total. Después ponga el squelch normal, espere tráfico real y confirme que
+recepción hasta que el veredicto diga **bueno** — tonos de al menos 20 mV
+RMS — sin llegar nunca a **saturado**. Con una salida de altavoz, guíese por la
+cifra de ``tonos`` y no por la de banda ancha: sus tonos quedan muy por debajo
+de su nivel total. Después ponga el squelch normal, espere tráfico real y confirme que
 aparece ``DCD sí`` y que el panel muestra decodificaciones.
 
 .. tip::
@@ -1179,7 +1337,9 @@ PRUEBA TX
 ---------
 
 **Qué hace.** Activa el transmisor, modula una trama corta de estado APRS
-(``SELFTST>APLT1T:>TXTEST``) y libera el PTT, sin esperar nada de vuelta. Es la
+identificada con el indicativo de la estación (``<indicativo>>APLT1T:>TXTEST``,
+el mismo origen que usa el LOOP TEST) y libera el PTT, sin esperar nada de
+vuelta. Es la
 contrapartida de transmisión de NIVEL RX: aquello contra lo que se ajusta el
 nivel de transmisión cuando hay un transceptor conectado en lugar de un bucle de
 cable.
@@ -1201,8 +1361,8 @@ potenciómetro de nivel de transmisión para **2,5–3,5 kHz**.
    repetidamente mientras ajusta un potenciómetro: use una carga artificial para
    el ajuste y una única ráfaga en el aire para confirmar.
 
-Si se niega, el mensaje dice por qué: el módem no está activado, hay otro
-diagnóstico en curso, o el camino de acceso al canal descartó la trama — lo que
+Si se niega, el mensaje dice por qué: el módem no está activado, no hay
+indicativo configurado, hay otro diagnóstico en curso, o el camino de acceso al canal descartó la trama — lo que
 en la práctica significa un techo de ciclo de trabajo ya alcanzado o una cola de
 transmisión llena. El registro de eventos indica cuál.
 
@@ -1385,6 +1545,14 @@ Referencia de campos
      - 1–255
      - 63
      - En vivo
+   * - Ranura de tiempo CSMA
+     - 10–2550 ms
+     - 100 ms
+     - En vivo
+   * - Espera máx. con canal ocupado
+     - 0–600 s (0 = sin límite)
+     - 30 s
+     - En vivo
    * - Polarización interna de la entrada del ADC
      - sí / no
      - no
@@ -1406,7 +1574,7 @@ Referencia de campos
      - 0 (desactivado)
      - En vivo
    * - Juego de demoduladores
-     - Clásico / 1 / 2 / 3 filtros / Multicomparador / Personalizado
+     - Clásico / 1 / 2 / 3 filtros / Multicomparador / Multicomparador, 2 filtros / Personalizado
      - Multicomparador
      - En vivo
    * - Personalizado: demoduladores
@@ -1444,6 +1612,10 @@ Referencia de campos
    * - Reparación de bits
      - apagado / un símbolo / un símbolo o un bit
      - apagado
+     - En vivo
+   * - Supresor de impulsos
+     - activado / desactivado
+     - activado
      - En vivo
 
 Cada campo numérico se acota en tres sitios contra las mismas constantes de
@@ -1493,9 +1665,6 @@ guardarían en flash sin cambiar nada.
    * - Supresión de duplicados
      - Un único interruptor y un único par de controles para todo el firmware,
        en la página *IGate*.
-   * - Intervalo de ranura CSMA
-     - Fijado en 100 ms dentro del módem. *Intervalo de tiempo TX* en esta
-       página es el tiempo de silencio, que es el parámetro que merece ajustarse.
 
 Resolución de problemas
 =======================

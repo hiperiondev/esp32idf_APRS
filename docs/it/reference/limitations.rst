@@ -86,12 +86,12 @@ Modem / Livello 2
      - ✅
      - ✅
      - Accesso p-persistente condizionato dal DCD: persistenza configurabile
-       (``csma_persist``, 1-255), tempo di silenzio prima dell'accesso
-       (``tx_timeslot``) e preambolo/TXDelay, più un limite anti-starvation di
-       otto slot perché un canale che non si libera mai non trattenga per sempre
-       un frame in coda. La dashboard riporta quante volte è intervenuto quel
-       limite, distinguendo canale occupato da canale libero, come *CSMA FORZATO
-       (OCCUP./PERSIST.)*
+       (``csma_persist``, 1-255), SlotTime (``csma_slot_ms``, 10-2550 ms), tempo
+       di silenzio prima dell'accesso (``tx_timeslot``) e preambolo/TXDelay. Un
+       canale occupato viene atteso fino a ``csma_busy_max_s`` (predefinito
+       30 s, 0 = illimitato) e otto sorteggi mancati consecutivi a canale libero
+       trasmettono comunque. La dashboard riporta quante volte è intervenuto
+       ciascun limite come *CSMA FORZATO (OCCUP./PERSIST.)*
    * - Tetto di duty cycle di trasmissione a lungo termine
      - ⚠️ (raro al di fuori di apparati commerciali/regolamentati)
      - ✅
@@ -125,6 +125,12 @@ Modem / Livello 2
      - ``rf_tx_buffers``: quanti frame possono attendere nell'anello di TX RF
        prima che i nuovi pacchetti vengano scartati anziché accodati; letto a
        ogni trasmissione, quindi ha effetto senza riavvio
+   * - Coda TX (TXTail) dopo ogni frame
+     - ✅
+     - ✅
+     - ``tx_tail``, 0-500 ms (predefinita 20 ms), inviata come flag dopo il flag
+       di chiusura perché la catena audio della radio e il suo ritorno in
+       ricezione non taglino la fine del frame
    * - Tempo minimo di PTT rilasciato tra i frame
      - ⚠️ (TXTAIL su alcuni TNC)
      - ✅

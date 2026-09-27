@@ -19,6 +19,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "app_config.h"
@@ -32,7 +33,10 @@
 #include "afsk.h"
 #include "esp32idf_radioamateur_modem.h"
 #include "esp32idf_radioamateur_modem_config.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
@@ -129,6 +133,10 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     }
     web_field_checkbox(req, TR_F_FLAT_AUDIO_INPUT, "audioLPF", g_config.audio_lpf);
     web_field_int(req, TR_F_PREAMBLE_MS, "rfPreamble", g_config.preamble, RF_PREAMBLE_MS_MIN, RF_PREAMBLE_MS_MAX);
+    // TXTail: flags sent after the closing flag so the radio's audio chain and
+    // its switch back to receive do not cut the end of the frame. Applied live
+    // on Save, same as rfPreamble - see g_config.tx_tail.
+    web_field_int(req, TR_F_TX_TAIL_MS, "rfTxTail", g_config.tx_tail, RF_TX_TAIL_MS_MIN, RF_TX_TAIL_MS_MAX);
     web_field_int(req, TR_F_TX_TIME_SLOT_MS, "txTimeSlot", g_config.tx_timeslot, RF_TX_TIMESLOT_MS_MIN, RF_TX_TIMESLOT_MS_MAX);
     // How many frames may queue in the RF TX ring (waiting to key up or on
     // the air right now) before a new packet is dropped instead of queued -
@@ -166,12 +174,20 @@ esp_err_t page_radio_get(httpd_req_t *req) {
     // CSMA/p-persistent channel-access probability (standard AX.25/KISS
     // "Persist"): once the channel is heard clear, the modem transmits
     // immediately with probability csmaPersist/256 on every slot and
-    // otherwise waits one more txTimeSlot before rolling again. 255
+    // otherwise waits one more csmaSlotTime before rolling again. 255
     // transmits on the first clear slot every time (equivalent to plain
     // non-persistent CSMA); lower values spread contending stations'
     // key-ups further apart. Applied live on Save, same as rfPreamble/
     // txTimeSlot above - see g_config.csma_persist.
     web_field_int(req, TR_F_CSMA_PERSISTENCE, "csmaPersist", g_config.csma_persist, CSMA_PERSIST_MIN, CSMA_PERSIST_MAX);
+    // CSMA slot time (standard AX.25/KISS "SlotTime"): the interval between
+    // persistence rolls and between re-checks of a busy channel. Applied live
+    // on Save - see g_config.csma_slot_ms.
+    web_field_int(req, TR_F_CSMA_SLOT_TIME_MS, "csmaSlotTime", g_config.csma_slot_ms, CSMA_SLOT_MS_MIN, CSMA_SLOT_MS_MAX);
+    // Longest wait for a busy channel to clear before a queued frame is sent
+    // over it anyway; 0 waits for as long as the channel stays busy. Applied
+    // live on Save - see g_config.csma_busy_max_s.
+    web_field_int(req, TR_F_CSMA_BUSY_MAX_S, "csmaBusyMax", g_config.csma_busy_max_s, CSMA_BUSY_MAX_S_MIN, CSMA_BUSY_MAX_S_MAX);
     web_fieldset_close(req);
 
     // Receive chain of the modem: which demodulators run and with which
@@ -190,6 +206,7 @@ esp_err_t page_radio_get(httpd_req_t *req) {
         web_select_option(req, MODEM_RX_EQ_DIVERSITY2, TR_F_RX_EQ_DIV2, t->eq_preset == MODEM_RX_EQ_DIVERSITY2);
         web_select_option(req, MODEM_RX_EQ_DIVERSITY3, TR_F_RX_EQ_DIV3, t->eq_preset == MODEM_RX_EQ_DIVERSITY3);
         web_select_option(req, MODEM_RX_EQ_MULTISLICE, TR_F_RX_EQ_MULTI, t->eq_preset == MODEM_RX_EQ_MULTISLICE);
+        web_select_option(req, MODEM_RX_EQ_MULTISLICE2, TR_F_RX_EQ_MULTI2, t->eq_preset == MODEM_RX_EQ_MULTISLICE2);
         web_select_option(req, MODEM_RX_EQ_CUSTOM, TR_F_RX_EQ_CUSTOM, t->eq_preset == MODEM_RX_EQ_CUSTOM);
         web_select_close(req);
         web_field_int(req, TR_F_RX_EQ_COUNT, "rxEqCount", t->custom_count, 1, MODEM_RX_MAX_PREFILTERS);
@@ -216,6 +233,7 @@ esp_err_t page_radio_get(httpd_req_t *req) {
         web_select_option(req, 1, TR_F_RX_FIX_SYMBOL, t->fix_bits == 1);
         web_select_option(req, 2, TR_F_RX_FIX_SYMBOL_BIT, t->fix_bits == 2);
         web_select_close(req);
+        web_field_checkbox(req, TR_F_RX_IMPULSE_BLANK, "rxBlank", t->impulse_blank);
         web_fieldset_close(req);
     }
 
@@ -297,7 +315,9 @@ esp_err_t page_radio_get(httpd_req_t *req) {
                                   "+' mV, AGC '+data.agc+'x, raw '+data.raw_min+'..'+data.raw_max+', DCD '+(data.dcd?'yes':'no')"
                                   "+'; " TR_RADIO_RX_STATS_DECODED " '+dec.join('/')+', " TR_RADIO_RX_STATS_UNIQUE " '+uni.join('/')"
                                   "+', " TR_RADIO_RX_STATS_DELIVERED " '+data.delivered+', " TR_RADIO_RX_STATS_REPAIRED " '+data.repaired"
-                                  "+', " TR_RADIO_RX_STATS_LOST " '+data.fifo_drops+'/'+data.pool_ovf;"
+                                  "+', " TR_RADIO_RX_STATS_LOST " '+data.fifo_drops+'/'+data.pool_ovf"
+                                  "+', DSP '+(data.dsp_mean/10).toFixed(1)+'% (peak '+(data.dsp_peak/10).toFixed(1)+'%, max '+(data.dsp_max/10).toFixed(1)+'%)'"
+                                  "+', " TR_RADIO_RX_IMPULSES " '+data.impulses;"
                                   "}).catch(function(){btn.disabled=false;status.style.color='red';status.textContent=' " TR_LOOPTEST_FAILED "';});"
                                   "}"
                                   // Bounded transmit burst. POST for the same reason as the loop
@@ -409,11 +429,93 @@ esp_err_t page_radio_level_post(httpd_req_t *req) {
     // Sized for the widest reading the object can hold - every field is a
     // number of known width or a fixed keyword plus the fixed keys, the
     // receive statistics being five fixed counters plus two arrays of up to
-    // MODEM_RX_MAX_DEMODULATORS 10-digit entries, about 510 bytes in all -
+    // MODEM_RX_MAX_DEMODULATORS 10-digit entries, three DSP load figures and
+    // the impulse count, about 590 bytes in all -
     // with room for the failure form, which is shorter.
     char result[768];
     aprs_rx_level_sample(result, sizeof(result));
     httpd_resp_sendstr(req, result);
+    return ESP_OK;
+}
+
+// Ring size of a receive capture, in 20 ms records. The first size rides out
+// about 2.5 s of Wi-Fi pause without dropping records but needs about 50 KB
+// of contiguous heap, which a busy station may not have; each retry halves
+// it, down to 0.32 s (about 6 KB). The ring is held only while the capture
+// runs.
+#define RADIO_CAPTURE_SLOTS_MAX 128
+#define RADIO_CAPTURE_SLOTS_MIN 16
+
+// Longest capture one request may ask for, in seconds.
+#define RADIO_CAPTURE_MAX_S 7200
+
+// POST /radio/capture?s=N - streams, for N seconds (default 60), the input
+// of the AFSK demodulators as a sequence of afsk_capture_block_t records:
+// one record per 20 ms block, with the block's raw ADC extremes, receive-task
+// time, gate state and gain beside its 192 samples. Reception carries on
+// unchanged; the records let a PC replay exactly what the demodulators were
+// given and see what the front end did at each moment.
+//
+// The stream ends after N seconds or as soon as the client stops reading.
+// While it runs this handler occupies the web server, which answers no other
+// request until it returns. POST, not GET, for the same reason as
+// /radio/level: it claims a modem resource, and web_check_auth() runs its
+// same-origin check on POST only.
+esp_err_t page_radio_capture_post(httpd_req_t *req) {
+    if (!web_check_auth_admin(req))
+        return ESP_OK;
+
+    uint32_t seconds = 60;
+    char query[32], value[12];
+    if ((httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) && web_form_get(query, "s", value, sizeof(value))) {
+        long v = atol(value);
+        seconds = (uint32_t)((v < 1) ? 1 : ((v > RADIO_CAPTURE_MAX_S) ? RADIO_CAPTURE_MAX_S : v));
+    }
+
+    uint32_t slots = RADIO_CAPTURE_SLOTS_MAX;
+    esp_err_t err = afskCaptureStart(slots);
+    while ((err == ESP_ERR_NO_MEM) && (slots > RADIO_CAPTURE_SLOTS_MIN)) {
+        slots /= 2;
+        err = afskCaptureStart(slots);
+    }
+    if (err != ESP_OK) {
+        char msg[128];
+        snprintf(msg, sizeof(msg), "capture not started: %s (free heap %lu, largest block %lu)", esp_err_to_name(err),
+                 (unsigned long)heap_caps_get_free_size(MALLOC_CAP_8BIT), (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+        ESP_LOGW(TAG, "%s", msg);
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_set_type(req, "text/plain");
+        httpd_resp_sendstr(req, msg);
+        return ESP_OK;
+    }
+    ESP_LOGI(TAG, "receive capture started for %lu s, %lu-record ring", (unsigned long)seconds, (unsigned long)slots);
+
+    char slotsText[12];
+    snprintf(slotsText, sizeof(slotsText), "%lu", (unsigned long)slots);
+    httpd_resp_set_type(req, "application/octet-stream");
+    httpd_resp_set_hdr(req, "X-Capture-Record-Bytes", "396");
+    httpd_resp_set_hdr(req, "X-Capture-Slots", slotsText);
+
+    // Static: one capture at a time, and the record is too large to carry on
+    // the web server's stack comfortably.
+    static afsk_capture_block_t rec;
+    _Static_assert(sizeof(afsk_capture_block_t) == 396, "X-Capture-Record-Bytes must match the record size");
+
+    const TickType_t start = xTaskGetTickCount();
+    const TickType_t span = pdMS_TO_TICKS(seconds * 1000u);
+    bool clientGone = false;
+    while (!clientGone && ((xTaskGetTickCount() - start) < span)) {
+        if (!afskCaptureRead(&rec)) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+        clientGone = (httpd_resp_send_chunk(req, (const char *)&rec, sizeof(rec)) != ESP_OK);
+    }
+
+    uint32_t dropped = afskCaptureStop();
+    ESP_LOGI(TAG, "receive capture finished%s, %lu record(s) dropped", clientGone ? " (client closed)" : "", (unsigned long)dropped);
+    if (!clientGone)
+        httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
 }
 
@@ -532,6 +634,7 @@ esp_err_t page_radio_post(httpd_req_t *req) {
         t.agc_mode = (modem_rx_agc_mode_t)web_form_get_int(body, "rxAgcMode", t.agc_mode);
         t.agc_fixed_gain_db = (int8_t)((gain < -128) ? -128 : (gain > 127) ? 127 : gain);
         t.fix_bits = (uint8_t)((fix < 0) ? 0 : (fix > 255) ? 255 : fix);
+        t.impulse_blank = web_form_get_bool(body, "rxBlank");
         modem_rx_tuning_sanitize(&t);
         g_config.rx_tuning = t;
     }
@@ -555,11 +658,21 @@ esp_err_t page_radio_post(httpd_req_t *req) {
         preamble_in = RF_PREAMBLE_MS_MAX;
     g_config.preamble = (uint16_t)preamble_in;
 
-    // CSMA slot time (RF_TX_TIMESLOT_MS_MIN..RF_TX_TIMESLOT_MS_MAX ms,
+    // TXTail length (RF_TX_TAIL_MS_MIN..RF_TX_TAIL_MS_MAX ms, default
+    // RF_TX_TAIL_MS_DEFAULT) - clamp defensively, same reasoning as rfPreamble
+    // above: Ax25TxTail() turns it into a flag count sent after every frame.
+    int tx_tail_in = web_form_get_int(body, "rfTxTail", g_config.tx_tail);
+    if (tx_tail_in < RF_TX_TAIL_MS_MIN)
+        tx_tail_in = RF_TX_TAIL_MS_MIN;
+    else if (tx_tail_in > RF_TX_TAIL_MS_MAX)
+        tx_tail_in = RF_TX_TAIL_MS_MAX;
+    g_config.tx_tail = (uint16_t)tx_tail_in;
+
+    // CSMA quiet time (RF_TX_TIMESLOT_MS_MIN..RF_TX_TIMESLOT_MS_MAX ms,
     // default 2000) - clamp defensively, same reasoning as rfPreamble above.
-    // This is how long the modem waits before rolling the p-persistence dice
-    // again on a busy channel, so an out-of-range value stalls this station's
-    // own transmissions rather than the channel's.
+    // This is how long a queued frame waits before channel access begins, so
+    // an out-of-range value stalls this station's own transmissions rather
+    // than the channel's.
     int tx_timeslot_in = web_form_get_int(body, "txTimeSlot", g_config.tx_timeslot);
     if (tx_timeslot_in < RF_TX_TIMESLOT_MS_MIN)
         tx_timeslot_in = RF_TX_TIMESLOT_MS_MIN;
@@ -623,6 +736,26 @@ esp_err_t page_radio_post(httpd_req_t *req) {
         csma_persist_in = CSMA_PERSIST_MAX;
     g_config.csma_persist = (uint8_t)csma_persist_in;
 
+    // CSMA slot time (CSMA_SLOT_MS_MIN..CSMA_SLOT_MS_MAX ms, default
+    // CSMA_SLOT_MS_DEFAULT) and busy-channel wait (CSMA_BUSY_MAX_S_MIN..
+    // CSMA_BUSY_MAX_S_MAX s, 0 = wait while the channel stays busy) - clamp
+    // defensively against a malformed POST, same reasoning as rf_tx_buffers
+    // above. See Ax25Config.csmaSlotTime and Ax25Config.csmaBusyTimeout in
+    // ax25.c for how they are enforced.
+    int csma_slot_in = web_form_get_int(body, "csmaSlotTime", g_config.csma_slot_ms);
+    if (csma_slot_in < CSMA_SLOT_MS_MIN)
+        csma_slot_in = CSMA_SLOT_MS_MIN;
+    else if (csma_slot_in > CSMA_SLOT_MS_MAX)
+        csma_slot_in = CSMA_SLOT_MS_MAX;
+    g_config.csma_slot_ms = (uint16_t)csma_slot_in;
+
+    int csma_busy_in = web_form_get_int(body, "csmaBusyMax", g_config.csma_busy_max_s);
+    if (csma_busy_in < CSMA_BUSY_MAX_S_MIN)
+        csma_busy_in = CSMA_BUSY_MAX_S_MIN;
+    else if (csma_busy_in > CSMA_BUSY_MAX_S_MAX)
+        csma_busy_in = CSMA_BUSY_MAX_S_MAX;
+    g_config.csma_busy_max_s = (uint16_t)csma_busy_in;
+
     // Audio interface. Both checkboxes default to off when absent from the
     // POST, which is what an unchecked box sends and also what an interface
     // board with its own bias network needs.
@@ -667,7 +800,7 @@ esp_err_t page_radio_post(httpd_req_t *req) {
 
     // Push every setting the modem accepts at runtime into the running modem,
     // so Save (and the loop test's auto-save, which POSTs this form before
-    // running) takes effect without a reboot: modulation, preamble, time slot,
+    // running) takes effect without a reboot: modulation, preamble, tail, time slot,
     // CSMA persistence, flat-audio flag, FX.25 mode, the PTT minimum unkey
     // time and the receive demodulator settings all go through
     // modem_set_modem().

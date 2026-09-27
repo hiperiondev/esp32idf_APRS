@@ -63,9 +63,10 @@ Matrice delle funzionalità
    * - Attivazione PTT (GPIO + polarità in compilazione)
      - ✅
      - GPIO validato; tempo minimo di **dis-attivazione** a runtime
-   * - CSMA / slot temporale TX / p-persistenza / preambolo TXDelay
+   * - CSMA / slot temporale TX / p-persistenza / preambolo TXDelay / coda TXTail
      - ✅
-     - ``preamble``, ``tx_timeslot``, ``csma_persist``
+     - ``preamble``, ``tx_tail``, ``tx_timeslot``, ``csma_persist``, ``csma_slot_ms``,
+       ``csma_busy_max_s``
    * - DCD (rilevamento portante dati)
      - ✅
      - derivato dal demodulatore; nessun ingresso squelch hardware

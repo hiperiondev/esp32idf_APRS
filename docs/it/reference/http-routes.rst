@@ -152,6 +152,9 @@ stazione cambia con esso.
      - ``/radio/level``
      - misura il livello di ricezione nella banda dei toni e a banda larga con un verdetto di livello, la polarizzazione di ingresso e il margine del convertitore e riporta le statistiche di ricezione, senza trasmettere (risultato JSON)
    * - POST
+     - ``/radio/capture?s=N``
+     - trasmettere l'ingresso dei demodulatori AFSK per ``s`` secondi (predefinito 60, al massimo 7200) come record binari ``afsk_capture_block_t``, uno per blocco da 20 ms con i suoi estremi grezzi dell'ADC, tempo del task di ricezione, stato della soglia e guadagno; mentre è in corso il server web non risponde a nessun'altra richiesta
+   * - POST
      - ``/radio/txtest``
      - trasmette una raffica di prova limitata per regolare il livello di trasmissione (risultato JSON)
    * - GET/POST

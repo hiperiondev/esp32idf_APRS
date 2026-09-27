@@ -67,7 +67,8 @@ Inside ``aprs_service_start()``
    aprs_service_start()
     ├─ trafficlog_init / lastheard_init / message_init
     ├─ message_set_tx_handler / igate_set_inet2rf_handler / igate_set_inet2rf_assoc_query
-    ├─ modem_set_rx_callback(on_rx_frame)
+    ├─ xTaskCreate(rxTask "aprs_rx") + modem_set_rx_callback(on_rx_frame)
+    │                                ← callback only queues; aprs_rx decodes and dispatches
     ├─ igate_start()                 ← always started; self-idles when nothing needs APRS-IS
     ├─ beacon_start() / weather_start() / bulletins_start() / objitems_start() / telemetry_start()
     ├─ beacon_scheduler_start()      ← ONE shared task drives all periodic TX and query answers
@@ -103,8 +104,19 @@ Task map
      - 5
      - **0**
      - ``modem_init()``
-     - drives TX, delivers RX frames to the callback; pinned to the same core as
-       the RX DSP task, whose AX.25 ring it consumes
+     - drives TX (quiet time, DCD, persistence, key-up, teardown, TX time-out)
+       and hands each RX frame to the callback, which only copies it into the
+       ``aprs_rx`` queue; pinned to the same core as the RX DSP task, whose
+       AX.25 ring it consumes
+   * - ``aprs_rx``
+     - 6144 B
+     - 4
+     - any
+     - ``aprs_service_start()``
+     - decodes each received frame and dispatches it: digipeater, IGate
+       RF→INET, messages, queries, Winlink, Telegram routing, LAST HEARD,
+       traffic log. Fed by an 8-frame queue, so a slow APRS-IS send never
+       stalls transmit servicing
    * - ``modem_init``
      - 4096 B
      - high

@@ -50,7 +50,7 @@ AX.25 and channel access (ch. 3)
      - Decoded and re-encoded with the has-been-repeated bit honoured. The decoder walks the address field against the frame length, so a header claiming more repeaters than the frame carries is rejected rather than read past. Path builders enforce the 8-address limit.
    * - p-persistent CSMA channel access
      - ✅
-     - Carrier detect plus a configurable persistence value and TX delay, with an anti-starvation floor so a busy channel cannot block a frame forever. Forced transmissions are counted separately for channel-busy and failed-persistence draws.
+     - Carrier detect plus configurable persistence, SlotTime and TX delay. A busy channel is waited out for up to a configurable limit (0 = unlimited) and a run of missed persistence draws on a clear channel is capped, so neither can block a frame forever. Forced transmissions are counted separately for each.
    * - FX.25 forward error correction
      - ✅
      - Three modes: off, receive only, receive and transmit. All 11 correlation tags. Transmitted codeblocks stay readable by a plain AX.25 receiver.

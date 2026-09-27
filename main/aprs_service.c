@@ -28,6 +28,7 @@
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
@@ -79,6 +80,31 @@ static const char *TAG = "aprs_service";
 // config.stack_size are. Use uxTaskGetStackHighWaterMark() on this task
 // (logged every pass in serviceTickTask) before lowering it.
 #define APRS_SVC_TICK_TASK_STACK_BYTES 10240
+
+// Stack budget for rxTask, the task every received RF frame is decoded and
+// dispatched on (see on_rx_frame()). It carries the whole receive chain: the
+// ax25_msg_t decode target, the received frame's TNC2 render and, when the
+// digipeater repeats it, a second render plus the TNC2/AX.25 encode chain
+// down to hdlcFrame(); igateProcess() building and sending its APRS-IS line;
+// the message, query, Winlink and Telegram routing parsers; LAST HEARD and
+// the traffic log. Set with headroom; the high-water mark is logged at
+// ESP_LOGD after every frame, which is the figure to right-size it against.
+#define APRS_RX_TASK_STACK_BYTES 6144
+
+// Priority of rxTask: one below the modem's service task, so that the task
+// driving quiet time, carrier detect, key-up, teardown and the transmitter
+// time-out always preempts the dispatch of a received frame, and equal to the
+// beacon scheduler and the 1 Hz tick.
+#define APRS_RX_TASK_PRIORITY 4
+
+// Received frames the application queue holds between the modem's service
+// task and rxTask. The slowest step of a dispatch is an APRS-IS send, bounded
+// by its socket time-out of a few seconds; at 1200 Bd a channel carries at
+// most three or four frames a second, and the modem's own receive ring keeps
+// buffering behind a full queue, so eight frames here ride out one stalled
+// send without losing traffic. Each slot is one rx_queue_item_t, about 350
+// bytes, allocated statically.
+#define APRS_RX_QUEUE_DEPTH 8
 
 // Destination call this station's own INET->RF third-party frames key up
 // under, matching the destination every other own-originated packet type
@@ -152,7 +178,7 @@ static const char *TAG = "aprs_service";
 // Size of the buffer aprs_msg_callback() renders a received frame into. See
 // the derivation of the 365-character worst case there; rounded up to 384 to
 // leave the render immune to a future change in how a callsign is printed,
-// while staying well inside the modem service task's stack.
+// while staying well inside the receive task's stack.
 #define APRS_RX_TNC2_BUF_SIZE 384
 
 // ---------------------------------------------------------------------------
@@ -200,8 +226,14 @@ void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex) {
     cfg->flat_audio = g_config.audio_lpf;
 
     cfg->preamble_ms = g_config.preamble;
+    // The web admin's default and the modem's default describe the same
+    // radio behaviour and must not drift apart.
+    _Static_assert(RF_TX_TAIL_MS_DEFAULT == AX25_TX_TAIL_DEFAULT_MS, "TX tail defaults differ");
+    cfg->tx_tail_ms = g_config.tx_tail;
     cfg->slot_time_ms = g_config.tx_timeslot;
     cfg->persist = g_config.csma_persist;
+    cfg->csma_slot_ms = g_config.csma_slot_ms;
+    cfg->csma_busy_max_ms = (uint32_t)g_config.csma_busy_max_s * 1000u;
     cfg->fx25_mode = g_config.fx25_mode;
     cfg->allow_non_aprs = false;
 
@@ -220,8 +252,10 @@ void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex) {
 
     // Half duplex for real on-air use: MODEM_DEFAULT_CONFIG() ships full
     // duplex (it targets the wire-loopback demo), which would key up over
-    // anyone already transmitting. CSMA/quiet time comes from txTimeSlot,
-    // and the p-persistent transmit probability comes from csma_persist.
+    // anyone already transmitting. The quiet time comes from txTimeSlot, the
+    // slot between persistence rolls from csma_slot_ms, the p-persistent
+    // transmit probability from csma_persist and the longest wait on a busy
+    // channel from csma_busy_max_s.
     // The LOOP TEST passes true here because a DAC->ADC wire means the node
     // always hears its own carrier and would never see a clear channel.
     cfg->full_duplex = full_duplex;
@@ -292,6 +326,22 @@ static atomic_uint_fast32_t s_statErr =
 // INET2RF and message paths keep their non-blocking drop-if-full behavior and a
 // busy RF leg never stalls RX decode or the APRS-IS socket task.
 static volatile TaskHandle_t s_beaconCtxTask = NULL;
+
+// Task that owns the RF transmitter exclusively, NULL in normal operation. The
+// LOOP TEST takes it for its whole run: the PTT line is inhibited and the
+// modem is in full duplex, so any other frame reaching the transmit ring
+// would be keyed up without channel access and fed back into the test's own
+// receiver. send_tnc2_impl() refuses every other task's frame while it is set.
+static volatile TaskHandle_t s_rfTxOwner = NULL;
+
+// Makes the ownership check in send_tnc2_impl() and the hand-off of the frame
+// to the modem one step with respect to a change of owner. Without it a
+// producer could pass the check, be preempted while the LOOP TEST takes
+// ownership and drains the transmit ring, and then queue its frame into the
+// test. Statically allocated, so it exists before anything can transmit and
+// cannot fail to be created.
+static StaticSemaphore_t s_rfTxGateBuf;
+static SemaphoreHandle_t s_rfTxGate = NULL;
 
 // Forward declaration: the duty-cycle accumulator (state and the rest of its
 // helpers) is defined further down, right before the TX helper that feeds it,
@@ -387,8 +437,9 @@ void aprs_service_apply_modem_config(void) {
         s_rxStatsFlat = cfg.flat_audio;
         s_rxStatsTuning = cfg.rx;
     }
-    ESP_LOGI(TAG, "modem re-applied: modem=%u flatAudio=%d preamble=%ums slot=%ums persist=%u fx25=%u minUnkey=%ums", (unsigned)cfg.modem, (int)cfg.flat_audio,
-             (unsigned)cfg.preamble_ms, (unsigned)cfg.slot_time_ms, (unsigned)cfg.persist, (unsigned)cfg.fx25_mode, (unsigned)cfg.min_unkey_ms);
+    ESP_LOGI(TAG, "modem re-applied: modem=%u flatAudio=%d preamble=%ums tail=%ums quiet=%ums slot=%ums busyMax=%ums persist=%u fx25=%u minUnkey=%ums",
+             (unsigned)cfg.modem, (int)cfg.flat_audio, (unsigned)cfg.preamble_ms, (unsigned)cfg.tx_tail_ms, (unsigned)cfg.slot_time_ms,
+             (unsigned)cfg.csma_slot_ms, (unsigned)cfg.csma_busy_max_ms, (unsigned)cfg.persist, (unsigned)cfg.fx25_mode, (unsigned)cfg.min_unkey_ms);
 }
 
 // Set true once main.c has actually called modem_init() successfully (i.e.
@@ -491,7 +542,7 @@ static uint32_t duty_cycle_baud_rate(void) {
 
 // Estimated on-air time, in milliseconds, of transmitting a TNC2 line of
 // `tnc2_len` bytes at the current modem settings: the configured TXDelay
-// preamble plus the encoded frame at the configured baud rate.
+// preamble, the encoded frame at the configured baud rate and the TXTail.
 //
 // tnc2_len stands in for the actual encoded AX.25 frame's byte count, which
 // is not available at this layer - modem_send_tnc2() does its own
@@ -506,7 +557,7 @@ static uint32_t estimate_tx_airtime_ms(size_t tnc2_len) {
     uint32_t frame_bits = ((uint32_t)tnc2_len + DUTY_CYCLE_FRAME_OVERHEAD_BYTES) * 8;
     frame_bits += frame_bits * DUTY_CYCLE_BITSTUFF_PCT / 100;
     uint32_t data_ms = (frame_bits * 1000u) / baud;
-    return (uint32_t)g_config.preamble + data_ms; // single-word read, benign if stale
+    return (uint32_t)g_config.preamble + data_ms + (uint32_t)g_config.tx_tail; // single-word reads, benign if stale
 }
 
 // ---------------------------------------------------------------------------
@@ -638,7 +689,20 @@ static bool send_tnc2_impl(const char *packet, size_t len, bool critical) {
     memcpy(buf, packet, len);
     buf[len] = 0;
 
+    // Holders of the gate keep it only across one ownership test and one
+    // modem_send_tnc2(), itself bounded by the modem's transmit lock time-out,
+    // so waiting for it needs no time-out of its own.
+    xSemaphoreTake(s_rfTxGate, portMAX_DELAY);
+    TaskHandle_t owner = s_rfTxOwner;
+    if ((owner != NULL) && (owner != xTaskGetCurrentTaskHandle())) {
+        xSemaphoreGive(s_rfTxGate);
+        atomic_fetch_add_explicit(&s_statDrop, 1, memory_order_relaxed);
+        igate_note_drop(DROP_TX_SELF_TEST);
+        ESP_LOGW(TAG, "LOOP TEST in progress, RF TX refused: %s", buf);
+        return false;
+    }
     esp_err_t err = modem_send_tnc2(buf);
+    xSemaphoreGive(s_rfTxGate);
     if (err != ESP_OK) {
         atomic_fetch_add_explicit(&s_statErr, 1, memory_order_relaxed);
         igate_note_drop(ERR_MODEM_SEND_FAIL);
@@ -691,7 +755,7 @@ static int ax25ToTnc2(const ax25_msg_t *m, char *out, size_t outMax) {
 }
 
 // @brief Single dispatch point for digipeater / igate / message, fed by
-// on_rx_frame() below for every decoded RX frame.
+// rx_dispatch() below, on the receive task, for every decoded RX frame.
 static void aprs_msg_callback(ax25_msg_t *msg) {
     // This buffer renders a *received* frame, so it is deliberately larger
     // than APRS_TNC2_BUF_SIZE (the size every packet *builder* uses, and the
@@ -892,14 +956,16 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
 }
 
 // ---------------------------------------------------------------------------
-// Component RX callback.
+// Receive path.
 //
-// The modem component hands back the raw AX.25 bytes and leaves the decode to
-// us, so this does the ax25_decode() itself, then dispatches to the handlers.
-//
-// Runs on the component's "modem_svc" task, whose stack the component sizes at
-// 6144 bytes - enough for the ax25_msg_t below (~700 B) plus the rest of the
-// dispatch chain, but worth remembering before adding anything large here.
+// The modem component hands back the raw AX.25 bytes on its service task, the
+// same task that moves the transmit state machine forward: quiet time,
+// carrier detect, p-persistence, key-up, modulator teardown and the
+// transmitter time-out. The dispatch below can block for seconds - a
+// digipeat waits on the modem's transmit lock, igateProcess() holds the
+// APRS-IS socket across send() - so it must not run there. on_rx_frame() only
+// copies the frame and its metadata into s_rxQueue and returns; rxTask decodes
+// and dispatches it.
 //
 // s_rxHook is the indirection the LOOP TEST uses to divert received frames to
 // itself. It is owned here, not in the modem: the component's callback stays
@@ -909,11 +975,21 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
 typedef void (*aprs_rx_hook_t)(ax25_msg_t *msg);
 static volatile aprs_rx_hook_t s_rxHook = aprs_msg_callback;
 
-static void on_rx_frame(const modem_rx_frame_t *f, void *ctx) {
-    (void)ctx;
-    ax25_msg_t msg;
+// One received frame as queued between the modem's service task and rxTask.
+// meta.frame is not used across the queue: the bytes travel in data[], and
+// the receiving side points meta.frame back at its own copy.
+typedef struct {
+    modem_rx_frame_t meta;
+    uint8_t data[AX25_FRAME_MAX_SIZE];
+} rx_queue_item_t;
 
-    atomic_fetch_add_explicit(&s_statRadioRx, 1, memory_order_relaxed);
+static StaticQueue_t s_rxQueueBuf;
+static uint8_t s_rxQueueStorage[APRS_RX_QUEUE_DEPTH * sizeof(rx_queue_item_t)];
+static QueueHandle_t s_rxQueue = NULL;
+
+// @brief Decode one received frame and hand it to the active hook.
+static void rx_dispatch(const modem_rx_frame_t *f) {
+    ax25_msg_t msg;
 
     memset(&msg, 0, sizeof(msg));
     enum Ax25DecodeReason reason;
@@ -925,10 +1001,11 @@ static void on_rx_frame(const modem_rx_frame_t *f, void *ctx) {
         // counters below it in the dashboard.
         //
         // ax25_decode()'s reason splits this into a malformed/corrupted
-        // reception (ERR_AX25_DECODE) versus a well-formed frame that is
-        // simply not APRS (ERR_AX25_NOT_APRS) - legacy connected-mode AX.25
-        // traffic or a non-APRS PID sharing the channel, both expected and
-        // benign on a shared frequency. Keeping the two counters and log
+        // reception (ERR_AX25_DECODE: too short, truncated address field, or
+        // an address that is not a legal callsign) versus a well-formed frame
+        // that is simply not APRS (ERR_AX25_NOT_APRS) - legacy connected-mode
+        // AX.25 traffic or a non-APRS PID sharing the channel, both expected
+        // and benign on a shared frequency. Keeping the two counters and log
         // lines separate lets an operator tell "channel has non-APRS
         // traffic on it" apart from "my decoder is broken" from the
         // dashboard alone.
@@ -952,6 +1029,54 @@ static void on_rx_frame(const modem_rx_frame_t *f, void *ctx) {
     aprs_rx_hook_t hook = s_rxHook;
     if (hook)
         hook(&msg);
+}
+
+// @brief Receive task: takes frames off s_rxQueue and dispatches them.
+static void rxTask(void *arg) {
+    (void)arg;
+    // Static: one slot's worth of bytes does not have to sit on the stack the
+    // dispatch chain needs, and this task is the queue's only reader.
+    static rx_queue_item_t item;
+
+    for (;;) {
+        if (xQueueReceive(s_rxQueue, &item, portMAX_DELAY) != pdTRUE)
+            continue;
+        item.meta.frame = item.data;
+        rx_dispatch(&item.meta);
+        ESP_LOGD(TAG, "aprs_rx stack free: %u bytes", (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+    }
+}
+
+// @brief Modem RX callback, on the modem's service task: queue and return.
+static void on_rx_frame(const modem_rx_frame_t *f, void *ctx) {
+    (void)ctx;
+    // Static for the same reason as rxTask()'s: it keeps the copy off the
+    // service task's stack. The service task is this callback's only caller.
+    static rx_queue_item_t item;
+
+    atomic_fetch_add_explicit(&s_statRadioRx, 1, memory_order_relaxed);
+
+    uint16_t len = f->len;
+    if (len > sizeof(item.data)) {
+        // The modem clamps every delivered frame to AX25_FRAME_MAX_SIZE, so
+        // this is a broken promise rather than a reception; nothing longer
+        // can be a legal frame either.
+        atomic_fetch_add_explicit(&s_statErr, 1, memory_order_relaxed);
+        igate_note_drop(ERR_AX25_DECODE);
+        return;
+    }
+
+    item.meta = *f;
+    item.meta.frame = NULL;
+    memcpy(item.data, f->frame, len);
+
+    // Never waits: a full queue means rxTask is behind, and blocking here
+    // would stall the transmit side this separation exists to protect.
+    if (xQueueSend(s_rxQueue, &item, 0) != pdTRUE) {
+        atomic_fetch_add_explicit(&s_statDrop, 1, memory_order_relaxed);
+        igate_note_drop(DROP_RX_QUEUE_FULL);
+        ESP_LOGW(TAG, "RX queue full (%d frames waiting), received frame dropped", APRS_RX_QUEUE_DEPTH);
+    }
 }
 
 // Case-insensitive compare of a TNC2 source base callsign (SSID already
@@ -1936,7 +2061,8 @@ static void messageTxHandler(const char *packet, size_t len, uint8_t channels) {
 // The application does not pump the DSP or drain the frame queue: the modem
 // component owns both. AFSK_init() starts its own pinned RX DSP task, and
 // modem_init() starts the "modem_svc" task that drives
-// AFSK_ServiceTx()/Ax25TransmitCheck() and delivers RX frames to the callback.
+// AFSK_ServiceTx()/Ax25TransmitCheck() and delivers RX frames to the callback,
+// which only queues them for aprs_rx.
 // Calling AFSK_Poll() from here would race that task over the same FIFO.
 // The modem component has no RF power-switch output, so there is no
 // rf_power/band config to carry.
@@ -2063,6 +2189,18 @@ static void serviceTickTask(void *arg) {
 // forever - it just proceeds and, if that on-air signal really does corrupt
 // the self-test frame, reports the normal failure diagnostics.
 #define LOOP_TEST_CHANNEL_WAIT_MS 3000
+
+// How long aprs_loop_test_run() waits, after taking the transmitter, for
+// frames other producers queued before it to go out normally. Those are real
+// traffic, sent in half duplex with channel access and PTT, and must not end
+// up inside the test. Long enough for a short backlog on a clear channel; a
+// transmitter still busy after it makes the test give up rather than discard
+// someone else's frames.
+#define LOOP_TEST_TX_IDLE_WAIT_MS 5000
+
+// Destination address of the self-test frames. Only the source carries the
+// station's identity; this marks the frames as test traffic.
+#define SELF_TEST_TOCALL "APLT1T"
 
 static SemaphoreHandle_t s_loopTestSem = NULL;
 static volatile bool s_loopTestActive = false;
@@ -2198,6 +2336,54 @@ static void loopDiagStop(void) {
         vTaskDelay(pdMS_TO_TICKS(5));
 }
 
+// @brief Source address for the self-test frames: the IGate callsign, or the
+//        digipeater's when the IGate one is not usable.
+//
+// The TX TEST goes on the air by design, so its frame has to identify the
+// station. The LOOP TEST keeps PTT idle, but carries the same identification,
+// so a test frame that still reaches a transmitter - one keyed by VOX from the
+// audio line, for instance - never goes out unidentified.
+// A callsign is usable when it is one to six letters or digits and is not a
+// placeholder; it is emitted in upper case, the only form an AX.25 address can
+// carry.
+//
+// @param out      Destination for "CALL" or "CALL-SSID".
+// @param out_size Size of @p out, at least 10 bytes.
+// @return false, with @p out empty, when neither callsign is usable.
+static bool self_test_source_call(char *out, size_t out_size) {
+    char calls[2][10];
+    uint8_t ssids[2];
+
+    app_config_lock();
+    memcpy(calls[0], g_config.aprs_mycall, sizeof(calls[0]));
+    ssids[0] = g_config.aprs_ssid;
+    memcpy(calls[1], g_config.digi_mycall, sizeof(calls[1]));
+    ssids[1] = g_config.digi_ssid;
+    app_config_unlock();
+
+    out[0] = 0;
+    for (int k = 0; k < 2; k++) {
+        char *c = calls[k];
+        c[sizeof(calls[k]) - 1] = 0;
+
+        size_t n = strlen(c);
+        bool ok = (n >= 1) && (n <= 6);
+        for (size_t i = 0; ok && (i < n); i++) {
+            c[i] = (char)toupper((unsigned char)c[i]);
+            ok = isalnum((unsigned char)c[i]) != 0;
+        }
+        if (!ok || !strcmp(c, "NOCALL") || !strcmp(c, "N0CALL") || !strcmp(c, "MYCALL"))
+            continue;
+
+        if (ssids[k] > 0)
+            snprintf(out, out_size, "%s-%u", c, (unsigned)(ssids[k] & 0x0F));
+        else
+            snprintf(out, out_size, "%s", c);
+        return true;
+    }
+    return false;
+}
+
 // AX.25 RX hook installed only while a loop test is in flight, so a
 // self-generated test frame is never mistaken for real RF traffic
 // (digipeated, sent to APRS-IS, etc.).
@@ -2246,16 +2432,52 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
     }
     xSemaphoreTake(s_loopTestSem, 0); // drain any stale/leftover give (a fresh binary semaphore is already empty)
 
+    char srcCall[12];
+    if (!self_test_source_call(srcCall, sizeof(srcCall))) {
+        s_loopTestActive = false;
+        snprintf(msg, msg_len, "Set this station's callsign (IGate or digipeater callsign) before running the loop test: its frame identifies the station.");
+        ESP_LOGW(TAG, "Loop test: %s", msg);
+        return false;
+    }
+
+    // Take the transmitter. From here on every other producer's frame is
+    // refused (DROP_TX_SELF_TEST) until the test has put the configured modem
+    // mode back, since the test runs in full duplex with PTT inhibited and a
+    // frame sent in that window would go out with neither.
+    xSemaphoreTake(s_rfTxGate, portMAX_DELAY);
+    s_rfTxOwner = xTaskGetCurrentTaskHandle();
+    xSemaphoreGive(s_rfTxGate);
+
+    // Let whatever was queued before the claim go out normally first: it is
+    // real traffic, and the test must neither swallow it nor hear it back.
+    TickType_t idleStart = xTaskGetTickCount();
+    while ((modem_tx_queue_depth() > 0) || getTransmit()) {
+        if ((xTaskGetTickCount() - idleStart) >= pdMS_TO_TICKS(LOOP_TEST_TX_IDLE_WAIT_MS)) {
+            s_rfTxOwner = NULL;
+            s_loopTestActive = false;
+            snprintf(msg, msg_len, "The transmitter is still busy with queued traffic after %d ms - try the loop test again in a moment.",
+                     LOOP_TEST_TX_IDLE_WAIT_MS);
+            ESP_LOGW(TAG, "Loop test: %s", msg);
+            return false;
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+
     // Unique token per run, so we only accept *this* frame as a pass, not
     // some coincidental leftover/duplicate packet.
     uint32_t token = esp_random() & 0xFFFFFF;
     snprintf(s_loopTestToken, sizeof(s_loopTestToken), "%06lX", (unsigned long)token);
 
     char tnc2[48];
-    int n = snprintf(tnc2, sizeof(tnc2), "SELFTST>APLT1T:>LOOPTEST %s", s_loopTestToken);
+    int n = snprintf(tnc2, sizeof(tnc2), "%s>" SELF_TEST_TOCALL ":>LOOPTEST %s", srcCall, s_loopTestToken);
 
     s_loopTestGotFrame = false;
     s_rxHook = loopTestRxHook;
+
+    // The test is a bench check of the audio path over a DAC->ADC wire, not
+    // a transmission: PTT stays idle for its whole duration, so a transceiver
+    // left connected is never keyed by it.
+    modem_set_ptt_inhibit(true);
 
     // A DAC->ADC wire means the node always hears its own carrier, so in the
     // half-duplex config normal operation uses, Ax25TransmitCheck()'s CSMA
@@ -2272,12 +2494,12 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
     // logic, not the DCD reading itself) - so it still sees a real off-air
     // station here. If one is on the air right now, wait for it to clear
     // (bounded, so a stuck DCD or continuously busy channel can't hang the
-    // test) before keying up, instead of transmitting the self-test tone
-    // straight over it and risking a spurious failure.
+    // test) before sending the self-test tone, instead of mixing it with that
+    // signal and risking a spurious failure.
     TickType_t waitStart = xTaskGetTickCount();
     while (ModemDcdState()) {
         if ((xTaskGetTickCount() - waitStart) >= pdMS_TO_TICKS(LOOP_TEST_CHANNEL_WAIT_MS)) {
-            ESP_LOGW(TAG, "Loop test: channel still busy after %d ms, transmitting anyway", LOOP_TEST_CHANNEL_WAIT_MS);
+            ESP_LOGW(TAG, "Loop test: channel still busy after %d ms, sending anyway", LOOP_TEST_CHANNEL_WAIT_MS);
             break;
         }
         vTaskDelay(pdMS_TO_TICKS(20));
@@ -2295,10 +2517,14 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
 
     // Always restore the real RX hook and the configured duplex mode before
     // doing anything else, so a failed/timed-out test doesn't leave real RX
-    // frames being swallowed by the test hook or the radio keying over other
-    // stations.
+    // frames being swallowed by the test hook. Restoring the configuration
+    // rebuilds the receive chain, which first waits for the transmitter to go
+    // idle, so the inhibit is lifted only once the test frame is off the
+    // modulator, and the transmitter is handed back last.
     s_rxHook = aprs_msg_callback;
     aprs_service_apply_modem_config();
+    modem_set_ptt_inhibit(false);
+    s_rfTxOwner = NULL;
     s_loopTestActive = false;
 
     if (!signaled || !s_loopTestGotFrame) {
@@ -2468,12 +2694,13 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
 #define RX_LEVEL_POLL_MS 20
 
 // Tone-band level, mV RMS, below which aprs_rx_level_sample() calls a
-// received signal low. The ESP32's ADC adds broadband noise and bursts of
-// interference tens of millivolts high to whatever it converts, so tones
-// weaker than this leave the demodulators little margin; raising the receive
-// level until the tones clear it, without reaching over-range, is the most
-// effective adjustment the interface offers.
-#define RX_LEVEL_BAND_LOW_MV 100
+// received signal low. Measured on the ADC input with no tones present, the
+// tone band carries about 1 mV RMS of the converter's own noise, with bursts
+// of interference reaching about 6 mV; 20 mV keeps the tones some 10 dB above
+// those bursts and over 25 dB above the steady floor, which leaves the
+// demodulators ample margin. Raising the receive level further, short of
+// over-range, adds little once the tones clear it.
+#define RX_LEVEL_BAND_LOW_MV 20
 
 // Room for one comma-separated list of per-demodulator counters: up to
 // MODEM_RX_MAX_DEMODULATORS unsigned 32-bit values, each at most ten digits,
@@ -2523,6 +2750,9 @@ bool aprs_rx_level_sample(char *json, size_t json_len) {
     int16_t rawMin = INT16_MAX;
     int16_t rawMax = INT16_MIN;
 
+    // Starts a fresh DSP load window, read back at the end of this one.
+    afskGetDspLoad(NULL, NULL, NULL);
+
     TickType_t start = xTaskGetTickCount();
     while ((xTaskGetTickCount() - start) < pdMS_TO_TICKS(RX_LEVEL_WINDOW_MS)) {
         uint16_t rms = afskGetRms();
@@ -2559,6 +2789,9 @@ bool aprs_rx_level_sample(char *json, size_t json_len) {
         rawMin = 0;
         rawMax = 0;
     }
+
+    uint16_t dspMean = 0, dspPeak = 0, dspMax = 0;
+    afskGetDspLoad(&dspMean, &dspPeak, &dspMax);
 
     unsigned mean = (rmsCount > 0) ? (unsigned)(rmsSum / rmsCount) : 0;
     unsigned bandMean = (rmsCount > 0) ? (unsigned)(bandSum / rmsCount) : 0;
@@ -2615,10 +2848,11 @@ bool aprs_rx_level_sample(char *json, size_t json_len) {
              "{\"ok\":true,\"mVrms\":%u,\"peak_mVrms\":%u,\"band_mVrms\":%u,\"band_peak_mVrms\":%u,\"level\":\"%s\","
              "\"dc_mV\":%d,\"agc\":%u.%02u,\"raw_min\":%d,\"raw_max\":%d,\"dcd\":%s,\"adc_samples\":%lu,"
              "\"demods\":%u,\"decoded\":[%s],\"unique\":[%s],\"delivered\":%lu,\"repaired\":%lu,"
-             "\"fifo_drops\":%lu,\"pool_ovf\":%lu}",
+             "\"fifo_drops\":%lu,\"pool_ovf\":%lu,\"dsp_mean\":%u,\"dsp_peak\":%u,\"dsp_max\":%u,\"impulses\":%lu}",
              mean, (unsigned)rmsPeak, bandMean, (unsigned)bandPeak, verdict, afskGetDcOffset(), agcCenti / 100u, agcCenti % 100u, (int)rawMin, (int)rawMax,
              dcd ? "true" : "false", (unsigned long)afskGetAdcSampleCount(), (unsigned)demods, decodedList, uniqueList, (unsigned long)st.delivered,
-             (unsigned long)st.repaired, (unsigned long)st.fifo_drops, (unsigned long)st.adc_pool_overflows);
+             (unsigned long)st.repaired, (unsigned long)st.fifo_drops, (unsigned long)st.adc_pool_overflows, (unsigned)dspMean, (unsigned)dspPeak,
+             (unsigned)dspMax, (unsigned long)afskGetImpulsesRepaired());
 
     ESP_LOGI(TAG, "RX level: %u mV RMS (peak %u), tones %u mV RMS (peak %u), level %s, DC offset %d mV, AGC %u.%02ux, raw %d..%d, DCD %s", mean,
              (unsigned)rmsPeak, bandMean, (unsigned)bandPeak, verdict, afskGetDcOffset(), agcCenti / 100u, agcCenti % 100u, (int)rawMin, (int)rawMax,
@@ -2626,6 +2860,8 @@ bool aprs_rx_level_sample(char *json, size_t json_len) {
     ESP_LOGI(TAG, "RX stats: %u demod(s), decoded %s, unique %s, delivered %lu, repaired %lu, FIFO drops %lu, pool overflows %lu", (unsigned)demods,
              decodedList, uniqueList, (unsigned long)st.delivered, (unsigned long)st.repaired, (unsigned long)st.fifo_drops,
              (unsigned long)st.adc_pool_overflows);
+    ESP_LOGI(TAG, "RX DSP load: mean %u.%u %%, peak %u.%u %%, max since reset %u.%u %%; impulse blanker: %lu sample(s) repaired", dspMean / 10u, dspMean % 10u,
+             dspPeak / 10u, dspPeak % 10u, dspMax / 10u, dspMax % 10u, (unsigned long)afskGetImpulsesRepaired());
 
     s_loopTestActive = false;
     return true;
@@ -2644,11 +2880,21 @@ bool aprs_tx_test_run(char *msg, size_t msg_len) {
         return false;
     }
 
+    // This one goes on the air by design, so it carries the station's
+    // callsign as its source like any other transmission.
+    char srcCall[12];
+    if (!self_test_source_call(srcCall, sizeof(srcCall))) {
+        snprintf(msg, msg_len, "Set this station's callsign (IGate or digipeater callsign) before running the TX test: its frame identifies the station.");
+        ESP_LOGW(TAG, "TX test: %s", msg);
+        s_loopTestActive = false;
+        return false;
+    }
+
     // Sent through the ordinary non-critical transmit path, so the normal
     // half-duplex channel access applies and the long-term duty-cycle ceiling
     // holds the burst back when it is enabled and already reached.
     char tnc2[48];
-    int n = snprintf(tnc2, sizeof(tnc2), "SELFTST>APLT1T:>TXTEST");
+    int n = snprintf(tnc2, sizeof(tnc2), "%s>" SELF_TEST_TOCALL ":>TXTEST", srcCall);
 
     if (!aprs_service_send_tnc2(tnc2, (size_t)n)) {
         snprintf(msg, msg_len,
@@ -2704,9 +2950,17 @@ void aprs_service_start(void) {
     // storage partition is mounted because it loads its mailbox from there.
     winlink_init();
 
-    // Install the RX callback before main.c calls modem_init(): the component
-    // starts its service task inside modem_init() and can deliver a frame the
-    // moment it does.
+    // The transmit gate exists before anything can transmit; see s_rfTxGate.
+    s_rfTxGate = xSemaphoreCreateMutexStatic(&s_rfTxGateBuf);
+
+    // Receive queue and task first, then the RX callback that feeds them, all
+    // before main.c calls modem_init(): the component starts its service task
+    // inside modem_init() and can deliver a frame the moment it does. The
+    // queue is statically allocated and cannot fail; the task is the one
+    // allocation, and without it received frames would only fill the queue.
+    s_rxQueue = xQueueCreateStatic(APRS_RX_QUEUE_DEPTH, sizeof(rx_queue_item_t), s_rxQueueStorage, &s_rxQueueBuf);
+    if (xTaskCreate(rxTask, "aprs_rx", APRS_RX_TASK_STACK_BYTES, NULL, APRS_RX_TASK_PRIORITY, NULL) != pdPASS)
+        ESP_LOGE(TAG, "could not start the aprs_rx task: received frames will not be dispatched");
     modem_set_rx_callback(on_rx_frame, NULL);
 
     // Always start the uplink task: it idles itself (socket closed,
@@ -2753,8 +3007,8 @@ void aprs_service_start(void) {
     beacon_scheduler_start();
 
     // The modem runs its own RX DSP and TX service tasks (see the note above
-    // serviceTickTask); the only task this layer needs for itself is the 1 Hz
-    // housekeeping tick below. See APRS_SVC_TICK_TASK_STACK_BYTES above for
+    // serviceTickTask); besides aprs_rx above, the only task this layer needs
+    // for itself is the 1 Hz housekeeping tick below. See APRS_SVC_TICK_TASK_STACK_BYTES above for
     // why it needs the budget it does.
     xTaskCreate(serviceTickTask, "aprs_svc_tick", APRS_SVC_TICK_TASK_STACK_BYTES, NULL, 4, NULL);
 

@@ -251,9 +251,9 @@ struct ModemDemodConfig ModemConfig;
 // coeffs/taps piecemeal, while MODEM_DECODE() may be reading that same state
 // from the RX task on another core.
 //
-// What serialises this is afskSetModem(), which suspends the RX task
-// across the ModemInit() call. Any other caller of ModemInit() must do the
-// same. A spinlock would be the wrong tool anyway: portENTER_CRITICAL masks
+// What serialises this is afskSetModem(), which holds the RX task at the top
+// of its loop, between two conversion frames, across the ModemInit() call.
+// Any other caller of ModemInit() must do the same. A spinlock would be the wrong tool anyway: portENTER_CRITICAL masks
 // interrupts up to level 3 on this core, which starves the DAC sample clock
 // and destroys every AX.25 frame in flight - see the ring buffer notes in
 // afsk.c.
@@ -280,6 +280,10 @@ static int16_t coeffHiI[NMAX], coeffLoI[NMAX], coeffHiQ[NMAX], coeffLoQ[NMAX];
 // non-zero, which stays correct whatever the demodulator count is; the loop
 // test in main/aprs_service.c reports the bits so an operator can tell which
 // of the parallel demodulators locked.
+//
+// Written only from the receive task: by MODEM_DECODE() on every demodulated
+// sample and by ModemResetDcd() whenever samples stop reaching the
+// demodulators, so the bitmap never outlives the audio it was derived from.
 static uint8_t dcd = 0;
 
 // G3RUH scrambler state. TX and RX must have one each.
@@ -443,6 +447,7 @@ static int16_t inputPeak;
 static int16_t inputValley;
 
 static void decode(uint8_t symbol, uint8_t demod, uint16_t mV);
+static void setDcd(bool state);
 static void correlate(int16_t sample, struct Correlator *c);
 static int32_t slice(struct DemodState *dem, const struct Correlator *c);
 
@@ -481,6 +486,20 @@ uint8_t ModemGetDemodulatorCount(void) {
 
 uint8_t ModemDcdState(void) {
     return dcd;
+}
+
+void ModemResetDcd(void) {
+    // Only the carrier-detect side of each demodulator is cleared. The clock
+    // recovery PLL, the correlators and the HDLC state are left alone: the
+    // next sample either continues a frame or starts from noise, and in both
+    // cases the DCD counter rebuilds from its own evidence within a few
+    // symbols.
+    for (uint8_t i = 0; i < MODEM_MAX_DEMODULATOR_COUNT; i++) {
+        demodState[i].dcd = 0;
+        demodState[i].dcdCounter = 0;
+    }
+    dcd = 0;
+    setDcd(false);
 }
 
 void ModemGetSignalLevel(uint8_t modem, int8_t *peak, int8_t *valley, uint8_t *level) {
@@ -846,8 +865,9 @@ void ModemTransmitStart(void) {
 // @brief Stop TX and go back to RX.
 //
 // Called from the DAC timer ISR via Ax25GetTxBit(), so it must be ISR safe:
-// it only lowers a flag. AFSK_ServiceTx(), running in the service task, does
-// the actual teardown (stop the timer, park the DAC, release PTT).
+// setTransmit(false) only raises the pending teardown, clears the
+// transmitting flag and drops PTT. AFSK_ServiceTx(), running in the service
+// task, does the rest of the teardown (stop the timer, park the DAC).
 void IRAM_ATTR ModemTransmitStop(void) {
     setTransmit(false);
 }
@@ -875,24 +895,27 @@ static const int8_t tiltDiv2Speaker[2] = { 0, 5 };
 static const int8_t tiltDiv3Flat[3] = { 4, 0, -5 };
 static const int8_t tiltDiv3Speaker[3] = { 0, 3, 6 };
 
-// MODEM_RX_EQ_MULTISLICE: MODEM_RX_SLICE_PREFILTERS prefilters, each feeding
-// MODEM_RX_SLICE_WEIGHTS slicers. The tilt tables hold the tilt requested from
-// each prefilter; the target tables hold the twist compensation every slicer
+// Multi-slicer demodulator sets: a few prefilters, prefilter c feeding count[c]
+// slicers. The tilt tables hold the tilt requested from each prefilter; the
+// target tables hold the twist compensation every slicer
 // ends up with, in dB: the prefilter's realized tilt plus the slicer's own
 // weight on the space magnitude. Positive values boost the space tone against
 // the mark tone, negative ones favour the mark tone.
 //
 // Twist compensation is split between the two on purpose. A slicer is nearly
 // free and reaches any weight exactly, where a short prefilter realizes only
-// part of a large tilt, so the slicers carry most of the range and each
-// slicer weight is derived from the tilt its prefilter actually realized
-// (setup1200DemodSet()). That keeps the targets on an even grid whatever the
-// prefilter length. What a slicer cannot do is keep a loud tone out of the
-// other tone's correlator arm: the correlator is one symbol long, so its
-// response is broad enough for a tone 10 dB up to leak into the other arm and
-// bury the weaker tone no matter how the two magnitudes are weighted
-// afterwards. Only a filter ahead of the correlators removes it, which is why
-// the two prefilters are tilted towards the two ends of the range.
+// part of a large tilt, so each slicer weight is derived from the tilt its
+// prefilter actually realized (setupMultiSlice()). That keeps the targets on
+// an even grid whatever the prefilter length. What a slicer cannot do is keep
+// a loud tone out of the other tone's correlator arm: the correlator is one
+// symbol long, so its response is broad enough for a tone 10 dB up to leak
+// into the other arm and bury the weaker tone no matter how the two
+// magnitudes are weighted afterwards. Only a filter ahead of the correlators
+// removes it. Weak signals show the same limit on a smaller scale: a slicer
+// whose weight is more than about 3 dB from unity loses sensitivity against
+// one whose prefilter already sits near its target. MODEM_RX_EQ_MULTISLICE
+// therefore uses three prefilters, each tilted to the centre of its own group of targets,
+// so no slicer weight goes much beyond +-4 dB.
 //
 // The targets cover twist as it reaches the demodulators, which includes the
 // slope of the capture chain itself: the decimation filter alone takes about
@@ -905,23 +928,48 @@ static const int8_t tiltDiv3Speaker[3] = { 0, 3, 6 };
 // transmitter and the chain's own slope from a flat one, so its set runs from
 // +9 to -15.5 dB. Both sets step 3.5 dB, which keeps every twist inside
 // about 1.75 dB of a slicer.
-#define MODEM_RX_SLICE_PREFILTERS 2
-#define MODEM_RX_SLICE_WEIGHTS    (MODEM_RX_SLICER_COUNT / MODEM_RX_SLICE_PREFILTERS)
-_Static_assert(MODEM_RX_SLICER_COUNT == MODEM_RX_SLICE_PREFILTERS * MODEM_RX_SLICE_WEIGHTS,
-               "MODEM_RX_SLICER_COUNT must be a whole number of slicers per prefilter");
-_Static_assert(MODEM_RX_SLICE_PREFILTERS <= MODEM_MAX_CORRELATOR_COUNT, "the multi-slicer preset needs one correlator per prefilter");
-_Static_assert(MODEM_RX_SLICE_WEIGHTS == 4, "the multi-slicer target tables hold four slicers per prefilter");
+//
+// MODEM_RX_EQ_MULTISLICE2 arranges the same eight slicers over two
+// prefilters, four slicers each, tilted towards the two ends of the same
+// target ranges. Its outer slicers carry weights up to about +-6 dB, so it
+// trails the three-prefilter set on weak signals in simulation; it is there
+// to compare the two layouts on a live station without reflashing.
+#define SLICE_MAX_PREFILTERS 3
+#define SLICE_MAX_WEIGHTS    4
+_Static_assert(SLICE_MAX_PREFILTERS <= MODEM_MAX_CORRELATOR_COUNT, "the multi-slicer presets need one correlator per prefilter");
 
-static const int8_t sliceTiltFlat[MODEM_RX_SLICE_PREFILTERS] = { 5, -9 };
-static const int8_t sliceTiltSpeaker[MODEM_RX_SLICE_PREFILTERS] = { 9, -4 };
-static const float sliceTargetFlat[MODEM_RX_SLICE_PREFILTERS][MODEM_RX_SLICE_WEIGHTS] = {
-    { 9.0f, 5.5f, 2.0f, -1.5f },
-    { -5.0f, -8.5f, -12.0f, -15.5f },
+// One multi-slicer arrangement. Row c of the target tables holds count[c]
+// targets for prefilter c; the entries past that count are unused.
+typedef struct {
+    uint8_t prefilters;
+    uint8_t count[SLICE_MAX_PREFILTERS];
+    int8_t tiltFlat[SLICE_MAX_PREFILTERS];
+    int8_t tiltSpeaker[SLICE_MAX_PREFILTERS];
+    float targetFlat[SLICE_MAX_PREFILTERS][SLICE_MAX_WEIGHTS];
+    float targetSpeaker[SLICE_MAX_PREFILTERS][SLICE_MAX_WEIGHTS];
+} slice_layout_t;
+
+// MODEM_RX_EQ_MULTISLICE: three prefilters, 3/3/2 slicers.
+static const slice_layout_t sliceLayout3 = {
+    .prefilters = 3,
+    .count = { 3, 3, 2 },
+    .tiltFlat = { 6, -5, -14 },
+    .tiltSpeaker = { 13, 2, -7 },
+    .targetFlat = { { 9.0f, 5.5f, 2.0f }, { -1.5f, -5.0f, -8.5f }, { -12.0f, -15.5f } },
+    .targetSpeaker = { { 16.0f, 12.5f, 9.0f }, { 5.5f, 2.0f, -1.5f }, { -5.0f, -8.5f } },
 };
-static const float sliceTargetSpeaker[MODEM_RX_SLICE_PREFILTERS][MODEM_RX_SLICE_WEIGHTS] = {
-    { 16.0f, 12.5f, 9.0f, 5.5f },
-    { 2.0f, -1.5f, -5.0f, -8.5f },
+_Static_assert(3 + 3 + 2 == MODEM_RX_SLICER_COUNT, "sliceLayout3 must run MODEM_RX_SLICER_COUNT slicers");
+
+// MODEM_RX_EQ_MULTISLICE2: two prefilters, four slicers each.
+static const slice_layout_t sliceLayout2 = {
+    .prefilters = 2,
+    .count = { 4, 4 },
+    .tiltFlat = { 5, -9 },
+    .tiltSpeaker = { 9, -4 },
+    .targetFlat = { { 9.0f, 5.5f, 2.0f, -1.5f }, { -5.0f, -8.5f, -12.0f, -15.5f } },
+    .targetSpeaker = { { 16.0f, 12.5f, 9.0f, 5.5f }, { 2.0f, -1.5f, -5.0f, -8.5f } },
 };
+_Static_assert(4 + 4 == MODEM_RX_SLICER_COUNT, "sliceLayout2 must run MODEM_RX_SLICER_COUNT slicers");
 
 // Largest slicer weight, dB either way. The targets sit within this of any
 // tilt a designed prefilter can realize, and it keeps the weighted magnitude
@@ -1050,6 +1098,27 @@ static void designCorrelatorPrefilter(uint8_t index, int8_t tiltDb) {
     c->bpfTiltRequestedDb = tiltDb;
 }
 
+// @brief Build a multi-slicer demodulator set from one layout.
+static void setupMultiSlice(const slice_layout_t *layout) {
+    const int8_t *tilts = ModemConfig.flatAudioIn ? layout->tiltFlat : layout->tiltSpeaker;
+    const float (*targets)[SLICE_MAX_WEIGHTS] = ModemConfig.flatAudioIn ? layout->targetFlat : layout->targetSpeaker;
+
+    corrCount = layout->prefilters;
+    demodCount = MODEM_RX_SLICER_COUNT;
+    uint8_t i = 0;
+    for (uint8_t c = 0; c < corrCount; c++) {
+        setupCorrelator(&correlators[c], lpf1200, sizeof(lpf1200) / sizeof(*lpf1200), 15);
+        designCorrelatorPrefilter(c, tilts[c]);
+        for (uint8_t k = 0; k < layout->count[c]; k++) {
+            // The slicer supplies whatever the prefilter's realized tilt
+            // leaves between it and the target.
+            float weightDb = targets[c][k] - correlators[c].bpfTiltDb;
+            weightDb = fmaxf(fminf(weightDb, SLICE_WEIGHT_DB_MAX), -SLICE_WEIGHT_DB_MAX);
+            setup1200Demod(&demodState[i++], c, weightDb);
+        }
+    }
+}
+
 // @brief Build the 1200 Bd demodulator set selected by rxTuning.
 static void setup1200DemodSet(void) {
     const int8_t *tilts = NULL;
@@ -1074,26 +1143,13 @@ static void setup1200DemodSet(void) {
             corrCount = rxTuning.custom_count;
             tilts = rxTuning.custom_tilt_db;
             break;
-        case MODEM_RX_EQ_MULTISLICE:
-        default: {
-            const int8_t *tilts = ModemConfig.flatAudioIn ? sliceTiltFlat : sliceTiltSpeaker;
-            const float (*targets)[MODEM_RX_SLICE_WEIGHTS] = ModemConfig.flatAudioIn ? sliceTargetFlat : sliceTargetSpeaker;
-
-            corrCount = MODEM_RX_SLICE_PREFILTERS;
-            demodCount = MODEM_RX_SLICER_COUNT;
-            for (uint8_t c = 0; c < corrCount; c++) {
-                setupCorrelator(&correlators[c], lpf1200, sizeof(lpf1200) / sizeof(*lpf1200), 15);
-                designCorrelatorPrefilter(c, tilts[c]);
-                for (uint8_t k = 0; k < MODEM_RX_SLICE_WEIGHTS; k++) {
-                    // The slicer supplies whatever the prefilter's realized
-                    // tilt leaves between it and the target.
-                    float weightDb = targets[c][k] - correlators[c].bpfTiltDb;
-                    weightDb = fmaxf(fminf(weightDb, SLICE_WEIGHT_DB_MAX), -SLICE_WEIGHT_DB_MAX);
-                    setup1200Demod(&demodState[(uint8_t)(c * MODEM_RX_SLICE_WEIGHTS + k)], c, weightDb);
-                }
-            }
+        case MODEM_RX_EQ_MULTISLICE2:
+            setupMultiSlice(&sliceLayout2);
             return;
-        }
+        case MODEM_RX_EQ_MULTISLICE:
+        default:
+            setupMultiSlice(&sliceLayout3);
+            return;
     }
 
     // Every other set: one slicer, at unit weight, per correlator.

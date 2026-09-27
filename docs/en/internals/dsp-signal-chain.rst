@@ -22,7 +22,9 @@ The chain, stage by stage
    * - SAR-ADC1 continuous/DMA, 128-sample conversion frames
      - **76 800 Hz**
      - driver ISR on core 0
-   * - ingest: pair un-swap, DC-offset removal, wideband RMS metering
+   * - ingest: pair un-swap, impulse blanker (``impulse_blanker.h``: median of
+       five, glitches replaced by interpolation, two-sample delay),
+       DC-offset removal, wideband RMS metering
      - 76 800 Hz
      - ``afsk.c``
    * - decimation FIR (48 taps, ratio **8:1**), CTCSS/bass high-pass
@@ -61,6 +63,77 @@ than decoding bytes that lie past the frame — in the RX path those bytes are t
 tail of the previously received frame, which would otherwise turn into
 plausible-looking repeater callsigns in an otherwise valid decode.
 
+What the frame encoder guarantees
+=================================
+
+On transmit, ``Ax25GetTxBit()`` bit-stuffs the frame and its FCS as one
+continuous HDLC field: after every run of five 1 bits a 0 is inserted, and the
+run counter carries across the boundary between the last data byte and the FCS.
+When a run of five 1s ends exactly on the last FCS bit, the stuffed 0 is still
+sent, *before* the closing flag. Leaving it out would make a receiver take the
+flag's leading 0 as the stuffed bit, so the closing flag would complete with
+only six data bits since the last byte boundary instead of seven. The in-tree
+decoder does not count those bits, but stricter ones do — Direwolf's
+``hdlc_rec.c`` discards such a frame — and with random content the case hits
+about one frame in sixty. FX.25 blocks are not affected: ``writeFx25Frame()``
+stuffs the FCS itself before the Reed–Solomon encoding.
+
+The address field always ends on the last address in use. ``ax25_encode()`` and
+``hdlcFrame()`` set the end-of-address bit (bit 0 of the SSID octet) on that
+address and clear it everywhere else, including the full case of destination,
+source and eight digipeaters, where no empty slot follows the last one. A frame
+without the bit is rejected by Direwolf and KISS TNCs, and the in-tree receiver
+would read the control byte as the end of the address field; since the
+digipeater re-encodes every frame it repeats from TNC2 text, a legal
+eight-digipeater frame goes out again exactly as legal as it came in.
+
+Every frame closes with one flag followed by the TX tail (``Ax25TxTail()``,
+default 20 ms, rounded up to whole flags), and only then does the ISR drop PTT.
+The key-down publishes its state in a fixed order - pending teardown, then
+transmitter idle and PTT released, then the key-up stage back to idle - and
+``Ax25TransmitCheck()`` does not key the next frame while the modulator runs or
+the teardown is still owed. A new key-up can therefore never start inside the
+key-down of the previous one, which in full duplex (no quiet time) would
+otherwise leave the transmitter stuck until reboot.
+
+``Ax25GetTxBit()`` runs in the DAC timer ISR, which is cache-safe
+(``CONFIG_GPTIMER_ISR_CACHE_SAFE``) and therefore keeps running while a LittleFS
+write or an OTA update has the flash cache disabled. Everything that ISR reads
+is in IRAM or DRAM. In particular it never touches ``Fx25ModeList``, the FX.25
+mode table in flash: ``writeFx25Frame()`` copies the correlation tag, ``K`` and
+``T`` of the chosen mode into the frame's own handle in task context, and the
+ISR sends the tag from that copy. The same rule covers the rest of the call
+chain (``MODEM_BAUDRATE_TIMER_HANDLER()``, ``txRetireFrame()``,
+``ModemTransmitStop()``, ``setTransmit()``, ``setPtt()``, ``LED_Status2()``),
+whose functions are ``IRAM_ATTR`` and whose tables and constants
+(``sin_table``, the PTT pin number) are ``DRAM_ATTR``.
+
+This is pinned by a host regression test,
+``components/esp32idf_radioamateur_modem/test/host/``. It compiles the real
+``ax25.c``, ``crc_ccit.c`` and FX.25 sources against small stand-in headers,
+under AddressSanitizer and UndefinedBehaviorSanitizer, and sends 20 000 random
+UI frames (30–180 bytes) through ``Ax25WriteTxFrame()`` /
+``Ax25TransmitCheck()`` / ``Ax25GetTxBit()``. Each key-up is compared bit for
+bit with a reference HDLC encoder and fed to both the in-tree receiver and a
+receiver that follows Direwolf's rules; a second pass sends 2 000 frames as
+FX.25 blocks through the in-tree receiver, with the pages holding
+``Fx25ModeList`` unmapped while the bits are clocked out, so any read of the
+table from the transmit bit path faults as it would with the cache disabled. A
+third pass builds frames with 0 to 8 digipeaters from TNC2 text and checks the
+end-of-address bit, ``ax25_decode()`` and a full key-up through the in-tree
+receiver; a fourth runs half duplex and checks that a time slot of 0 keys every
+frame up at once while a non-zero one holds each frame at least that long; a
+fifth checks that each tail length is followed by exactly one closing flag plus
+the tail's flags, and that a queued frame does not key up while the modulator
+still runs or its teardown is still owed. The run also reports how many frames ended their FCS on five 1s (a few hundred), so
+a pass always covers the case.
+
+.. code-block:: bash
+
+   cd components/esp32idf_radioamateur_modem/test/host
+   make              # default seed
+   make SEED=0x2a    # any other seed
+
 The receive tuning
 ==================
 
@@ -91,15 +164,19 @@ by a half-built chain.
    slicer cannot do is keep a loud space tone out of the mark correlator: the
    correlator is one symbol long, so its response is broad enough for the
    other tone to leak in, and only a filter ahead of it removes that. The
-   default ``MODEM_RX_EQ_MULTISLICE`` set therefore pairs two prefilters,
-   tilted towards the two ends of the range (+5 and −9 dB on flat audio, +9
-   and −4 dB on speaker audio), with four slicers each. The tables in
+   default ``MODEM_RX_EQ_MULTISLICE`` set therefore runs three prefilters,
+   each tilted to the centre of its part of the range (+6, −5 and −14 dB on
+   flat audio, +13, +2 and −7 dB on speaker audio), with three, three and two
+   slicers; keeping every slicer weight within about 4 dB of unity matters on
+   weak signals, where a far-off weight costs sensitivity. The tables in
    ``modem.c`` hold the compensation every slicer should end up with — prefilter
    tilt plus slicer weight — and each weight is derived from the tilt its
    prefilter actually realized, so the eight demodulators step 3.5 dB over
    +9 to −15.5 dB (flat) or +16 to −8.5 dB (speaker) whatever the prefilter
    length. ``ModemLogConfig()`` lists the result once the receive task runs
-   again. The filter-set presets give every demodulator its own prefilter and
+   again. ``MODEM_RX_EQ_MULTISLICE2`` arranges the same eight slicers over two
+   prefilters, four each (+5/−9 dB flat, +9/−4 dB speaker), to compare the two
+   layouts on a live station. The filter-set presets give every demodulator its own prefilter and
    an unweighted slicer, and the legacy set keeps the fixed 8-tap tables.
 
 **Duplicate suppression and statistics.**
@@ -313,7 +390,7 @@ The modem source files
    * - ``src/modem.c`` (~1070 ln)
      - prefilter design and demodulator sets, correlators, DPLL, tone tables,
        DCD, twist estimate, calibration
-   * - ``src/ax25.c`` (~1910 ln)
+   * - ``src/ax25.c`` (~1940 ln)
      - HDLC framer, NRZI, bit-stuffing, duplicate suppression, bit repair,
        AX.25 codec, TX queue
    * - ``src/esp32idf_radioamateur_modem.c`` (~590 ln)

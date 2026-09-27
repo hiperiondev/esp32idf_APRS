@@ -53,6 +53,15 @@ struct Fx25Mode {
 
 /**
  * @brief Table of all supported FX.25 coding modes.
+ *
+ * @warning The table is constant data placed in flash. It must not be read
+ *          from an interrupt handler that stays active while the flash cache
+ *          is disabled (for example the cache-safe DAC timer ISR that clocks
+ *          out transmitted bits): a flash write or an OTA update running at
+ *          the same time turns such a read into a
+ *          "Cache disabled but cached memory region accessed" panic. Code on
+ *          that path works on a copy of the mode fields taken in task context
+ *          instead of on a pointer into this table.
  */
 extern const struct Fx25Mode Fx25ModeList[11];
 
@@ -64,7 +73,9 @@ extern const struct Fx25Mode Fx25ModeList[11];
 /**
  * @brief Look up an FX.25 mode by its correlation tag.
  * @param tag Correlation tag read from the air.
- * @return Pointer to the matching mode, or NULL if no mode matches.
+ * @return Pointer to the matching mode, or NULL if no mode matches. The
+ *         pointer refers to ::Fx25ModeList, so the same flash-access
+ *         restriction applies to dereferencing it.
  */
 const struct Fx25Mode *Fx25GetModeForTag(uint64_t tag);
 
@@ -73,6 +84,8 @@ const struct Fx25Mode *Fx25GetModeForTag(uint64_t tag);
  *        size.
  * @param size Size, in bytes, of the AX.25 frame to protect.
  * @return Pointer to the selected mode, or NULL if no mode is large enough.
+ *         The pointer refers to ::Fx25ModeList, so the same flash-access
+ *         restriction applies to dereferencing it.
  */
 const struct Fx25Mode *Fx25GetModeForSize(uint16_t size);
 

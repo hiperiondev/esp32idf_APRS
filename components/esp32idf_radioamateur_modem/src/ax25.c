@@ -89,9 +89,12 @@ struct Ax25ProtoConfig Ax25Config;
 #define AX25_CRC_GOOD_RESIDUE 0xF0B8
 
 #define STATIC_HEADER_FLAG_COUNT 4 // flags sent before each frame
-#define STATIC_FOOTER_FLAG_COUNT 1 // flags sent after each frame
+// The closing flag of the frame. Any flags after it belong to the TX tail
+// (Ax25TxTail()), which keeps the carrier up until the radio's audio chain has
+// passed the whole closing flag on to the air.
+#define STATIC_FOOTER_FLAG_COUNT 1
 
-#define MAX_TRANSMIT_RETRY_COUNT 8 // anti-starvation cap: max busy-channel/missed-persistence slots before forcing a transmission anyway
+#define CSMA_PERSIST_MISS_MAX 8 // consecutive missed persistence rolls on a clear channel before transmitting anyway
 
 #define SYNC_BYTE 0x7E // preamble/postamble octet
 
@@ -115,9 +118,42 @@ struct FrameHandle {
     int8_t twistDb;
     uint8_t repaired;
 #ifdef ENABLE_FX25
-    struct Fx25Mode *fx25Mode;
+    // FX.25 coding of the frame, copied by value out of Fx25ModeList when the
+    // frame is queued or received. Fx25ModeList lives in flash, and
+    // Ax25GetTxBit() runs in the cache-safe DAC ISR, which keeps running while
+    // a flash write or an OTA has the cache disabled; with the copy the ISR
+    // only reads DRAM. fx25K == 0 marks a plain AX.25 frame.
+    uint64_t fx25Tag;
+    uint16_t fx25K;
+    uint8_t fx25T;
 #endif
 };
+
+#ifdef ENABLE_FX25
+// @brief Record the FX.25 coding of a frame handle; NULL marks plain AX.25.
+//
+// Task context only: this is where a mode from Fx25ModeList is read on behalf
+// of a frame handle, so the ISR can work from the copy alone.
+static void frameSetFx25(struct FrameHandle *h, const struct Fx25Mode *mode) {
+    if (mode != NULL) {
+        h->fx25Tag = mode->tag;
+        h->fx25K = mode->K;
+        h->fx25T = mode->T;
+    } else {
+        h->fx25Tag = 0;
+        h->fx25K = 0;
+        h->fx25T = 0;
+    }
+}
+
+// @brief true when the frame handle carries an FX.25 block.
+//
+// IRAM_ATTR: read by Ax25GetTxBit() from the DAC ISR, so it must not be left
+// in flash when -Og declines to inline it. It only reads the handle itself.
+static inline bool IRAM_ATTR frameIsFx25(const struct FrameHandle *h) {
+    return h->fx25K != 0;
+}
+#endif
 
 // The RX rings are single-producer / single-consumer, and the two ends live on
 // DIFFERENT CORES:
@@ -207,18 +243,37 @@ static uint8_t txBitstuff = 0;
 static uint16_t txTailElapsed;
 static uint16_t txCrc = 0xFFFF;
 static uint32_t txQuiet = 0;
-// Slots the frame currently waiting to key up has already spent in the CSMA
-// backoff, and how many of them found the channel busy. txRetries bounds the
-// total wait (MAX_TRANSMIT_RETRY_COUNT); txBusySlots is what tells the two
-// reasons a forced transmission can happen apart from each other, since a run
-// mixes busy slots and missed persistence rolls freely. Both are cleared the
-// moment the frame keys up.
-static uint8_t txRetries = 0;
-static uint8_t txBusySlots = 0;
-static volatile uint32_t txPersistenceMissedCount = 0; // bumped once per forced TX after a run of clear-channel slots that all missed the persistence roll
-static volatile uint32_t txChannelBusyCount = 0;       // bumped once per forced TX after a run that included at least one busy-channel slot
+// CSMA backoff of the frame currently waiting to key up. The two ways it can
+// be held back have separate limits because they mean different things:
+//
+// - txPersistMisses counts consecutive persistence rolls lost on a clear
+//   channel. It says nothing about the channel, only that the roll failed, so
+//   it is capped at CSMA_PERSIST_MISS_MAX and restarts from zero whenever a
+//   busy slot interrupts the run.
+// - txBusySlots counts slots that found the carrier detect asserted, and
+//   txBusySinceMs is when the first of them was seen. Waiting out other
+//   stations is what CSMA is for, so this wait is bounded only by
+//   Ax25Config.csmaBusyTimeout, which is long or unlimited.
+//
+// Both counters are cleared the moment the frame keys up; txBusySinceMs is
+// only meaningful while txBusySlots is non-zero.
+static uint8_t txPersistMisses = 0;
+static uint32_t txBusySlots = 0;
+static uint32_t txBusySinceMs = 0;
+static volatile uint32_t txPersistenceMissedCount = 0; // bumped once per forced TX after CSMA_PERSIST_MISS_MAX missed rolls on a clear channel
+static volatile uint32_t txChannelBusyCount = 0;       // bumped once per forced TX after the busy-channel wait reached csmaBusyTimeout
+// Key-up state shared by the modem service task and the DAC ISR. The task
+// moves it OFF -> WAITING -> TRANSMITTING; the ISR moves it TRANSMITTING ->
+// OFF at the end of the tail, and that store is the last thing the ISR does
+// for a key-up. Every transition is a release store and every cross-side read
+// an acquire load, so a task that sees TX_INIT_OFF also sees the key-down the
+// ISR performed before it: the pending teardown, the dropped PTT and
+// txJustKeyedDown.
 static volatile enum TxInitStage txInitStage;
 static enum TxStage txStage;
+
+#define TX_STAGE_PUBLISH(v) __atomic_store_n(&txInitStage, (v), __ATOMIC_RELEASE)
+#define TX_STAGE_OBSERVE()  __atomic_load_n(&txInitStage, __ATOMIC_ACQUIRE)
 
 // Ax25GetTxBit() runs in the DAC sample-clock ISR (IRAM_ATTR), so it cannot
 // call ESP_LOGx directly - logging from an ISR risks blowing the ISR's stack
@@ -259,7 +314,7 @@ struct RxState {
     uint8_t rawData;
     enum Ax25RxStage rx;
 #ifdef ENABLE_FX25
-    struct Fx25Mode *fx25Mode;
+    const struct Fx25Mode *fx25Mode; // read by the receive task only, never by an ISR
     uint64_t tag;
 #endif
 };
@@ -282,8 +337,19 @@ static struct Ax25RxStats rxStats;
 // Ax25Init() clears that structure on every profile switch.
 static uint8_t rxFixBits = 0;
 
-static uint16_t txDelay;
-static uint16_t txTail;
+static uint16_t txDelay; // TXDelay, in bytes of flags
+static uint16_t txTail;  // TXTail, in bytes of flags
+
+// @brief Convert a duration into the number of whole flag bytes that cover it
+//        at the current baud rate, rounding up.
+//
+// Rounding up keeps a non-zero setting from collapsing to zero bytes: at
+// 300 Bd a byte lasts 26.7 ms, so a 20 ms tail still sends one flag.
+static uint16_t msToTxBytes(uint16_t ms) {
+    uint32_t bits = (uint32_t)ms * (uint32_t)ModemGetBaudrate();
+    uint32_t bytes = (bits + 7999u) / 8000u; // 8 bits per byte, 1000 ms per s
+    return (bytes > UINT16_MAX) ? UINT16_MAX : (uint16_t)bytes;
+}
 
 static uint8_t outputFrameBuffer[AX25_FRAME_MAX_SIZE];
 
@@ -308,11 +374,54 @@ static void IRAM_ATTR calculateCRC(uint8_t bit, uint16_t *crc) {
 
 #define countof(a) (sizeof(a) / sizeof(a[0]))
 
-#define DECODE_CALL(buf, addr)                                                                                                                                 \
-    for (unsigned i = 0; i < sizeof((addr)) - CALL_OVERSPACE; i++) {                                                                                           \
-        char c = (char)(*(buf)++ >> 1);                                                                                                                        \
-        (addr)[i] = (c == ' ') ? '\x0' : c;                                                                                                                    \
+// Callsign characters in one AX.25 address, each shifted left by one bit;
+// the SSID octet that completes the 7-byte address follows them.
+#define AX25_CALL_CHARS 6
+
+_Static_assert(sizeof(((ax25_call_t *)0)->call) == AX25_CALL_CHARS + 1, "decodeCall() writes AX25_CALL_CHARS characters and a NUL");
+
+// @brief Whether the 6 callsign bytes of one address hold a legal callsign.
+//
+// A callsign is upper-case letters and digits, left-aligned and padded on the
+// right with spaces, at least one character long. The extension bit (bit 0)
+// is never set inside the callsign characters; it belongs to the SSID octet.
+// This is the one rule set for an address: ax25_decode() applies it to every
+// received frame and framePlausible() to every repaired one.
+static bool addrCallValid(const uint8_t *p) {
+    bool spaceSeen = false;
+
+    for (uint8_t j = 0; j < AX25_CALL_CHARS; j++) {
+        uint8_t c = p[j];
+        if (c & 1)
+            return false; // address characters never carry the extension bit
+        char ch = (char)(c >> 1);
+        bool alnum = (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
+        if (ch == ' ') {
+            if (j == 0)
+                return false; // a callsign never starts with padding
+            spaceSeen = true;
+        } else if (!alnum || spaceSeen) {
+            return false; // invalid character, or a character after the padding
+        }
     }
+    return true;
+}
+
+// @brief Validate and decode the callsign of one address into @p out, a
+//        buffer of AX25_CALL_CHARS + 1 bytes, NUL-terminated.
+// @return false, leaving @p out untouched, when the address does not hold a
+//         legal callsign (see addrCallValid()).
+static bool decodeCall(const uint8_t *p, char *out) {
+    if (!addrCallValid(p))
+        return false;
+
+    for (uint8_t j = 0; j < AX25_CALL_CHARS; j++) {
+        char c = (char)(p[j] >> 1);
+        out[j] = (c == ' ') ? '\0' : c;
+    }
+    out[AX25_CALL_CHARS] = '\0';
+    return true;
+}
 
 #define AX25_SET_REPEATED(msg, idx, val)                                                                                                                       \
     do {                                                                                                                                                       \
@@ -325,8 +434,8 @@ static void IRAM_ATTR calculateCRC(uint8_t bit, uint16_t *crc) {
 // Minimum bytes a legal AX.25 UI frame header can be: destination address (6
 // call + 1 SSID/control byte = 7), source address (7), control byte (1) and
 // PID byte (1) = 16. This is a lower bound with zero repeaters. The
-// destination and source addresses are the one stretch DECODE_CALL() walks
-// with no further test, so anything shorter is rejected up front rather than
+// destination and source addresses are the one stretch decoded with no
+// further length test, so anything shorter is rejected up front rather than
 // read past the logical end of a short/corrupted RF frame; everything after
 // them is measured against the frame length as it is reached.
 #define AX25_MIN_ADDR_LEN (7 + 7 + 1 + 1)
@@ -354,15 +463,20 @@ bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg, enum
     // produced the buffer having stopped the address field at the right place.
     const uint8_t *end = buf + len;
 
-    DECODE_CALL(buf, msg->dst.call);
+    // Every address is validated as it is decoded: a CRC-valid frame can
+    // still carry any byte in its address field, and the callsigns flow into
+    // TNC2 renderings, message parsers and APRS-IS headers built from them.
+    if (!decodeCall(buf, msg->dst.call))
+        return false; // destination is not a legal callsign
+    buf += AX25_CALL_CHARS;
     msg->dst.ssidBits = *buf++;
     msg->dst.ssid = (msg->dst.ssidBits >> 1) & 0x0F;
-    msg->dst.call[6] = 0;
 
-    DECODE_CALL(buf, msg->src.call);
+    if (!decodeCall(buf, msg->src.call))
+        return false; // source is not a legal callsign
+    buf += AX25_CALL_CHARS;
     msg->src.ssidBits = *buf;
     msg->src.ssid = (msg->src.ssidBits >> 1) & 0x0F;
-    msg->src.call[6] = 0;
 
     // Repeater walk. On entry to each pass buf points at the SSID octet of the
     // address just decoded, whose bit 0 is the extension bit: clear means one
@@ -383,11 +497,12 @@ bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg, enum
         if ((size_t)(end - buf) < AX25_ADDR_LEN)
             return false; // not enough bytes left for the repeater address the extension bit promised
 
-        DECODE_CALL(buf, msg->rpt_list[msg->rpt_count].call);
+        if (!decodeCall(buf, msg->rpt_list[msg->rpt_count].call))
+            return false; // repeater address is not a legal callsign
+        buf += AX25_CALL_CHARS;
         msg->rpt_list[msg->rpt_count].ssidBits = *buf;
         msg->rpt_list[msg->rpt_count].ssid = (msg->rpt_list[msg->rpt_count].ssidBits >> 1) & 0x0F;
         AX25_SET_REPEATED(msg, msg->rpt_count, (*buf & 0x80));
-        msg->rpt_list[msg->rpt_count].call[6] = 0;
         msg->rpt_count++;
     }
 
@@ -457,7 +572,7 @@ static void *writeFx25Frame(const uint8_t *data, uint16_t size) {
 
     txFrame[txFrameHead].size = requiredSize;
     txFrame[txFrameHead].start = txBufferHead;
-    txFrame[txFrameHead].fx25Mode = (struct Fx25Mode *)fx25Mode;
+    frameSetFx25(&txFrame[txFrameHead], fx25Mode);
 
     memset(txFx25Buffer, 0, sizeof(txFx25Buffer));
 
@@ -631,7 +746,7 @@ endParseFx25Frame:
             // The payload is already in rxBuffer at this point. Fill the handle,
             // and only then make it visible - the release store below is what
             // orders both against the consumer on the other core. The caller
-            // still writes h->peak/level/corrected/fx25Mode after we return, so
+            // still writes h->peak/level/corrected and the FX.25 coding after we return, so
             // publication is deferred to publishRxFrame().
             h->start = initialRxBufferHead;
             h->size = k - 2;
@@ -709,7 +824,7 @@ void *Ax25WriteTxFrame(const uint8_t *data, uint16_t size) {
     txFrame[txFrameHead].start = txBufferHead;
 
 #ifdef ENABLE_FX25
-    txFrame[txFrameHead].fx25Mode = NULL;
+    frameSetFx25(&txFrame[txFrameHead], NULL);
 #endif
 
     for (uint16_t i = 0; i < size; i++) {
@@ -871,21 +986,8 @@ static bool framePlausible(const uint8_t *f, uint16_t len) {
         if ((uint16_t)(idx + 7) > len)
             return false;
 
-        bool spaceSeen = false;
-        for (uint8_t j = 0; j < 6; j++) {
-            uint8_t c = f[idx + j];
-            if (c & 1)
-                return false; // address characters never carry the extension bit
-            char ch = (char)(c >> 1);
-            bool alnum = (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
-            if (ch == ' ') {
-                if (j == 0)
-                    return false; // a callsign never starts with padding
-                spaceSeen = true;
-            } else if (!alnum || spaceSeen) {
-                return false; // invalid character, or a character after the padding
-            }
-        }
+        if (!addrCallValid(&f[idx]))
+            return false;
 
         bool last = (f[idx + 6] & 1) != 0;
         idx += 7;
@@ -1054,7 +1156,7 @@ static void rxFrameEnd(struct RxState *rx, uint8_t modem, uint16_t mV) {
     rxFrame[slot].repaired = repaired;
     ModemGetSignalLevel(modem, &rxFrame[slot].peak, &rxFrame[slot].valley, &rxFrame[slot].level);
 #ifdef ENABLE_FX25
-    rxFrame[slot].fx25Mode = NULL;
+    frameSetFx25(&rxFrame[slot], NULL);
 #endif
     rxFrame[slot].corrected = AX25_NOT_FX25;
 
@@ -1089,8 +1191,7 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
     // have been collected since the last flag. Further into a frame a match is
     // payload that happens to sit within the tag's tolerance, and following it
     // would abandon a frame that is being received correctly.
-    if (Ax25Config.fx25 && (rx->rx != RX_STAGE_FX25_FRAME) && (rx->frameIdx <= (FX25_TAG_LEN)) &&
-        (NULL != (rx->fx25Mode = (struct Fx25Mode *)Fx25GetModeForTag(rx->tag)))) {
+    if (Ax25Config.fx25 && (rx->rx != RX_STAGE_FX25_FRAME) && (rx->frameIdx <= (FX25_TAG_LEN)) && (NULL != (rx->fx25Mode = Fx25GetModeForTag(rx->tag)))) {
         rx->rx = RX_STAGE_FX25_FRAME;
         rx->receivedByte = 0;
         rx->receivedBitIdx = 0;
@@ -1155,9 +1256,10 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
                     ModemGetSignalLevel(modem, &h->peak, &h->valley, &h->level);
                     if (fecSuccess) {
                         h->corrected = fixed;
-                        h->fx25Mode = rx->fx25Mode;
+                        frameSetFx25(h, rx->fx25Mode);
                     } else {
                         h->corrected = AX25_NOT_FX25;
+                        frameSetFx25(h, NULL);
                     }
                     h->mVrms = mV; // input level the service task reports for this frame
                     h->demod = modem;
@@ -1214,6 +1316,25 @@ static inline void IRAM_ATTR txRetireFrame(void) {
 }
 
 uint8_t IRAM_ATTR Ax25GetTxBit(void) {
+    // HDLC bit stuffing covers the whole FCS field, so a run of five 1s that
+    // ends on the last FCS bit still owes its stuffed 0 before the closing
+    // flag. The emission block below stuffs only while the stage is DATA or
+    // CRC, and the next stage evaluation would move straight on to the
+    // unstuffed footer flags, so the owed 0 is sent here first; txBitIdx stays
+    // at 8 and the following call makes that stage transition. Without it the
+    // flag's leading 0 is taken as the stuffed bit and the closing flag arrives
+    // with only six data bits since the last byte boundary, which receivers
+    // that check the bit count (Direwolf among them) reject. An FX.25 block
+    // carries its FCS already stuffed by writeFx25Frame(), so it is excluded.
+    if ((txBitIdx == 8) && (txStage == TX_STAGE_CRC) && (txCrcByteIdx > 1) && (txBitstuff == 5)
+#ifdef ENABLE_FX25
+        && !frameIsFx25(&txFrame[txFrameTail])
+#endif
+    ) {
+        txBitstuff = 0;
+        return 0;
+    }
+
     if (txBitIdx == 8) {
         txBitIdx = 0;
         if (txStage == TX_STAGE_PREAMBLE) { // transmitting the preamble (TXDelay)
@@ -1223,7 +1344,7 @@ uint8_t IRAM_ATTR Ax25GetTxBit(void) {
             } else {
                 txDelayElapsed = 0;
 #ifdef ENABLE_FX25
-                if (NULL != txFrame[txFrameTail].fx25Mode) {
+                if (frameIsFx25(&txFrame[txFrameTail])) {
                     txStage = TX_STAGE_CORRELATION_TAG;
                     txTagByteIdx = 0;
                 } else
@@ -1233,8 +1354,10 @@ uint8_t IRAM_ATTR Ax25GetTxBit(void) {
         }
 #ifdef ENABLE_FX25
         if (txStage == TX_STAGE_CORRELATION_TAG) { // FX.25 correlation tag
+            // The tag comes from the handle's own copy, never from
+            // Fx25ModeList: this ISR may run with the flash cache disabled.
             if (txTagByteIdx < 8)
-                txByte = (txFrame[txFrameTail].fx25Mode->tag >> (8 * txTagByteIdx)) & 0xFF;
+                txByte = (txFrame[txFrameTail].fx25Tag >> (8 * txTagByteIdx)) & 0xFF;
             else
                 txStage = TX_STAGE_DATA;
 
@@ -1257,7 +1380,7 @@ uint8_t IRAM_ATTR Ax25GetTxBit(void) {
                     txByteIdx++;
                 }
 #ifdef ENABLE_FX25
-                else if (txFrame[txFrameTail].fx25Mode != NULL) {
+                else if (frameIsFx25(&txFrame[txFrameTail])) {
                     txRetireFrame();
                     // Same one-frame-per-key-up rule as the AX.25 footer-flags
                     // path below: end this key-up here rather than chaining
@@ -1327,11 +1450,20 @@ uint8_t IRAM_ATTR Ax25GetTxBit(void) {
                 txCrc = 0xFFFF;
                 txBitstuff = 0;
                 txByte = 0;
-                txInitStage = TX_INIT_OFF;
                 // txBufferTail is released per frame by txRetireFrame(), so
                 // there is deliberately no bulk reset of it here.
+                //
+                // The order is what keeps the service task from keying up
+                // into this key-down. ModemTransmitStop() raises the pending
+                // teardown before it clears the transmitting flag and drops
+                // PTT, and TX_INIT_OFF is published last: a task that reads
+                // TX_INIT_OFF has therefore already been shown the pending
+                // teardown and txJustKeyedDown, and waits for AFSK_ServiceTx()
+                // and the unkey holdoff instead of starting a transmission
+                // whose setTransmit(true) this ISR would then cancel.
                 ModemTransmitStop();
-                txJustKeyedDown = true; // plain store; polled by Ax25TransmitCheck()
+                txJustKeyedDown = true; // polled by Ax25TransmitCheck()
+                TX_STAGE_PUBLISH(TX_INIT_OFF);
                 return 0;
             }
         }
@@ -1341,7 +1473,7 @@ uint8_t IRAM_ATTR Ax25GetTxBit(void) {
     // normal data or CRC in AX.25 mode
     if (
 #ifdef ENABLE_FX25
-        (NULL == txFrame[txFrameTail].fx25Mode) &&
+        !frameIsFx25(&txFrame[txFrameTail]) &&
 #endif
         ((txStage == TX_STAGE_DATA) || (txStage == TX_STAGE_CRC))) {
         if (txBitstuff == 5) { // 5 consecutive ones transmitted
@@ -1371,15 +1503,15 @@ uint8_t IRAM_ATTR Ax25GetTxBit(void) {
 }
 
 void Ax25TransmitBuffer(void) {
-    if (txInitStage == TX_INIT_WAITING)
-        return;
-    if (txInitStage == TX_INIT_TRANSMITTING)
+    if (TX_STAGE_OBSERVE() != TX_INIT_OFF)
         return;
 
-    if (RING_OBSERVE(txFrameHead) != txFrameTail) {
-        // In full duplex there is no reason to wait at all.
+    if (RING_OBSERVE(txFrameHead) != RING_OBSERVE(txFrameTail)) {
+        // In full duplex there is no reason to wait at all. The deadline is
+        // written before the stage is published, so whoever sees WAITING also
+        // sees the deadline that belongs to it.
         txQuiet = millis() + (Ax25Config.fullDuplex ? 0 : Ax25Config.quietTime);
-        txInitStage = TX_INIT_WAITING;
+        TX_STAGE_PUBLISH(TX_INIT_WAITING);
     }
 }
 
@@ -1410,7 +1542,7 @@ static void logPttOn(void) {
     const struct FrameHandle *h = &txFrame[txFrameTail];
 
 #ifdef ENABLE_FX25
-    if (NULL != h->fx25Mode) {
+    if (frameIsFx25(h)) {
         // FX.25-encoded bytes (Reed-Solomon block) are not a plain AX.25
         // frame, so there is nothing meaningful for ax25_decode() to read.
         ESP_LOGI(TAG, "PTT ON (keyed up)");
@@ -1490,31 +1622,44 @@ static void pollTxEvents(void) {
     }
 }
 
-// Anti-starvation floor: MAX_TRANSMIT_RETRY_COUNT slots have gone by without
-// the queued frame keying up, so transmit it now rather than let it wait
-// indefinitely. The run is attributed to whichever condition actually held it
-// back: a single busy slot anywhere in the run means the channel was occupied
-// and the frame is going out on top of somebody else's traffic, which is a
-// congestion report; a run made up entirely of clear slots means every
-// persistence roll missed, which says nothing about the channel and only that
-// Ax25Config.persist is low (or luck was bad). Separating them keeps the
-// clear-channel figure the operator sees from absorbing every congested
-// key-up as well.
-static void forceTransmit(void) {
-    if (txBusySlots > 0) {
-        ESP_LOGI(TAG, "Channel busy for %u of %u slots, transmitting anyway", txBusySlots, txRetries);
-        txChannelBusyCount++;
-    } else {
-        ESP_LOGI(TAG, "Persistence check missed %u times on a clear channel, transmitting anyway", txRetries);
-        txPersistenceMissedCount++;
-    }
-    txInitStage = TX_INIT_TRANSMITTING;
-    txRetries = 0;
+// Key up the queued frame and clear its CSMA backoff state.
+static void keyUp(void) {
+    TX_STAGE_PUBLISH(TX_INIT_TRANSMITTING);
+    txPersistMisses = 0;
     txBusySlots = 0;
     transmitStart();
 }
 
+// Anti-starvation floor: one of the two backoff limits has been reached, so
+// the frame goes out now rather than waiting any longer. overBusyChannel says
+// which one. true means the carrier detect was still asserted after
+// Ax25Config.csmaBusyTimeout, so the frame is sent on top of somebody else's
+// traffic - a congestion report about the frequency. false means
+// CSMA_PERSIST_MISS_MAX rolls in a row missed on a clear channel, which only
+// reflects Ax25Config.persist (or bad luck). Counting them separately keeps
+// the clear-channel figure from absorbing congested key-ups and the other way
+// round.
+static void forceTransmit(bool overBusyChannel) {
+    if (overBusyChannel) {
+        ESP_LOGW(TAG, "Channel busy for %" PRIu32 " ms (%" PRIu32 " slots), transmitting anyway", millis() - txBusySinceMs, txBusySlots);
+        txChannelBusyCount++;
+    } else {
+        ESP_LOGI(TAG, "Persistence check missed %u times on a clear channel, transmitting anyway", (unsigned)txPersistMisses);
+        txPersistenceMissedCount++;
+    }
+    keyUp();
+}
+
 void Ax25TransmitCheck(void) {
+    // Snapshot the key-up state before anything else. When the DAC ISR has
+    // just ended a key-up, this acquire load is what makes its key-down
+    // visible to the rest of this call: pollTxEvents() below then sees
+    // txJustKeyedDown and the teardown gate sees the pending teardown, so the
+    // next frame is held back by both instead of keying up into the tail of
+    // the previous one. Only the ISR changes a TRANSMITTING state, and only
+    // to OFF; any other value belongs to this task until it keys up.
+    enum TxInitStage stage = TX_STAGE_OBSERVE();
+
     pollTxEvents();
 
     // A key-down was just logged this tick: the PTT GPIO was released at
@@ -1540,34 +1685,36 @@ void Ax25TransmitCheck(void) {
     if ((int32_t)(txMinUnkeyUntil - millis()) > 0)
         return;
 
-    // The previous key-up's PTT release happens in AFSK_ServiceTx(), in task
-    // context, one modem-service-loop tick after the DAC ISR requests it
-    // (setTransmit(false) can only raise a flag from ISR context). Until that
-    // teardown has actually run, transmitStart() must not fire again: it
-    // calls setTransmit(true), whose side effect of clearing the
-    // pending-teardown flag would make AFSK_ServiceTx() skip the PTT release
-    // for the frame that just finished entirely - so PTT would stay
-    // continuously asserted across what are otherwise two properly separated
-    // keyups (own preamble, own PTT-ON log, etc.). Waiting here for one extra
-    // tick guarantees a real, visible PTT-off between every frame.
-    if (ModemTxTeardownPending())
+    if (stage == TX_INIT_TRANSMITTING) // already transmitting
         return;
 
-    if (txInitStage == TX_INIT_OFF) {
+    // The previous key-up is not finished until both of these clear. The
+    // modulator is still running while getTransmit() is true, and the DAC
+    // ISR's deferred teardown (stopping the sample clock, parking the DAC) is
+    // still owed while ModemTxTeardownPending() is true; AFSK_ServiceTx()
+    // performs it in task context, at most one service tick later. Keying up
+    // before then would run setTransmit(true), whose side effect of clearing
+    // the pending-teardown flag would make AFSK_ServiceTx() skip that teardown
+    // - or, with the modulator still running, would start the next frame on
+    // top of a transmitter the ISR is about to stop. Either way the next frame
+    // waits for a real, visible PTT-off.
+    if (ModemTxTeardownPending() || getTransmit())
+        return;
+
+    if (stage == TX_INIT_OFF) {
         // Nothing keyed up right now. There may still be one or more frames
         // left in the ring though: each frame runs its own complete
-        // preamble/data/CRC/footer/PTT-off cycle and frames are never chained
-        // together inside a single key-up (see the TX_STAGE_FOOTER_FLAGS and
-        // FX.25 TX_STAGE_DATA retirement paths in Ax25GetTxBit()), so nothing
-        // re-arms txInitStage for the next queued frame on its own. Ax25TransmitBuffer() is a no-op unless
-        // txInitStage is TX_INIT_OFF and the ring is non-empty, so it is
-        // always safe to call from here every tick.
+        // preamble/data/CRC/footer/tail/PTT-off cycle and frames are never
+        // chained together inside a single key-up (see the
+        // TX_STAGE_FOOTER_FLAGS and FX.25 TX_STAGE_DATA retirement paths in
+        // Ax25GetTxBit()), so nothing re-arms txInitStage for the next queued
+        // frame on its own. Ax25TransmitBuffer() is a no-op unless txInitStage
+        // is TX_INIT_OFF and the ring is non-empty, so it is always safe to
+        // call from here every tick.
         Ax25TransmitBuffer();
-        if (txInitStage == TX_INIT_OFF) // still nothing to transmit
+        if (TX_STAGE_OBSERVE() == TX_INIT_OFF) // still nothing to transmit
             return;
     }
-    if (txInitStage == TX_INIT_TRANSMITTING) // already transmitting
-        return;
 
     if (txQuiet > millis()) // quiet time has not elapsed yet
         return;
@@ -1577,27 +1724,28 @@ void Ax25TransmitCheck(void) {
     // permanently asserted by our own carrier, so a CSMA node would never
     // transmit a second frame.
     if (Ax25Config.fullDuplex) {
-        txInitStage = TX_INIT_TRANSMITTING;
-        txRetries = 0;
-        txBusySlots = 0;
-        transmitStart();
+        keyUp();
         return;
     }
 
     if (ModemDcdState()) {
         // Channel busy: re-poll DCD every slot time rather than transmitting
-        // through it. txRetries bounds the total wait as an anti-starvation
-        // floor - a channel that never clears within MAX_TRANSMIT_RETRY_COUNT
-        // slots forces a transmission anyway rather than holding a queued
-        // frame forever - while txBusySlots records that the channel, and not
-        // the persistence roll, is what this frame is waiting on.
-        if (txRetries >= MAX_TRANSMIT_RETRY_COUNT) {
-            forceTransmit();
-        } else {
-            txQuiet = millis() + Ax25Config.csmaSlotTime;
-            txRetries++;
-            txBusySlots++;
+        // through it. A packet followed by its digipeats keeps the channel
+        // busy for several seconds, so the wait is measured in time from the
+        // first busy slot and only Ax25Config.csmaBusyTimeout (0 = none) ends
+        // it. A busy slot also ends any run of missed persistence rolls: the
+        // clear-channel cap applies to consecutive clear slots only.
+        uint32_t now = millis();
+        if (txBusySlots == 0)
+            txBusySinceMs = now;
+        if ((Ax25Config.csmaBusyTimeout > 0) && ((now - txBusySinceMs) >= Ax25Config.csmaBusyTimeout)) {
+            forceTransmit(true);
+            return;
         }
+        txQuiet = now + Ax25Config.csmaSlotTime;
+        if (txBusySlots < UINT32_MAX)
+            txBusySlots++;
+        txPersistMisses = 0;
         return;
     }
 
@@ -1607,17 +1755,14 @@ void Ax25TransmitCheck(void) {
     // rolling again, rather than keying up unconditionally the instant DCD
     // drops.
     if (esp_random() % 256 < Ax25Config.persist) {
-        txInitStage = TX_INIT_TRANSMITTING;
-        txRetries = 0;
-        txBusySlots = 0;
-        transmitStart();
+        keyUp();
         return;
     }
 
     txQuiet = millis() + Ax25Config.csmaSlotTime;
-    txRetries++;
-    if (txRetries >= MAX_TRANSMIT_RETRY_COUNT)
-        forceTransmit();
+    txPersistMisses++;
+    if (txPersistMisses >= CSMA_PERSIST_MISS_MAX)
+        forceTransmit(false);
 }
 
 void Ax25Init(uint8_t fx25Mode) {
@@ -1627,9 +1772,10 @@ void Ax25Init(uint8_t fx25Mode) {
     Ax25Config.fullDuplex = fullDuplex;
     Ax25Config.quietTime = 2000;
     Ax25Config.txDelayLength = 300;
-    Ax25Config.txTailLength = 1;
-    Ax25Config.csmaSlotTime = 100; // 100 ms/slot, the common AX.25 SlotTime default; the interval between persistence rolls, distinct from quietTime
-    Ax25Config.persist = 63;       // ~25% transmit chance per clear slot, the common AX.25 Persist default
+    Ax25Config.txTailLength = AX25_TX_TAIL_DEFAULT_MS;
+    Ax25Config.csmaSlotTime = AX25_CSMA_SLOT_TIME_DEFAULT_MS;
+    Ax25Config.csmaBusyTimeout = AX25_CSMA_BUSY_TIMEOUT_DEFAULT_MS;
+    Ax25Config.persist = 63; // ~25% transmit chance per clear slot, the common AX.25 Persist default
 
     if (fx25Mode == 0) {
         Ax25Config.fx25 = 0;
@@ -1662,10 +1808,11 @@ void Ax25Init(uint8_t fx25Mode) {
     lastCrc = 0;
 
     // milliseconds -> byte count
-    txDelay = (uint16_t)((float)Ax25Config.txDelayLength / (8.f * 1000.f / ModemGetBaudrate()));
-    txTail = (uint16_t)((float)Ax25Config.txTailLength / (8.f * 1000.f / ModemGetBaudrate()));
-    txInitStage = TX_INIT_OFF;
-    txRetries = 0;
+    txDelay = msToTxBytes(Ax25Config.txDelayLength);
+    txTail = msToTxBytes(Ax25Config.txTailLength);
+    txTailElapsed = 0;
+    TX_STAGE_PUBLISH(TX_INIT_OFF);
+    txPersistMisses = 0;
     txBusySlots = 0;
     txQuiet = millis() + Ax25Config.quietTime + randomRange(10, 200);
 }
@@ -1680,7 +1827,7 @@ void Ax25TransmitAbort(void) {
     RING_PUBLISH(txFrameTail, txFrameHead);
 
     txStage = TX_STAGE_IDLE;
-    txInitStage = TX_INIT_OFF;
+    TX_STAGE_PUBLISH(TX_INIT_OFF);
     txByte = 0;
     txByteIdx = 0;
     txBitIdx = 8; // force a stage evaluation on the next Ax25GetTxBit()
@@ -1690,7 +1837,7 @@ void Ax25TransmitAbort(void) {
     txTailElapsed = 0;
     txBitstuff = 0;
     txCrc = 0xFFFF;
-    txRetries = 0;
+    txPersistMisses = 0;
     txBusySlots = 0;
 
     // The same gates a normal key-down arms, so the next frame to arrive waits
@@ -1706,16 +1853,26 @@ void Ax25TransmitAbort(void) {
 
 void Ax25TxDelay(uint16_t delay_ms) {
     Ax25Config.txDelayLength = delay_ms;
-    txDelay = (uint16_t)((float)Ax25Config.txDelayLength / (8.f * 1000.f / ModemGetBaudrate()));
+    txDelay = msToTxBytes(delay_ms);
+}
+
+void Ax25TxTail(uint16_t tail_ms) {
+    // A single 16-bit store: the DAC ISR reads txTail once per tail byte, so a
+    // change made while a key-up is in its tail applies from the next byte.
+    Ax25Config.txTailLength = tail_ms;
+    txTail = msToTxBytes(tail_ms);
 }
 
 void Ax25TimeSlot(uint16_t ts) {
-    if (ts > 0) {
-        Ax25Config.quietTime = ts;
-        txQuiet = millis() + Ax25Config.quietTime + randomRange(100, 1000);
-    } else {
+    // quietTime is what Ax25TransmitBuffer() and Ax25TransmitAbort() arm the
+    // next deadline with, so it is stored for 0 as well: 0 means no quiet
+    // time before any later frame, not only no pending deadline now. The
+    // random jitter only spreads out stations that do wait.
+    Ax25Config.quietTime = ts;
+    if (ts > 0)
+        txQuiet = millis() + ts + randomRange(100, 1000);
+    else
         txQuiet = 0;
-    }
 }
 
 void Ax25MinUnkeyTime(uint16_t ms) {
@@ -1845,13 +2002,19 @@ char ax25_encode(ax25_frame_t *frame, char *txt, int size) {
 
     for (i = 0; i < 10; i++)
         frame->header[i].ssid &= 0xFE; // clear all end-of-path bits
-    // fix the end-of-path bit
+    // The end-of-path bit goes on the last address in use: the one before the
+    // first empty digipeater slot, or header[9] when all eight digipeater
+    // slots are filled and there is no empty slot to find.
+    bool terminated = false;
     for (i = 2; i < 10; i++) {
         if (frame->header[i].addr[0] == 0x00) {
             frame->header[i - 1].ssid |= 0x01;
+            terminated = true;
             break;
         }
     }
+    if (!terminated)
+        frame->header[9].ssid |= 0x01;
     return 1;
 }
 
@@ -1874,12 +2037,20 @@ int hdlcFrame(uint8_t *outbuf, size_t outbuf_len, ax25_ctx_t *ctx, ax25_frame_t 
 
     for (i = 0; i < 10; i++)
         pkg->header[i].ssid &= 0xFE; // clear all end-of-path bits
+    // Mark the last address in use: the one before the first empty slot, or
+    // header[9] when destination, source and all eight digipeaters are
+    // present. Without the mark the address field would run on into the
+    // control byte for every receiver.
+    bool terminated = false;
     for (i = 1; i < 10; i++) {
         if (pkg->header[i].addr[0] == 0x00) {
             pkg->header[i - 1].ssid |= 0x01;
+            terminated = true;
             break;
         }
     }
+    if (!terminated)
+        pkg->header[9].ssid |= 0x01;
 
     for (i = 0; i < 10; i++) {
         if (pkg->header[i].addr[0] == 0)

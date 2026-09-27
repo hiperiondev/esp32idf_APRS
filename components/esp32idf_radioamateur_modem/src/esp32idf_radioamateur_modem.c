@@ -74,6 +74,15 @@ static bool s_rxChainKeyValid = false;
 
 static ax25_ctx_t s_ctx;
 static TaskHandle_t s_svcTask = NULL;
+
+// Service-task hold used by a receive-chain rebuild. The requester raises
+// s_svcHoldReq; the service task acknowledges with s_svcHeld at the top of its
+// loop, where it is outside Ax25TransmitCheck(), AFSK_ServiceTx() and
+// Ax25ReadNextRxFrame(), and waits there until the request is withdrawn. A
+// flag and an acknowledgement rather than vTaskSuspend(): suspension could
+// stop the task halfway through publishing a ring index.
+static volatile bool s_svcHoldReq = false;
+static volatile bool s_svcHeld = false;
 static modem_rx_cb_t s_rxCb = NULL;
 static void *s_rxCbCtx = NULL;
 static bool s_running = false;
@@ -87,9 +96,12 @@ static bool s_running = false;
 //   - Ax25WriteTxFrame() is a single-producer ring: txFrameHead and
 //     txBufferHead are owned by the writing side and published to the DAC ISR
 //     with a release store. Two writers would both claim the same slot.
-//   - Ax25TransmitBuffer() reads that head to decide whether to start keying
-//     up, which has to happen after the payload it is about to send is in
-//     place.
+//   - modem_set_modem() takes it while a receive-chain rebuild resets the TX
+//     ring, so no frame is being written into the ring at that moment.
+//
+// Queuing a frame does not start its key-up: the service task finds it in the
+// ring on its next poll (Ax25TransmitCheck() -> Ax25TransmitBuffer()), which
+// keeps that task the only one that moves the key-up state machine forward.
 //
 // beacon_scheduler_task (own-station beacons, weather, telemetry, objects,
 // bulletins) and igate_task (INET->RF relay and message TX) both reach this
@@ -122,22 +134,35 @@ static inline uint32_t modem_millis(void) {
     return (uint32_t)(esp_timer_get_time() / 1000);
 }
 
+// @brief Abandon the key-up in progress, from task context.
+//
+// Does the whole teardown the DAC ISR cannot: the modulator is stopped, the
+// PTT line is released and every queued frame is discarded. The AX.25
+// transmit state machine is returned to idle by Ax25TransmitAbort(), otherwise
+// the frame that was cut short would key up again on the next poll.
+//
+// Must not run concurrently with the service task's own AFSK_ServiceTx()/
+// Ax25TransmitCheck(): it is called either from that task or while it is held.
+static void txAbandon(void) {
+    setTransmit(false);
+    AFSK_ServiceTx();
+    // An interrupt dispatched before the sample clock stopped may still be
+    // running Ax25GetTxBit() on the other core. One tick outlasts it by orders
+    // of magnitude; after it the transmit ring has a single owner again.
+    vTaskDelay(1);
+    setPtt(false);
+    Ax25TransmitAbort();
+}
+
 // @brief Release a transmission that has outlasted the time-out.
 //
-// Runs in the service task, so it may do the whole teardown the DAC ISR cannot:
-// the modulator is stopped, the PTT line is released, the queued frame is
-// abandoned and the receive FIFO is emptied of everything the transmitter put
-// into it. The AX.25 transmit state machine is returned to idle by
-// Ax25TransmitAbort(), otherwise the frame that stalled would key up again on
-// the next poll.
+// Runs in the service task. Besides abandoning the key-up, the receive FIFO is
+// emptied of everything the transmitter put into it.
 static void txTimeoutRelease(uint32_t keyedMs) {
     ESP_LOGE(TAG, "transmitter keyed for %" PRIu32 " ms, over the %" PRIu32 " ms limit - releasing PTT and discarding the transmission", keyedMs,
              s_txMaxKeyedMs);
 
-    setTransmit(false);
-    AFSK_ServiceTx();
-    setPtt(false);
-    Ax25TransmitAbort();
+    txAbandon();
     AFSK_FlushFifo();
     s_txKeyedSinceMs = 0;
 }
@@ -184,6 +209,17 @@ static void modem_service_task(void *arg) {
     // uint32_t lastHeartbeat = 0;
 
     for (;;) {
+        // Hold point for a receive-chain rebuild (see svcHold()). Leaving it
+        // goes back through the loop head, so a request raised again in the
+        // meantime is honoured before any transmit or receive work.
+        if (__atomic_load_n(&s_svcHoldReq, __ATOMIC_ACQUIRE)) {
+            __atomic_store_n(&s_svcHeld, true, __ATOMIC_RELEASE);
+            while (__atomic_load_n(&s_svcHoldReq, __ATOMIC_ACQUIRE))
+                vTaskDelay(1);
+            __atomic_store_n(&s_svcHeld, false, __ATOMIC_RELEASE);
+            continue;
+        }
+
         AFSK_ServiceTx();
 
         // Throttled proof-of-life: confirms this task loop (and therefore
@@ -232,11 +268,19 @@ void modem_set_rx_callback(modem_rx_cb_t cb, void *ctx) {
     s_rxCbCtx = ctx;
 }
 
+void modem_set_ptt_inhibit(bool inhibit) {
+    afskSetPttInhibit(inhibit);
+    if (inhibit)
+        ESP_LOGW(TAG, "PTT inhibited: key-ups are modulated but the transmitter is not keyed");
+    else
+        ESP_LOGI(TAG, "PTT inhibit released");
+}
+
 void modem_rx_tuning_sanitize(modem_rx_tuning_t *t) {
     if (t == NULL)
         return;
 
-    if ((unsigned)t->eq_preset > (unsigned)MODEM_RX_EQ_MULTISLICE)
+    if ((unsigned)t->eq_preset > (unsigned)MODEM_RX_EQ_MULTISLICE2)
         t->eq_preset = MODEM_RX_EQ_MULTISLICE;
     if (t->custom_count < 1)
         t->custom_count = 1;
@@ -288,13 +332,68 @@ void modem_rx_tuning_sanitize(modem_rx_tuning_t *t) {
 static bool rx_chain_tuning_equal(const modem_rx_tuning_t *a, const modem_rx_tuning_t *b) {
     if ((a->eq_preset != b->eq_preset) || (a->custom_count != b->custom_count) || (a->bpf_lo_hz != b->bpf_lo_hz) || (a->bpf_hi_hz != b->bpf_hi_hz) ||
         (a->bpf_taps != b->bpf_taps) || (a->gate_mv != b->gate_mv) || (a->hpf_hz != b->hpf_hz) || (a->agc_mode != b->agc_mode) ||
-        (a->agc_fixed_gain_db != b->agc_fixed_gain_db))
+        (a->agc_fixed_gain_db != b->agc_fixed_gain_db) || (a->impulse_blank != b->impulse_blank))
         return false;
     for (int i = 0; i < MODEM_RX_MAX_PREFILTERS; i++) {
         if (a->custom_tilt_db[i] != b->custom_tilt_db[i])
             return false;
     }
     return true;
+}
+
+// @brief Hold the service task at the top of its loop and wait until it is
+//        there.
+//
+// @return true when the task was held and svcRelease() has to let it go;
+//         false when there is no service task yet, or when the caller is the
+//         service task itself (the receive callback), which is then already
+//         outside its transmit and receive work.
+static bool svcHold(void) {
+    if ((s_svcTask == NULL) || (xTaskGetCurrentTaskHandle() == s_svcTask))
+        return false;
+
+    __atomic_store_n(&s_svcHoldReq, true, __ATOMIC_RELEASE);
+    // The task reaches its hold point once the frame it is delivering, if any,
+    // has been handled by the receive callback, which may take a while on a
+    // busy IGate; a slow acknowledgement is reported rather than given up on,
+    // since rebuilding without the hold is exactly what must not happen.
+    TickType_t start = xTaskGetTickCount();
+    TickType_t warned = start;
+    while (!__atomic_load_n(&s_svcHeld, __ATOMIC_ACQUIRE)) {
+        vTaskDelay(1);
+        if ((xTaskGetTickCount() - warned) >= pdMS_TO_TICKS(1000)) {
+            warned = xTaskGetTickCount();
+            ESP_LOGW(TAG, "rebuild: service task still busy after %" PRIu32 " ms", (uint32_t)pdTICKS_TO_MS(warned - start));
+        }
+    }
+    return true;
+}
+
+// @brief Let the service task continue after svcHold().
+static void svcRelease(bool held) {
+    if (held)
+        __atomic_store_n(&s_svcHoldReq, false, __ATOMIC_RELEASE);
+}
+
+// @brief Wait for the transmitter to go idle, abandoning the key-up if it
+//        outlasts ::MODEM_REBUILD_TX_WAIT_MS.
+//
+// The service task is held (or is the caller), so nothing keys up again while
+// this waits and the deferred teardown is carried out here instead.
+static void txWaitIdle(void) {
+    TickType_t start = xTaskGetTickCount();
+
+    for (;;) {
+        AFSK_ServiceTx();
+        if (!getTransmit() && !ModemTxTeardownPending())
+            return;
+        if ((xTaskGetTickCount() - start) >= pdMS_TO_TICKS(MODEM_REBUILD_TX_WAIT_MS)) {
+            ESP_LOGW(TAG, "rebuild: transmitter still keyed after %d ms, abandoning the transmission", MODEM_REBUILD_TX_WAIT_MS);
+            txAbandon();
+            return;
+        }
+        vTaskDelay(1);
+    }
 }
 
 void modem_set_modem(const modem_config_t *cfg) {
@@ -316,13 +415,43 @@ void modem_set_modem(const modem_config_t *cfg) {
                    (key.full_duplex != s_rxChainKey.full_duplex) || (key.fx25_mode != s_rxChainKey.fx25_mode) ||
                    !rx_chain_tuning_equal(&key.rx, &s_rxChainKey.rx);
 
+    // A rebuild resets the AX.25 transmit and receive rings and the transmit
+    // state machine, so everything that touches them is brought to rest first
+    // and let go again only once every setting below is in place:
+    //
+    //   1. The service task is held at the top of its loop, outside
+    //      Ax25TransmitCheck() and Ax25ReadNextRxFrame(). Held first, before
+    //      the TX lock is taken: its receive callback may itself queue a frame
+    //      (a digipeat), and would otherwise wait on that lock.
+    //   2. A key-up in progress finishes, or is abandoned, with its teardown
+    //      done, so the DAC ISR no longer reads the ring.
+    //   3. The TX lock keeps every producer out of Ax25WriteTxFrame().
+    //
+    // afskSetModem() holds the receive task itself, the fourth party.
+    bool svcHeld = false;
+    bool txLocked = false;
+    if (rebuild) {
+        svcHeld = svcHold();
+        txWaitIdle();
+        if (s_txMutex != NULL) {
+            // Producers hold the lock only while encoding one frame, so this
+            // wait is short and needs no time-out.
+            xSemaphoreTake(s_txMutex, portMAX_DELAY);
+            txLocked = true;
+        }
+        uint8_t dropped = Ax25TxFramesPending();
+        if (dropped > 0)
+            ESP_LOGW(TAG, "rebuild: %u queued frame(s) discarded", (unsigned)dropped);
+        s_txKeyedSinceMs = 0;
+    }
+
     afskSetFullDuplex(cfg->full_duplex);
     if (rebuild) {
         // The receive tuning is only stored by these two calls; afskSetModem()
         // applies it while the receive task is held.
         ModemSetRxTuning(&rx);
-        afskSetRxFrontEnd(rx.gate_mv, rx.hpf_hz, rx.agc_mode == MODEM_RX_AGC_FIXED, rx.agc_fixed_gain_db);
-        afskSetModem((uint8_t)cfg->modem, cfg->flat_audio, cfg->slot_time_ms, cfg->preamble_ms, cfg->fx25_mode, cfg->min_unkey_ms);
+        afskSetRxFrontEnd(rx.gate_mv, rx.hpf_hz, rx.agc_mode == MODEM_RX_AGC_FIXED, rx.agc_fixed_gain_db, rx.impulse_blank);
+        afskSetModem((uint8_t)cfg->modem, cfg->flat_audio, cfg->slot_time_ms, cfg->preamble_ms, cfg->tx_tail_ms, cfg->fx25_mode, cfg->min_unkey_ms);
         s_rxChainKey = key;
         s_rxChainKeyValid = true;
     } else {
@@ -330,12 +459,15 @@ void modem_set_modem(const modem_config_t *cfg) {
         // without touching the receive chain.
         Ax25TimeSlot(cfg->slot_time_ms);
         Ax25TxDelay(cfg->preamble_ms);
+        Ax25TxTail(cfg->tx_tail_ms);
         Ax25MinUnkeyTime(cfg->min_unkey_ms);
     }
     Ax25SetFixBits(rx.fix_bits);
     Ax25Config.allowNonAprs = cfg->allow_non_aprs ? 1 : 0;
     Ax25Config.fullDuplex = cfg->full_duplex ? 1 : 0;
     Ax25Config.persist = cfg->persist;
+    Ax25Config.csmaSlotTime = cfg->csma_slot_ms;
+    Ax25Config.csmaBusyTimeout = cfg->csma_busy_max_ms;
 
     // Audio interface settings the running hardware accepts at any time. The
     // DAC sample rate is deliberately not among them: the sample-clock alarm
@@ -346,6 +478,11 @@ void modem_set_modem(const modem_config_t *cfg) {
     if (cfg->adc_self_bias != afskGetAdcSelfBias())
         afskSetAdcSelfBias(cfg->adc_self_bias);
     s_txMaxKeyedMs = cfg->tx_max_keyed_ms;
+
+    // Released in the reverse order of the hold.
+    if (txLocked)
+        xSemaphoreGive(s_txMutex);
+    svcRelease(svcHeld);
 }
 
 esp_err_t modem_init(const modem_config_t *cfg) {
@@ -427,8 +564,10 @@ esp_err_t modem_init(const modem_config_t *cfg) {
 
     modem_set_modem(cfg);
 
-    // The RX callback decodes into an AX25Msg and renders a TNC2 string, both
-    // of which are a few hundred bytes of stack on top of any printf.
+    // Stack: the task's own transmit work logs each key-up with the frame
+    // decoded and rendered as TNC2, a few hundred bytes on top of a printf,
+    // and it also runs the RX callback, whose contract asks it to copy the
+    // frame and return (see modem_set_rx_callback()).
     // Pinned, not free-floating. This task is the consumer end of the AX.25 RX
     // ring whose producer (Ax25BitParse(), from afsk_rx_task) is pinned to
     // MODEM_RX_TASK_CORE.
@@ -521,15 +660,14 @@ static int buildFrameTnc2Locked(const char *tnc2, uint8_t *out, size_t out_len) 
     return hdlcFrame(out, out_len, &s_ctx, &frame);
 }
 
-// @brief Queue one raw frame and let the TX state machine pick it up. The
-//        caller must hold ::s_txMutex: this is the single-producer side of the
-//        TX ring the DAC ISR consumes.
+// @brief Queue one raw frame; the service task keys it up on its next poll.
+//        The caller must hold ::s_txMutex: this is the single-producer side of
+//        the TX ring the DAC ISR consumes.
 static esp_err_t sendRawLocked(const uint8_t *frame, uint16_t len) {
     if (Ax25WriteTxFrame(frame, len) == NULL) {
         ESP_LOGW(TAG, "TX buffer full, frame dropped");
         return ESP_ERR_NO_MEM;
     }
-    Ax25TransmitBuffer();
     return ESP_OK;
 }
 

@@ -69,7 +69,8 @@ Dentro de ``aprs_service_start()``
    aprs_service_start()
     ├─ trafficlog_init / lastheard_init / message_init
     ├─ message_set_tx_handler / igate_set_inet2rf_handler / igate_set_inet2rf_assoc_query
-    ├─ modem_set_rx_callback(on_rx_frame)
+    ├─ xTaskCreate(rxTask "aprs_rx") + modem_set_rx_callback(on_rx_frame)
+    │                                ← el callback solo encola; aprs_rx decodifica y despacha
     ├─ igate_start()                 ← siempre arrancado; queda en reposo cuando nada necesita APRS-IS
     ├─ beacon_start() / weather_start() / bulletins_start() / objitems_start() / telemetry_start()
     ├─ beacon_scheduler_start()      ← UNA tarea compartida acciona todo el TX periódico y las respuestas a consultas
@@ -105,8 +106,19 @@ Mapa de tareas
      - 5
      - **0**
      - ``modem_init()``
-     - acciona el TX, entrega tramas RX al callback; fijada al mismo núcleo que
-       la tarea RX DSP, cuyo anillo AX.25 consume
+     - acciona el TX (tiempo de silencio, DCD, persistencia, activación,
+       desmontaje, time-out de TX) y entrega cada trama RX al callback, que solo
+       la copia en la cola de ``aprs_rx``; fijada al mismo núcleo que la tarea
+       RX DSP, cuyo anillo AX.25 consume
+   * - ``aprs_rx``
+     - 6144 B
+     - 4
+     - cualquiera
+     - ``aprs_service_start()``
+     - decodifica cada trama recibida y la despacha: digipetidor, IGate
+       RF→INET, mensajes, consultas, Winlink, enrutado a Telegram, LAST HEARD,
+       registro de tráfico. La alimenta una cola de 8 tramas, así un envío lento
+       a APRS-IS nunca frena el servicio del transmisor
    * - ``modem_init``
      - 4096 B
      - alta

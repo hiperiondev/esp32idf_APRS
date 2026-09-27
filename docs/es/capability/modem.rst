@@ -112,18 +112,19 @@ La cabecera pública del componente (``esp32idf_radioamateur_modem.h``) expone:
        Es el estado del anillo de TX que lee el tope de backlog de TX de RF.
    * - ``modem_persistence_missed_count()``
      - Cuántas veces el piso anti-inanición de CSMA forzó una transmisión tras
-       una tanda de espera que encontró el canal libre en todas las ranuras y
-       falló el sorteo de persistencia en todas ellas. Mide únicamente el
-       ``persist`` configurado: con el valor por omisión de 63, alrededor de una
-       de cada diez portadoras termina así. No se descarta nada, así que es una
-       estadística de acceso al canal y no un descarte.
+       ocho ranuras consecutivas que encontraron el canal libre y fallaron el
+       sorteo de persistencia. Una ranura ocupada reinicia la cuenta, así que
+       mide únicamente el ``persist`` configurado: con el valor por omisión de
+       63, alrededor de una de cada diez portadoras termina así. No se descarta
+       nada, así que es una estadística de acceso al canal y no un descarte.
    * - ``modem_channel_busy_count()``
-     - Cuántas veces ese mismo piso forzó una transmisión tras una tanda en la
-       que al menos una ranura encontró la detección de portadora activa. Es un
-       informe de congestión de la frecuencia: la trama sale por encima del
-       tráfico que ya estaba allí. Cada tanda se carga a exactamente uno de los
-       dos contadores, así que un canal ocupado nunca puede inflar la cifra de
-       persistencia.
+     - Cuántas veces se transmitió una trama porque la detección de portadora
+       seguía activa tras pasar ``csma_busy_max_ms`` desde la primera ranura
+       ocupada. Es un informe sobre la frecuencia — un canal ocupado mucho más
+       tiempo del que explica el tráfico de paquetes normal — y la trama sale
+       por encima de la señal que ya estaba allí. No se mueve mientras ese
+       límite sea 0. Cada transmisión forzada se carga a exactamente uno de los
+       dos contadores.
    * - ``modem_measure_adc_rate(ms)``
      - Medir la tasa real de muestreo del ADC; se bloquea durante la ventana
        pedida.
@@ -177,21 +178,37 @@ sin reinicio) y el test de bucle:
    * - ``preamble_ms``
      - ``preamble`` (300)
      - TXDelay
+   * - ``tx_tail_ms``
+     - ``tx_tail`` (20)
+     - TXTail: banderas enviadas tras la bandera de cierre antes de liberar el
+       PTT, redondeadas hacia arriba a banderas enteras
    * - ``slot_time_ms``
      - ``tx_timeslot`` (2000)
      - tiempo de silencio CSMA: cuánto espera una trama encolada antes de que
        empiece siquiera el acceso al canal. El intervalo entre los sorteos de
-       persistencia que vienen después es el *SlotTime* fijo de AX.25 que el
-       módem mantiene internamente, no este valor. Ignorado en full duplex.
+       persistencia que vienen después es ``csma_slot_ms``, no este valor.
+       Ignorado en full duplex.
+   * - ``csma_slot_ms``
+     - ``csma_slot_ms`` (100)
+     - ranura de tiempo CSMA (el *SlotTime* estándar de AX.25/KISS): el
+       intervalo entre sorteos de persistencia con el canal libre y entre
+       comprobaciones de un canal ocupado. Ignorado en full duplex.
+   * - ``csma_busy_max_ms``
+     - ``csma_busy_max_s`` × 1000 (30000)
+     - espera máxima a que un canal ocupado se libere, contada desde la primera
+       ranura ocupada, antes de transmitir igualmente la trama encolada; 0
+       espera mientras el canal siga ocupado, como hace un TNC KISS estándar.
+       Ignorado en full duplex.
    * - ``persist``
      - ``csma_persist`` (63)
      - p-persistencia CSMA (el *Persist* estándar de AX.25/KISS): una vez que el
        canal se oye libre, el módem transmite con probabilidad ``persist``/256
        por ranura y si no espera otra ranura antes de volver a tirar. 255 =
        transmitir siempre en la primera ranura libre; valores más bajos separan
-       a las estaciones que compiten. Ocho sorteos fallidos transmiten de todas
-       formas, de modo que una trama nunca queda retenida indefinidamente.
-       Ignorado en full duplex.
+       a las estaciones que compiten. Ocho sorteos fallidos consecutivos con el
+       canal libre transmiten de todas formas, de modo que el sorteo por sí solo
+       nunca retiene una trama indefinidamente; una ranura ocupada reinicia la
+       cuenta. Ignorado en full duplex.
    * - ``fx25_mode``
      - ``fx25_mode``
      - 0=off, 1=solo RX, 2=RX+TX
@@ -257,15 +274,17 @@ equipo conectado, uno por sentido.
 etapa de recepción durante alrededor de un segundo e informa el nivel de la
 banda de tonos (``afskGetBandRms()``) y el nivel RMS de banda ancha con sus
 picos, un veredicto en una palabra (saturado, sin señal, bajo por debajo de
-100 mV RMS de tonos, bueno), el offset de continua de la entrada, la ganancia
+20 mV RMS de tonos, bueno), el offset de continua de la entrada, la ganancia
 del AGC, los extremos crudos de conversión en toda la ventana y el estado de la
 detección de portadora, seguidos de las
 estadísticas de recepción de ``modem_get_rx_stats()`` (tramas decodificadas y
 exclusivas de cada demodulador, tramas entregadas y reparadas, muestras
-perdidas). No transmite
+perdidas) y la carga del DSP de recepción de ``afskGetDspLoad()`` (fracción
+media y de pico del tiempo real en la ventana, y el bloque más alto desde el
+último reinicio de las estadísticas). No transmite
 nada ni cambia el estado del módem, así que puede ejecutarse mientras se
 decodifica tráfico real. Es contra lo que se ajusta el trimmer de recepción —
-apunte a 250 a 350 mV RMS con el rango crudo lejos de 0 y 4095 — y lo que
+apunte a tonos de al menos 20 mV RMS con el rango crudo lejos de 0 y 4095 — y lo que
 distingue una entrada polarizada por ``adc_self_bias`` (1200 a 2000 mV) de una
 sin polarización alguna.
 
@@ -286,7 +305,13 @@ La herramienta de puesta en marcha más útil del proyecto. Cablea
 ``aprs_loop_test_run()``:
 
 #. Construye un pequeño paquete APRS que lleva un **token aleatorio de un solo
-   uso** (``>LOOPTEST <token>``).
+   uso** (``>LOOPTEST <token>``), con el indicativo propio de la estación como
+   origen (el del IGate, o el del digipetidor); sin él se niega a ejecutarse.
+#. **Toma el transmisor**: las tramas ya encoladas salen primero con
+   normalidad, y después se rechaza a cualquier otro productor
+   (``DROP_TX_SELF_TEST``) hasta que la prueba termina.
+#. **Inhibe el PTT** (``modem_set_ptt_inhibit()``): la trama se modula en el
+   DAC, pero un transceptor conectado nunca se activa.
 #. **Desvía** las tramas decodificadas a su propio gancho para que la trama de
    prueba nunca se digipetee, suba, ni se registre como tráfico real.
 #. Conmuta el módem a **full dúplex** — un cable DAC→ADC significa que el nodo
@@ -299,8 +324,8 @@ La herramienta de puesta en marcha más útil del proyecto. Cablea
    tope se registra y la prueba transmite igualmente.
 #. Transmite, luego espera hasta ``LOOP_TEST_TIMEOUT_MS`` (**4000 ms**) a que la
    cadena ADC → demodulador → HDLC → AX.25 devuelva la misma trama.
-#. **Siempre restaura** el gancho real y el modo dúplex configurado antes de
-   volver.
+#. **Siempre restaura** el gancho real y el modo dúplex configurado, y después
+   levanta la inhibición del PTT y libera el transmisor, antes de volver.
 
 Mientras tanto una tarea de monitor captura diagnósticos que el componente solo
 expone instantáneamente: una instantánea del ADC crudo pasiva a mitad de

@@ -396,7 +396,11 @@ Le pagine
        quando nessuno la legge per dieci secondi. Non viene scritto nulla nella
        flash e non viene registrato nulla: viene mostrato solo ciò che arriva
        mentre la finestra è aperta. Righe live tramite ``/logs/read``,
-       interrogato ogni secondo.
+       interrogato ogni secondo. Il pulsante resta disabilitato per la durata
+       di una richiesta *Avvia* e una riga di stato accanto ad esso segnala se
+       la stazione non è riuscita ad avviare la cattura - l'allocazione della
+       finestra può perdere contro la pressione di memoria altrove nella
+       stazione - oppure se non è stato possibile raggiungere la stazione.
    * - **Bulletins**
      - Fino a cinque bollettini (identificatore e gruppo del destinatario,
        testo, RF/INET, intervallo iniziale, rampa di decadimento, scadenza).
@@ -425,8 +429,9 @@ Le pagine
    * - **Radiomodem**
      - FX.25 in ricezione; abilita modem audio, modulazione (300 /
        1200 Bell202 / 1200 V.23 / 9600 G3RUH), ingresso audio piatto / da
-       discriminatore, ms di preambolo, ms di slot temporale TX, buffer TX,
-       ritenzione extra di PTT sbloccato, persistenza CSMA e il limitatore di
+       discriminatore, ms di preambolo, ms di coda TX, ms di slot temporale TX, buffer TX,
+       ritenzione extra di PTT sbloccato, persistenza CSMA, slot temporale CSMA,
+       attesa massima a canale occupato e il limitatore di
        duty cycle a lungo termine (abilitazione più percentuale di tetto);
        inoltre un gruppo *Interfaccia audio* (polarizzazione interna
        dell'ingresso ADC, avviso di audio fuori fondo scala, ampiezza di uscita
@@ -497,10 +502,10 @@ Le statistiche vengono da ``aprs_service_get_stats()``, tracciate in modo
      - L'arretrato attuale dell'anello TX RF e il tetto effettivo di *TX buffers*,
        così che la dashboard si legga come la riga "n/n in attesa" della console.
    * - ``csma_busy_forced`` / ``csma_persist_forced``
-     - Quante volte il limite anti-starvation di otto slot ha forzato una
-       trasmissione, distinguendo se qualche slot ha visto il canale occupato o
-       se tutti lo hanno trovato libero. Mostrato come *CSMA FORZATO
-       (OCCUP./PERSIST.)*. Sono trasmissioni, non scarti.
+     - Quante volte un frame è stato trasmesso comunque: su un canale ancora
+       occupato dopo l'*Attesa max. canale occupato*, oppure dopo otto sorteggi
+       di persistenza mancati consecutivi a canale libero. Mostrato come *CSMA
+       FORZATO (OCCUP./PERSIST.)*. Sono trasmissioni, non scarti.
    * - ``tx_duty_cycle_pct`` / ``duty_cycle_limit_pct``
      - Duty cycle di trasmissione misurato sulla finestra scorrevole di 10
        minuti rispetto al tetto configurato, come *CICLO DI LAVORO TX*. Il

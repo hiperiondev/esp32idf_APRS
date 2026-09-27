@@ -200,6 +200,8 @@ Notable factory defaults
      - 300 ms / 2000 ms
    * - CSMA persistence
      - 63 (~25 % transmit chance per clear slot)
+   * - CSMA slot time / busy channel max wait
+     - 100 ms / 30 s
    * - RF TX buffers
      - 1
    * - Query responder

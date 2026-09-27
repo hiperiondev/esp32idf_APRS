@@ -81,7 +81,7 @@ The reason is stack. A ``?APRS?`` answer *is* a beacon: it runs
 ``aprs_service_send_tnc2()`` → ``modem_send_tnc2()`` → ``ax25_encode()`` chain,
 each level stacking its own 300–450 byte buffer — precisely the call tree
 ``beacon_scheduler.c`` sizes its 14336-byte stack for. Queries, though, arrive
-on ``modem_svc`` (RF) and ``igate_task`` (APRS-IS), whose stacks are a fraction
+on ``aprs_rx`` (RF) and ``igate_task`` (APRS-IS), whose stacks are a fraction
 of that. The work therefore runs on the task whose budget covers it, not on
 whichever task happened to receive the question, and the builders can grow
 without those two paths needing to be re-checked.

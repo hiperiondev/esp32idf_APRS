@@ -213,6 +213,8 @@ Valores de fábrica destacados
      - 300 ms / 2000 ms
    * - Persistencia CSMA
      - 63 (~25 % de probabilidad de transmitir por ranura libre)
+   * - Ranura de tiempo CSMA / espera máx. con canal ocupado
+     - 100 ms / 30 s
    * - Búferes de TX de RF
      - 1
    * - Respondedor de consultas

@@ -61,9 +61,10 @@ Feature matrix
    * - PTT keying (compile-time GPIO + polarity)
      - ✅
      - validated GPIO; runtime **minimum-unkey** hold time
-   * - CSMA / TX time-slot / p-persistence / TXDelay preamble
+   * - CSMA / TX time-slot / p-persistence / TXDelay preamble / TXTail
      - ✅
-     - ``preamble``, ``tx_timeslot``, ``csma_persist``
+     - ``preamble``, ``tx_tail``, ``tx_timeslot``, ``csma_persist``, ``csma_slot_ms``,
+       ``csma_busy_max_s``
    * - DCD (data carrier detect)
      - ✅
      - demodulator-derived; no hardware squelch input

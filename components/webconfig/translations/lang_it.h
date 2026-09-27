@@ -247,6 +247,9 @@
 #define TR_F_RX_EQ_DIV3 "3 filtri"
 /** Italian text for the form label for the "Multi-slicer (recommended)" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_EQ_MULTI "Multicomparatore (consigliato)"
+/** Italian text: Form label for the "Multicomparatore, 2 filtri (confronto)" option of the demodulator set: the multi-slicer demodulators on two prefilters,
+ * for comparison. */
+#define TR_F_RX_EQ_MULTI2 "Multicomparatore, 2 filtri (confronto)"
 /** Italian text for the form label for the "Custom" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_EQ_CUSTOM "Personalizzato"
 /** Italian text for the form label for the "Custom: demodulators" field or fieldset, rendered on the configuration forms. */
@@ -277,6 +280,8 @@
 #define TR_F_RX_AGC_GAIN_DB "Guadagno fisso di ricezione (dB)"
 /** Italian text for the form label for the "Bit repair" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_FIX_BITS "Riparazione dei bit"
+/** Italian text: Form label: remove isolated glitches from the raw ADC samples before decimation. */
+#define TR_F_RX_IMPULSE_BLANK "Soppressore di impulsi"
 /** Italian text for the form label for the "One symbol" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_FIX_SYMBOL "Un simbolo"
 /** Italian text for the form label for the "One symbol or one bit" field or fieldset, rendered on the configuration forms. */
@@ -403,6 +408,8 @@
 #define TR_F_POSITION "Posizione"
 /** Italian text for the form label for the "preamble ms" field or fieldset, rendered on the configuration forms. English: "Preamble (ms)". */
 #define TR_F_PREAMBLE_MS "Preambolo (ms)"
+/** Italian text for the form label for the "tx tail ms" field or fieldset, rendered on the configuration forms. English: "TX tail (ms)". */
+#define TR_F_TX_TAIL_MS "Coda TX (ms)"
 /** Italian text for the selector entry meaning the feature or pin is switched off. English: "Disabled". */
 #define TR_DISABLED "Disabilitato"
 /** Italian text for the format string for a GPIO selector entry that is already claimed, taking the pin number and the claiming peripheral. English: "GPIO%d
@@ -466,6 +473,11 @@
 /** Italian text for the form label for the "csma persistence" field or fieldset, rendered on the configuration forms. English: "CSMA persistence (p, 1-255)".
  */
 #define TR_F_CSMA_PERSISTENCE "Persistenza CSMA (p, 1-255)"
+/** Italian text for the form label for the "csma slot time ms" field or fieldset, rendered on the configuration forms. English: "CSMA slot time (ms)". */
+#define TR_F_CSMA_SLOT_TIME_MS "Slot temporale CSMA (ms)"
+/** Italian text for the form label for the "csma busy max s" field or fieldset, rendered on the configuration forms. English: "Busy channel max wait (s, 0 =
+ * unlimited)". */
+#define TR_F_CSMA_BUSY_MAX_S "Attesa max. canale occupato (s, 0 = illimitata)"
 /** Italian text for the form label for the "send receive via internet" field or fieldset, rendered on the configuration forms. English: "Send/receive via
  * Internet". */
 #define TR_F_SEND_RECEIVE_VIA_INTERNET "Invia/ricevi via Internet"
@@ -1214,13 +1226,15 @@
 #define TR_RADIO_RX_STATS_LOST "campioni persi"
 /** Italian text: RX level label: RMS level of the tone band (900-2600 Hz). */
 #define TR_RADIO_RX_TONES "toni"
+/** Italian text: RX level label: raw ADC samples the impulse blanker has replaced. */
+#define TR_RADIO_RX_IMPULSES "impulsi rimossi"
 /** Italian text: RX level label: one-word verdict on the receive level. */
 #define TR_RADIO_RX_LEVEL "livello"
 /** Italian text: RX level verdict: the ADC input reached over-range. */
 #define TR_RADIO_RX_LEVEL_CLIP "saturato"
 /** Italian text: RX level verdict: no carrier detected during the measurement. */
 #define TR_RADIO_RX_LEVEL_IDLE "nessun segnale"
-/** Italian text: RX level verdict: tones below 100 mV RMS, raise the receive level. */
+/** Italian text: RX level verdict: tones below 20 mV RMS, raise the receive level. */
 #define TR_RADIO_RX_LEVEL_LOW "basso"
 /** Italian text: RX level verdict: tones well above the ADC noise, no over-range. */
 #define TR_RADIO_RX_LEVEL_GOOD "buono"
@@ -2009,6 +2023,12 @@
 #define TR_LOGS_BTN_START "Avvia"
 /** Italian text for the caption of the button while the console log is being captured, rendered on the Logs page. English: "Stop". */
 #define TR_LOGS_BTN_STOP "Ferma"
+/** Italian text for the status line shown beside the button when the station could not start capture, rendered on the Logs page. English: "Could not start
+ * capture (low memory).". */
+#define TR_LOGS_ERR_START "Impossibile avviare la cattura (memoria insufficiente)."
+/** Italian text for the status line shown beside the button when the start request could not be completed, rendered on the Logs page. English: "Request
+ * failed.". */
+#define TR_LOGS_ERR_NETWORK "Richiesta non riuscita."
 
 /** @} */
 
@@ -2268,6 +2288,10 @@
 #define TR_H_F_RX_FIX_BITS                                                                                                                                     \
     "Ripara trame con un simbolo (o bit) danneggiato quando è l'unica spiegazione e il risultato sembra APRS valido. Aggiunge decodifiche ma "                 \
     "anche alcune errate; tenerlo spento su un IGate."
+/** Italian text of the contextual help for the "Impulse blanker" option. */
+#define TR_H_F_RX_IMPULSE_BLANK                                                                                                                                \
+    "Elimina interferenze isolate dal flusso ADC grezzo prima della decimazione, soprattutto le raffiche causate dal Wi-Fi; beneficia di più una presa "       \
+    "dati o discriminatore. Spegnerlo se i demodulatori ricevono già un segnale pulito."
 /** Italian text of the contextual help for the "Flat / discriminator audio input" option. */
 #define TR_H_F_FLAT_AUDIO_INPUT                                                                                                                                \
     "Attivarlo per una presa dati o discriminatore (non filtrata, senza de-enfasi), spegnerlo per un'uscita altoparlante o cuffia (già "                       \
@@ -2318,6 +2342,14 @@
 /** Italian text of the contextual help for the "CSMA persistence (p, 1-255)" option. */
 #define TR_H_F_CSMA_PERSISTENCE                                                                                                                                \
     "Probabilità, da 1 a 255, che il modem trasmetta in uno slot libero. Valori bassi collidono meno su un canale affollato, al costo di un ritardo."
+/** Italian text of the contextual help for the "CSMA slot time (ms)" option. */
+#define TR_H_F_CSMA_SLOT_TIME_MS                                                                                                                               \
+    "Intervallo, in millisecondi, fra i lanci di persistenza a canale libero e fra i controlli di un canale occupato: lo SlotTime standard KISS. 100 ms va "   \
+    "bene per quasi tutti i canali APRS."
+/** Italian text of the contextual help for the "Busy channel max wait (s, 0 = unlimited)" option. */
+#define TR_H_F_CSMA_BUSY_MAX_S                                                                                                                                 \
+    "Attesa massima, in secondi, che un canale occupato si liberi prima di trasmettere comunque la trama in coda. 0 attende finché il canale resta occupato, " \
+    "come un TNC KISS standard."
 /** Italian text of the contextual help for the "Data interval (s)" option. */
 #define TR_H_F_DATA_INTERVAL_S "Secondi tra le trasmissioni di dati di questo servizio. 0 lascia in vigore il valore predefinito del servizio."
 /** Italian text of the contextual help for the "Digipeat by destination SSID (legacy)" option. */
@@ -2558,6 +2590,9 @@
 #define TR_H_F_POS_DAO                                                                                                                                         \
     "Aggiunge l'estensione DAO, che recupera la precisione che un normale rapporto di posizione arrotonda. I riceventi che la ignorano leggono comunque la "   \
     "posizione."
+/** Italian text of the contextual help for the "TX tail (ms)" option. */
+#define TR_H_F_TX_TAIL_MS                                                                                                                                      \
+    "Per quanto tempo il trasmettitore resta attivo dopo la fine di ogni trama, in millisecondi. Evita che la radio tagli gli ultimi bit in aria."
 /** Italian text of the contextual help for the "Preamble (ms)" option. */
 #define TR_H_F_PREAMBLE_MS                                                                                                                                     \
     "Per quanto tempo il trasmettitore è attivo prima dell'inizio dei dati, in millisecondi. Deve bastare perché si apra lo squelch delle stazioni riceventi."
@@ -2686,8 +2721,8 @@
     "Legge il ricevitore GNSS a ogni trasmissione invece di usare la posizione fissa, che resta come riserva quando non c'è una soluzione."
 /** Italian text of the contextual help for the "TX time-slot (ms)" option. */
 #define TR_H_F_TX_TIME_SLOT_MS                                                                                                                                 \
-    "Tempo di silenzio che il modem attende dopo ogni trasmissione prima di poter ritrasmettere, in millisecondi. Si somma allo slot CSMA fisso di 100 ms su " \
-    "cui viene tirata la persistenza; 0 elimina l'attesa."
+    "Tempo di silenzio che il modem attende dopo ogni trasmissione prima di poter ritrasmettere, in millisecondi. Precede gli slot CSMA su cui viene tirata "  \
+    "la persistenza; 0 elimina l'attesa."
 /** Italian text of the contextual help for the "Read-only username" option. */
 #define TR_H_SYS_RO_USERNAME                                                                                                                                   \
     "Nome di accesso dell'account che può guardare la stazione ma non modificarla. Lasciarlo vuoto e l'account non esiste; non può mai essere il nome "        \

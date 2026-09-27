@@ -306,8 +306,9 @@
 /**
  * @brief Number of slicers run by the ::MODEM_RX_EQ_MULTISLICE preset.
  *
- * The slicers are split evenly over two tilted prefilters (correlators), four
- * on each. They differ only in the weight given to the space tone, chosen so
+ * The slicers are split over three tilted prefilters (correlators), three,
+ * three and two on each. They differ only in the weight given to the space
+ * tone, chosen so
  * that the twist compensation of the whole set - prefilter tilt plus slicer
  * weight - steps 3.5 dB over a 24.5 dB range; see modem.c for the target
  * tables.

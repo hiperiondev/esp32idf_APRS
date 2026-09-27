@@ -33,7 +33,7 @@ En una frase, el firmware **demodula** audio AFSK/FSK desde el altavoz o la sali
 
 ## Lo más destacado
 
-- **Soft-módem en el chip.** AFSK 1200 Bd Bell 202 (APRS estándar) con hasta ocho demoduladores en paralelo (un juego multicomparador sobre dos prefiltros inclinados que cubre unos 25 dB de desbalance de tonos, ajustable desde la administración web, con medidor del nivel de recepción en la banda de tonos), más AFSK 1200 Bd V.23, AFSK 300 Bd y **G3RUH 9600 Bd FSK** — todo en C puro sobre el propio ADC/DAC del ESP32.
+- **Soft-módem en el chip.** AFSK 1200 Bd Bell 202 (APRS estándar) con hasta ocho demoduladores en paralelo (un juego multicomparador sobre tres prefiltros inclinados que cubre unos 25 dB de desbalance de tonos, ajustable desde la administración web, con medidor del nivel de recepción en la banda de tonos), más AFSK 1200 Bd V.23, AFSK 300 Bd y **G3RUH 9600 Bd FSK** — todo en C puro sobre el propio ADC/DAC del ESP32.
 - **Corrección de errores FX.25.** FEC Reed–Solomon sobre AX.25, solo RX o RX+TX, para decodificaciones fiables con señal débil.
 - **IGate APRS-IS completo.** Enlace bidireccional **RF→INET** e **INET→RF** con supresión de duplicados, construcción `qAR`/`qAO`, filtrado por tipo de carga útil, budlists de indicativos, un range gate local (distancia haversine), lista blanca por prefijo y, en el sentido INET→RF, un requisito de posición, una prueba de origen oído localmente y espaciado por origen que mantienen una suscripción APRS-IS amplia fuera del canal local. Se pueden listar hasta cuatro servidores APRS-IS, con failover automático entre los habilitados.
 - **Interconexión APRS con BrandMeister.** Reconoce, filtra y rutea el tráfico APRS que inyecta BrandMeister, sobre la misma sesión APRS-IS que ya tiene el IGate — lo identifican un tocall `APBMxx`, un alias `DMR` en la ruta o una pasarela de entrada nombrada. Página propia, apagada por omisión. **No interviene ninguna conexión DMR de ningún tipo.**
@@ -61,7 +61,7 @@ En una frase, el firmware **demodula** audio AFSK/FSK desde el altavoz o la sali
 | Tramas UI HDLC / AX.25 RX + TX | Cadena TX/RX completa del soft-módem |
 | FX.25 (FEC Reed–Solomon sobre AX.25) | Modos solo RX / RX+TX |
 | Control de PTT | GPIO y polaridad en compilación, retención mínima de des-keying |
-| CSMA / time-slot de TX / preámbulo TXDelay | `preamble`, `tx_timeslot` |
+| CSMA / time-slot de TX / preámbulo TXDelay / cola TXTail | `preamble`, `tx_tail` (TXTail, 20 ms por defecto), `tx_timeslot`, `csma_persist`, `csma_slot_ms` (SlotTime), `csma_busy_max_s` (espera con canal ocupado, 0 = sin límite) |
 | Limitador de ciclo de trabajo de TX | Techo opcional sobre una ventana deslizante de 10 minutos |
 | IGate APRS-IS RF→INET e INET→RF | Filtros, dedup, budlist, desempaquetado third-party opcional, guardas antiinundación INET→RF |
 | Failover multiservidor de APRS-IS | 4 ranuras de servidor, reintento circular sobre las habilitadas |

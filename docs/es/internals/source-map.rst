@@ -69,7 +69,8 @@ Disposición del repositorio
    │   │   ├── src/modem.c                     ← correladores, DPLL, tablas de tonos, DCD, calibración
    │   │   ├── src/ax25.c                      ← encuadrador HDLC, NRZI, bit-stuffing, códec AX.25, cola TX
    │   │   ├── src/fx25.c, lwfec/rs.c/.h, lwfec/gf.c/.h ← FEC Reed–Solomon FX.25
-   │   │   └── src/crc_ccit.c                  ← FCS
+   │   │   ├── src/crc_ccit.c                  ← FCS
+   │   │   └── test/host/                      ← test de regresión en host del transmisor HDLC (ax25.c real + cabeceras IDF sustitutas, ASan/UBSan)
    │   │
    │   ├── igate/          ← cliente TCP APRS-IS, login, filtros, dedup, RF→INET / INET→RF
    │   ├── digirepeater/   ← lógica de ruta n-N guiada por la tabla de alias del operador, más el ruteo heredado por SSID de destino, opcional
@@ -126,7 +127,8 @@ Por dónde empezar a leer
    * - El orden de arranque y la disposición de tareas
      - ``main/main.c``, luego ``main/aprs_service.c``
    * - Cómo se despacha una trama recibida
-     - ``aprs_msg_callback()`` en ``main/aprs_service.c``
+     - ``on_rx_frame()`` → ``rxTask()`` → ``aprs_msg_callback()`` en
+       ``main/aprs_service.c``
    * - El DSP / por qué se eligen las tasas de muestreo
      - ``…_modem_config.h``, luego ``src/modem.c`` / ``src/afsk.c``
    * - Gatewaying y filtrado

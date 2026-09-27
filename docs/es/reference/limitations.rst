@@ -86,11 +86,12 @@ Módem / Capa 2
      - ✅
      - ✅
      - Acceso p-persistente condicionado por DCD: persistencia configurable
-       (``csma_persist``, 1-255), tiempo de silencio previo al acceso
-       (``tx_timeslot``) y preámbulo/TXDelay, más un piso anti-inanición de ocho
-       ranuras para que un canal que nunca se libera no retenga indefinidamente
-       una trama en cola. El panel informa cuántas veces actuó ese piso,
-       separando canal ocupado de canal libre, como *CSMA FORZADO
+       (``csma_persist``, 1-255), SlotTime (``csma_slot_ms``, 10-2550 ms),
+       tiempo de silencio previo al acceso (``tx_timeslot``) y
+       preámbulo/TXDelay. Se espera a que se libere un canal ocupado hasta
+       ``csma_busy_max_s`` (30 s por omisión, 0 = sin límite) y ocho sorteos
+       fallidos consecutivos con el canal libre transmiten de todos modos. El
+       panel informa cuántas veces actuó cada límite como *CSMA FORZADO
        (OCUP./PERSIST.)*
    * - Techo de ciclo de trabajo de transmisión a largo plazo
      - ⚠️ (poco común fuera de equipos comerciales/regulados)
@@ -125,6 +126,12 @@ Módem / Capa 2
      - ``rf_tx_buffers``: cuántas tramas pueden esperar en el anillo de TX de RF
        antes de descartar los paquetes nuevos en vez de encolarlos; se lee en
        cada transmisión, así que surte efecto sin reiniciar
+   * - Cola de TX (TXTail) tras cada trama
+     - ✅
+     - ✅
+     - ``tx_tail``, 0-500 ms (20 ms por defecto), enviada como banderas tras la
+       bandera de cierre para que la cadena de audio de la radio y su vuelta a
+       recepción no corten el final de la trama
    * - Tiempo mínimo de PTT liberado entre tramas
      - ⚠️ (TXTAIL en algunos TNC)
      - ✅

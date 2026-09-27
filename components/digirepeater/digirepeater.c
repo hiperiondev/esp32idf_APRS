@@ -317,7 +317,7 @@ int digiProcess(ax25_msg_t *packet) {
     int idx, j;
 
     // Snapshot the digipeater's own call/SSID once at entry. This runs on the
-    // modem RX task and compares/copies digi_mycall many times below; a web
+    // radio receive task and compares/copies digi_mycall many times below; a web
     // save rewriting it mid-run could otherwise cause a torn compare or a
     // copy of an unterminated callsign into the outgoing path.
     char digiMyCall[10];

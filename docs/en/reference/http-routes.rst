@@ -145,6 +145,9 @@ the station changes with it.
      - ``/radio/level``
      - measure the tone-band and wideband receive level with a level verdict, input bias and converter headroom and report the receive statistics, without transmitting (JSON result)
    * - POST
+     - ``/radio/capture?s=N``
+     - stream the AFSK demodulator input for ``s`` seconds (default 60, at most 7200) as binary ``afsk_capture_block_t`` records, one per 20 ms block with its raw ADC extremes, receive-task time, gate state and gain; the web server answers nothing else while it runs
+   * - POST
      - ``/radio/txtest``
      - transmit a bounded test burst for setting the transmit level (JSON result)
    * - GET/POST

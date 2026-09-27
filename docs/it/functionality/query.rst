@@ -86,7 +86,7 @@ supporto in virgola mobile, ``aprs_coord_format()``, il costruttore del path e p
 l'intera catena ``aprs_service_send_tnc2()`` → ``modem_send_tnc2()`` →
 ``ax25_encode()``, con ogni livello che impila il proprio buffer da 300–450 byte
 — esattamente l'albero di chiamate per cui ``beacon_scheduler.c`` dimensiona il
-suo stack da 14336 byte. Le query, però, arrivano su ``modem_svc`` (RF) e
+suo stack da 14336 byte. Le query, però, arrivano su ``aprs_rx`` (RF) e
 ``igate_task`` (APRS-IS), i cui stack sono una frazione di quello. Il lavoro gira
 quindi sul task il cui budget lo copre e non su quello che ha ricevuto la
 domanda, e i costruttori possono crescere senza obbligare a riverificare quei

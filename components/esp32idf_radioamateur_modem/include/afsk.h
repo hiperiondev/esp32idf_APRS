@@ -36,6 +36,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "esp32idf_radioamateur_modem_config.h"
 #include "esp_err.h"
 
 /**
@@ -50,6 +51,29 @@
  * @param active_high true = PTT output is active-high, false = active-low.
  */
 void AFSK_setPttActiveHigh(bool active_high);
+
+/**
+ * @brief Hold the PTT output at its idle level regardless of the transmitter
+ *        state.
+ *
+ * While the inhibit is on, every key-up still runs in full - the modulator
+ * drives the DAC, the frame is clocked out and the key-down teardown runs as
+ * usual - but the PTT line never leaves its idle level, so a transceiver wired
+ * to it stays in receive. This is what a bench self-test over a DAC-to-ADC
+ * wire needs when a radio may also be connected.
+ *
+ * Turning the inhibit on releases a PTT line that is keyed at that moment.
+ * Turning it off never keys the transmitter by itself: the line is next driven
+ * active at the following key-up, so a transmission already under way when
+ * the inhibit is lifted stays off the air until it ends.
+ *
+ * Safe to call from any task. The TX indicator LED is driven together with
+ * the PTT line at every key-up and key-down, so it stays dark for a key-up
+ * made while the inhibit is on.
+ *
+ * @param inhibit true to hold PTT idle, false to let key-ups drive it again.
+ */
+void afskSetPttInhibit(bool inhibit);
 
 /**
  * @brief Check whether a GPIO number is usable as the PTT output pin on
@@ -127,9 +151,14 @@ void AFSK_deinit(void);
  *                    - 3 = G3RUH, 9600 Bd FSK
  * @param flatAudio true if the audio input is flat (unfiltered/discriminator
  *                  output); false if it is de-emphasized audio.
- * @param timeSlot  CSMA quiet/slot time, in milliseconds. Ignored when full
- *                  duplex mode is active.
+ * @param timeSlot  CSMA quiet time, in milliseconds, forwarded to
+ *                  Ax25TimeSlot(); 0 disables it. Ignored when full duplex
+ *                  mode is active.
  * @param preamble  TXDelay (preamble) duration, in milliseconds.
+ * @param txTail    TXTail duration, in milliseconds: how long the transmitter
+ *                  stays keyed, sending flags, after the closing flag of each
+ *                  frame. Forwarded to Ax25TxTail(); 0 releases PTT on the
+ *                  last bit of the closing flag.
  * @param fx25Mode  FX.25 mode selector:
  *                    - 0 = disabled
  *                    - 1 = RX only
@@ -142,11 +171,20 @@ void AFSK_deinit(void);
  *                  Ax25MinUnkeyTime().
  *
  * The receive front-end settings stored by afskSetRxFrontEnd() and the
- * prefilter tuning stored by ModemSetRxTuning() are applied here as well:
- * the receive task is held for the whole rebuild, so the demodulators never
- * see a half-built configuration.
+ * prefilter tuning stored by ModemSetRxTuning() are applied here as well.
+ * The receive task is held at the top of its loop, between two conversion
+ * frames, for the whole rebuild, so the demodulators never see a half-built
+ * configuration and no frame is being written into the AX.25 receive ring
+ * while Ax25Init() resets it.
+ *
+ * @warning Ax25Init() also empties the transmit ring and resets the transmit
+ *          state machine. The caller must have quiesced everything else that
+ *          touches them first: the modulator stopped with its teardown done,
+ *          no producer inside Ax25WriteTxFrame(), and the modem service task
+ *          held outside Ax25TransmitCheck() and Ax25ReadNextRxFrame().
+ *          modem_set_modem() does this before calling here.
  */
-void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t preamble, uint8_t fx25Mode, uint16_t minUnkeyMs);
+void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t preamble, uint16_t txTail, uint8_t fx25Mode, uint16_t minUnkeyMs);
 
 /**
  * @brief Select the DAC (transmit) sample rate used by the modulator.
@@ -283,7 +321,8 @@ void afskGetRawMinMax(int16_t *min, int16_t *max);
  * front end.
  *
  * @param gateMv      Receive gate threshold, mV RMS. Blocks are handed to the
- *                    demodulators while the input RMS has been above this
+ *                    demodulators while the tone-band level of the input
+ *                    (afskGetBandRms()) has been above this
  *                    level for a few blocks, and until it has fallen below
  *                    half of it. The blocks received while the gate was
  *                    closed are held and demodulated first when it opens.
@@ -294,8 +333,24 @@ void afskGetRawMinMax(int16_t *min, int16_t *max);
  * @param agcFixed    true for a fixed receive gain, false for automatic gain
  *                    control.
  * @param fixedGainDb Receive gain used when @p agcFixed is true, dB.
+ * @param impulseBlank true to remove isolated glitches from the raw ADC
+ *                    stream of the AFSK profiles before decimation (see
+ *                    impulse_blanker.h); false to pass the samples as they
+ *                    are.
  */
-void afskSetRxFrontEnd(uint16_t gateMv, uint16_t hpfHz, bool agcFixed, int8_t fixedGainDb);
+void afskSetRxFrontEnd(uint16_t gateMv, uint16_t hpfHz, bool agcFixed, int8_t fixedGainDb, bool impulseBlank);
+
+/**
+ * @brief Number of raw ADC samples the impulse blanker has replaced since
+ *        afskResetRxCounters() (or since the last afskSetModem()).
+ *
+ * With Wi-Fi active the ESP32's ADC picks up bursts of short glitches every
+ * beacon interval; a steady rise of this count during reception shows the
+ * blanker at work, and it stays near zero on a clean input.
+ *
+ * @return Samples replaced.
+ */
+uint32_t afskGetImpulsesRepaired(void);
 
 /**
  * @brief Enable or disable full-duplex operation.
@@ -335,8 +390,32 @@ uint32_t afskGetFifoDrops(void);
 uint32_t afskGetPoolOverflows(void);
 
 /**
- * @brief Clear the counters reported by afskGetFifoDrops() and
- *        afskGetPoolOverflows().
+ * @brief Report the load of the receive DSP.
+ *
+ * The load is the wall-clock time AFSK_Poll() spends processing each block of
+ * ::MODEM_BLOCK_SIZE samples, divided by the duration of the audio the block
+ * holds, in thousandths (1000 = the receive task needs exactly real time).
+ * Time other tasks on the same core take while a block is being processed is
+ * included, which is what decides whether the task keeps up: a load that
+ * approaches 1000, even briefly, lets the ADC driver's pool overflow.
+ *
+ * The mean and the peak cover the blocks processed since the previous call,
+ * which starts a new window (a window nobody reads restarts on its own after
+ * an hour); the maximum covers everything since afskResetRxCounters(). A
+ * block held up while the modem is being reconfigured reads far above real
+ * time, and every figure saturates at 65535 instead of wrapping.
+ *
+ * @param[out] meanPermille Mean load over the window, or NULL if not needed.
+ * @param[out] peakPermille Highest single-block load in the window, or NULL.
+ * @param[out] maxPermille  Highest single-block load since the counters were
+ *                          last reset, or NULL.
+ */
+void afskGetDspLoad(uint16_t *meanPermille, uint16_t *peakPermille, uint16_t *maxPermille);
+
+/**
+ * @brief Clear the counters reported by afskGetFifoDrops(),
+ *        afskGetPoolOverflows() and afskGetImpulsesRepaired(), and the
+ *        maximum load reported by afskGetDspLoad().
  */
 void afskResetRxCounters(void);
 
@@ -345,6 +424,12 @@ void afskResetRxCounters(void);
  *
  * Must be called periodically (typically from the internal DSP task) so
  * that samples captured by the ADC ISR are processed in a timely manner.
+ *
+ * Blocks are only demodulated while the receive gate is open. On the block
+ * that closes the gate the carrier detect of every demodulator is cleared
+ * (see ModemResetDcd()), because no further samples will reach them to let
+ * it decay on its own. A reset requested by AFSK_ServiceTx() is carried out
+ * here as well, between blocks.
  */
 void AFSK_Poll(void);
 
@@ -361,29 +446,42 @@ void AFSK_FlushFifo(void);
  *
  * Must be called from a task context, never from an interrupt service
  * routine, because it may perform operations that are not ISR-safe (such as
- * releasing PTT or switching the DAC back to idle).
+ * stopping the DAC sample clock or switching the DAC back to idle). Does
+ * nothing while no teardown is pending, or while the DAC ISR on the other
+ * core is still completing the key-down (getTransmit() still true); a later
+ * call then performs it.
+ *
+ * In half duplex the receiver ignored the input for the whole key-up, so the
+ * teardown also discards the samples buffered meanwhile and asks the receive
+ * task to clear the carrier detect (see ModemResetDcd()) before it
+ * demodulates again. In full duplex the receiver kept running and neither is
+ * touched.
  */
 void AFSK_ServiceTx(void);
 
 /**
- * @brief Check whether the modem is currently transmitting.
+ * @brief Check whether the modulator is currently running.
+ *
+ * An acquire load, safe from any task and from the DAC ISR. It turns false at
+ * the key-down, in the same call that drops the PTT line; the deferred part
+ * of the teardown may still be owed then (see AFSK_TxTeardownPending()).
+ *
  * @return true if a transmission is in progress, false otherwise.
  */
 bool getTransmit(void);
 
 /**
- * @brief Check whether a deferred TX teardown (releasing PTT, parking the
- *        DAC) is still waiting to run in AFSK_ServiceTx().
+ * @brief Check whether a deferred TX teardown (stopping the DAC sample clock,
+ *        parking the DAC, flushing the receive FIFO in half duplex) is still
+ *        waiting to run in AFSK_ServiceTx().
  *
- * setTransmit(false), called from the DAC ISR at the end of a key-up, only
- * raises this flag - it cannot touch PTT itself from ISR context. The real
- * gpio_set_level() that drops PTT happens later, in AFSK_ServiceTx(), from
- * task context. Ax25TransmitCheck() must not start a new transmission while
- * this is still true: setTransmit(true) (called from ModemTransmitStart() at
- * the start of the next key-up) clears the pending-teardown flag as a side
- * effect, which would silently cancel the PTT-off for the frame that just
- * finished - keeping PTT continuously asserted across what should be two
- * separate keyups.
+ * setTransmit(false), called from the DAC ISR at the end of a key-up, drops
+ * the PTT line itself but can only raise this flag for the rest, which is not
+ * ISR-safe. The flag is raised before the transmitting flag is cleared, so a
+ * reader that finds getTransmit() false also finds any teardown still owed.
+ * Ax25TransmitCheck() must not start a new transmission while this is true:
+ * setTransmit(true) clears the flag as a side effect, which would silently
+ * cancel the teardown of the frame that just finished.
  *
  * @return true if AFSK_ServiceTx() still needs to run before it is safe to
  *         key up again.
@@ -391,10 +489,15 @@ bool getTransmit(void);
 bool AFSK_TxTeardownPending(void);
 
 /**
- * @brief Set the internal transmit state flag.
+ * @brief Enter or leave the transmitting state.
  *
- * Also responsible for keying/unkeying the transmitter hardware (PTT) and
- * starting/stopping the DAC sample timer as needed.
+ * setTransmit(true) raises the transmitting flag and starts the DAC sample
+ * clock; it is called from task context through ModemTransmitStart(), after
+ * the transmit state machine has been prepared. setTransmit(false) is ISR-safe
+ * and is called from the DAC ISR at the end of a key-up (and from task
+ * context to abandon one): it raises the pending teardown, then clears the
+ * transmitting flag, then drops PTT, in that order, and leaves stopping the
+ * sample clock to AFSK_ServiceTx(). All flag stores are release stores.
  *
  * @param val true to enter the transmitting state, false to leave it.
  */
@@ -441,6 +544,73 @@ uint16_t afskGetRms(void);
  * @return RMS level of the tone band over the last block, in millivolts.
  */
 uint16_t afskGetBandRms(void);
+
+/**
+ * @brief Number of demodulator-input samples in one capture record.
+ *
+ * One record per ADC block: ::MODEM_BLOCK_SIZE samples decimated by
+ * ::MODEM_RESAMPLE_RATIO, i.e. 20 ms of audio at ::MODEM_DEMOD_SAMPLERATE.
+ */
+#define AFSK_CAPTURE_SAMPLES (MODEM_BLOCK_SIZE / MODEM_RESAMPLE_RATIO)
+
+/** @brief ::afsk_capture_block_t::flags bit: the receive gate was open for this block. */
+#define AFSK_CAPTURE_FLAG_GATE_OPEN 0x01
+/** @brief ::afsk_capture_block_t::flags bit: a raw conversion reached ::AFSK_RAW_CLIP_LOW or ::AFSK_RAW_CLIP_HIGH. */
+#define AFSK_CAPTURE_FLAG_CLIP 0x02
+/** @brief ::afsk_capture_block_t::flags bit: the impulse blanker replaced at least one raw sample of this block. */
+#define AFSK_CAPTURE_FLAG_BLANKED 0x04
+
+/**
+ * @brief One record of the receive capture: what the demodulators were given
+ *        during one ADC block, with the block's front-end state.
+ *
+ * Little-endian and packed, so the records can be sent as they are and read
+ * on a PC. The samples are the decimated and high-passed input of the AFSK
+ * demodulators, before the gain control, scaled so that 16384 equals 2048
+ * ADC counts (the full half-range of the 12-bit converter around its bias);
+ * the extra resolution keeps what the decimation filter gains over one ADC
+ * count.
+ */
+typedef struct __attribute__((packed)) {
+    uint32_t seq;                          /**< Block number since the capture started; a gap means records were dropped. */
+    int16_t raw_min;                       /**< Lowest raw ADC conversion result of the block. */
+    int16_t raw_max;                       /**< Highest raw ADC conversion result of the block. */
+    uint16_t busy_us;                      /**< Time the receive task spent on the block, in microseconds (saturated). */
+    uint8_t flags;                         /**< ::AFSK_CAPTURE_FLAG_GATE_OPEN, ::AFSK_CAPTURE_FLAG_CLIP, ::AFSK_CAPTURE_FLAG_BLANKED. */
+    uint8_t agc_x16;                       /**< Gain applied to the block by the gain control, times 16 (saturated at 255). */
+    int16_t samples[AFSK_CAPTURE_SAMPLES]; /**< Demodulator input; see the scaling above. */
+} afsk_capture_block_t;
+
+/**
+ * @brief Start recording the demodulator input.
+ *
+ * Allocates a ring of @p slots records (each ::afsk_capture_block_t is
+ * 396 bytes, one per 20 ms of audio) and makes the receive task append one
+ * record per block from the next block on. When the reader falls behind and
+ * the ring is full, records are dropped and counted, never overwritten: the
+ * ::afsk_capture_block_t::seq numbers of the records that do arrive show
+ * exactly where. Only the decimated AFSK profiles are captured.
+ *
+ * @param slots Ring size in records, 4..1000.
+ * @return ESP_OK, ESP_ERR_INVALID_STATE if a capture is already running or
+ *         the active profile is not decimated, ESP_ERR_INVALID_ARG for an
+ *         out-of-range size, or ESP_ERR_NO_MEM.
+ */
+esp_err_t afskCaptureStart(uint32_t slots);
+
+/**
+ * @brief Take the oldest pending capture record, if any.
+ * @param[out] out Receives the record.
+ * @return true if a record was copied, false if the ring is empty or no
+ *         capture is running.
+ */
+bool afskCaptureRead(afsk_capture_block_t *out);
+
+/**
+ * @brief Stop the capture and release its ring.
+ * @return Number of records dropped because the ring was full.
+ */
+uint32_t afskCaptureStop(void);
 
 /**
  * @brief Get the total number of samples delivered by the ADC since boot.

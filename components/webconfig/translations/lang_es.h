@@ -247,6 +247,9 @@
 #define TR_F_RX_EQ_DIV3 "3 filtros"
 /** Spanish text for the form label for the "Multi-slicer (recommended)" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_EQ_MULTI "Multicomparador (recomendado)"
+/** Spanish text: Form label for the "Multicomparador, 2 filtros (comparación)" option of the demodulator set: the multi-slicer demodulators on two prefilters,
+ * for comparison. */
+#define TR_F_RX_EQ_MULTI2 "Multicomparador, 2 filtros (comparación)"
 /** Spanish text for the form label for the "Custom" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_EQ_CUSTOM "Personalizado"
 /** Spanish text for the form label for the "Custom: demodulators" field or fieldset, rendered on the configuration forms. */
@@ -277,6 +280,8 @@
 #define TR_F_RX_AGC_GAIN_DB "Ganancia fija de recepción (dB)"
 /** Spanish text for the form label for the "Bit repair" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_FIX_BITS "Reparación de bits"
+/** Spanish text: Form label: remove isolated glitches from the raw ADC samples before decimation. */
+#define TR_F_RX_IMPULSE_BLANK "Supresor de impulsos"
 /** Spanish text for the form label for the "One symbol" field or fieldset, rendered on the configuration forms. */
 #define TR_F_RX_FIX_SYMBOL "Un símbolo"
 /** Spanish text for the form label for the "One symbol or one bit" field or fieldset, rendered on the configuration forms. */
@@ -403,6 +408,8 @@
 #define TR_F_POSITION "Posición"
 /** Spanish text for the form label for the "preamble ms" field or fieldset, rendered on the configuration forms. English: "Preamble (ms)". */
 #define TR_F_PREAMBLE_MS "Preámbulo (ms)"
+/** Spanish text for the form label for the "tx tail ms" field or fieldset, rendered on the configuration forms. English: "TX tail (ms)". */
+#define TR_F_TX_TAIL_MS "Cola de TX (ms)"
 /** Spanish text for the selector entry meaning the feature or pin is switched off. English: "Disabled". */
 #define TR_DISABLED "Deshabilitado"
 /** Spanish text for the format string for a GPIO selector entry that is already claimed, taking the pin number and the claiming peripheral. English: "GPIO%d
@@ -466,6 +473,11 @@
 /** Spanish text for the form label for the "csma persistence" field or fieldset, rendered on the configuration forms. English: "CSMA persistence (p, 1-255)".
  */
 #define TR_F_CSMA_PERSISTENCE "Persistencia CSMA (p, 1-255)"
+/** Spanish text for the form label for the "csma slot time ms" field or fieldset, rendered on the configuration forms. English: "CSMA slot time (ms)". */
+#define TR_F_CSMA_SLOT_TIME_MS "Ranura de tiempo CSMA (ms)"
+/** Spanish text for the form label for the "csma busy max s" field or fieldset, rendered on the configuration forms. English: "Busy channel max wait (s, 0 =
+ * unlimited)". */
+#define TR_F_CSMA_BUSY_MAX_S "Espera máx. con canal ocupado (s, 0 = sin límite)"
 /** Spanish text for the form label for the "send receive via internet" field or fieldset, rendered on the configuration forms. English: "Send/receive via
  * Internet". */
 #define TR_F_SEND_RECEIVE_VIA_INTERNET "Enviar/recibir vía Internet"
@@ -1214,13 +1226,15 @@
 #define TR_RADIO_RX_STATS_LOST "muestras perdidas"
 /** Spanish text: RX level label: RMS level of the tone band (900-2600 Hz). */
 #define TR_RADIO_RX_TONES "tonos"
+/** Spanish text: RX level label: raw ADC samples the impulse blanker has replaced. */
+#define TR_RADIO_RX_IMPULSES "impulsos eliminados"
 /** Spanish text: RX level label: one-word verdict on the receive level. */
 #define TR_RADIO_RX_LEVEL "nivel"
 /** Spanish text: RX level verdict: the ADC input reached over-range. */
 #define TR_RADIO_RX_LEVEL_CLIP "saturado"
 /** Spanish text: RX level verdict: no carrier detected during the measurement. */
 #define TR_RADIO_RX_LEVEL_IDLE "sin señal"
-/** Spanish text: RX level verdict: tones below 100 mV RMS, raise the receive level. */
+/** Spanish text: RX level verdict: tones below 20 mV RMS, raise the receive level. */
 #define TR_RADIO_RX_LEVEL_LOW "bajo"
 /** Spanish text: RX level verdict: tones well above the ADC noise, no over-range. */
 #define TR_RADIO_RX_LEVEL_GOOD "bueno"
@@ -2005,6 +2019,12 @@
 #define TR_LOGS_BTN_START "Iniciar"
 /** Spanish text for the caption of the button while the console log is being captured, rendered on the Logs page. English: "Stop". */
 #define TR_LOGS_BTN_STOP "Detener"
+/** Spanish text for the status line shown beside the button when the station could not start capture, rendered on the Logs page. English: "Could not start
+ * capture (low memory).". */
+#define TR_LOGS_ERR_START "No se pudo iniciar la captura (memoria insuficiente)."
+/** Spanish text for the status line shown beside the button when the start request could not be completed, rendered on the Logs page. English: "Request
+ * failed.". */
+#define TR_LOGS_ERR_NETWORK "Error en la solicitud."
 
 /** @} */
 
@@ -2264,6 +2284,10 @@
 #define TR_H_F_RX_FIX_BITS                                                                                                                                     \
     "Repara tramas con un símbolo (o bit) dañado cuando es la única explicación y el resultado parece APRS válido. Suma decodificaciones pero "                \
     "también algunas erróneas; manténgalo apagado en un IGate."
+/** Spanish text of the contextual help for the "Impulse blanker" option. */
+#define TR_H_F_RX_IMPULSE_BLANK                                                                                                                                \
+    "Elimina interferencias aisladas de la corriente cruda del ADC antes de la decimación, sobre todo las ráfagas que causa el Wi-Fi; beneficia más a una "    \
+    "toma de datos o discriminador. Apáguelo si los demoduladores ya reciben una señal limpia."
 /** Spanish text of the contextual help for the "Flat / discriminator audio input" option. */
 #define TR_H_F_FLAT_AUDIO_INPUT                                                                                                                                \
     "Actívelo para una toma de datos o de discriminador (sin filtrar, sin deénfasis) y apáguelo para una salida de altavoz o auriculares (ya "                 \
@@ -2311,6 +2335,14 @@
 /** Spanish text of the contextual help for the "CSMA persistence (p, 1-255)" option. */
 #define TR_H_F_CSMA_PERSISTENCE                                                                                                                                \
     "Probabilidad, de 1 a 255, de que el módem transmita en una ranura libre. Los valores bajos colisionan menos en un canal cargado, a costa de retardo."
+/** Spanish text of the contextual help for the "CSMA slot time (ms)" option. */
+#define TR_H_F_CSMA_SLOT_TIME_MS                                                                                                                               \
+    "Intervalo, en milisegundos, entre tiradas de persistencia con canal libre y entre comprobaciones de un canal ocupado: el SlotTime estándar de KISS. 100 " \
+    "ms sirve para casi todos los canales APRS."
+/** Spanish text of the contextual help for the "Busy channel max wait (s, 0 = unlimited)" option. */
+#define TR_H_F_CSMA_BUSY_MAX_S                                                                                                                                 \
+    "Espera máxima, en segundos, a que un canal ocupado se libere antes de transmitir igual la trama encolada. 0 espera mientras el canal siga ocupado, como " \
+    "un TNC KISS estándar."
 /** Spanish text of the contextual help for the "Data interval (s)" option. */
 #define TR_H_F_DATA_INTERVAL_S "Segundos entre transmisiones de datos de este servicio. 0 deja vigente el valor por defecto del servicio."
 /** Spanish text of the contextual help for the "Digipeat by destination SSID (legacy)" option. */
@@ -2542,6 +2574,9 @@
 /** Spanish text of the contextual help for the "DAO precision extension in position reports" option. */
 #define TR_H_F_POS_DAO                                                                                                                                         \
     "Añade la extensión DAO, que recupera la precisión que un reporte de posición normal redondea. Los receptores que la ignoran siguen leyendo la posición."
+/** Spanish text of the contextual help for the "TX tail (ms)" option. */
+#define TR_H_F_TX_TAIL_MS                                                                                                                                      \
+    "Cuánto tiempo sigue activo el transmisor tras el final de cada trama, en milisegundos. Evita que la radio corte los últimos bits en el aire."
 /** Spanish text of the contextual help for the "Preamble (ms)" option. */
 #define TR_H_F_PREAMBLE_MS                                                                                                                                     \
     "Cuánto tiempo se activa el transmisor antes de empezar los datos, en milisegundos. Debe bastar para que abra el silenciador de las estaciones "           \
@@ -2669,8 +2704,8 @@
 #define TR_H_F_TRACKER_USE_LIVE_GPS "Lee el receptor GNSS en cada transmisión en vez de usar la posición fija, que queda como reserva cuando no hay solución."
 /** Spanish text of the contextual help for the "TX time-slot (ms)" option. */
 #define TR_H_F_TX_TIME_SLOT_MS                                                                                                                                 \
-    "Tiempo de silencio que el módem espera tras cada transmisión antes de poder volver a transmitir, en milisegundos. Se suma a la ranura CSMA fija de 100 "  \
-    "ms en la que se tira la persistencia; 0 elimina la espera."
+    "Tiempo de silencio que el módem espera tras cada transmisión antes de poder volver a transmitir, en milisegundos. Precede a las ranuras CSMA en las que " \
+    "se tira la persistencia; 0 elimina la espera."
 /** Spanish text of the contextual help for the "Read-only username" option. */
 #define TR_H_SYS_RO_USERNAME                                                                                                                                   \
     "Nombre de acceso de la cuenta que puede mirar la estación pero no cambiarla. Déjelo en blanco y esa cuenta no existe; nunca puede ser el nombre del "     \

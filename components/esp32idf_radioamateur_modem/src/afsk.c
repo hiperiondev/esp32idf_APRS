@@ -71,6 +71,7 @@
 #include "afsk.h"
 #include "ax25.h"
 #include "esp32idf_radioamateur_modem_config.h"
+#include "impulse_blanker.h"
 #include "modem.h"
 
 #ifdef ENABLE_FX25
@@ -120,6 +121,12 @@ static RingBuffer s_fifo;
 // They raise a flag instead and AFSK_Poll() does the work between blocks.
 static volatile bool s_flushReq = false;
 
+// Deferred carrier-detect reset. The DCD state belongs to the demodulators and
+// is only written from afsk_rx_task, so the transmit teardown in
+// AFSK_ServiceTx(), which runs in the service task, raises this flag and
+// AFSK_Poll() calls ModemResetDcd() between blocks.
+static volatile bool s_dcdResetReq = false;
+
 static inline void rb_init(RingBuffer *rb) {
     rb->head = 0;
     rb->tail = 0;
@@ -156,7 +163,19 @@ static gptimer_handle_t s_dacTimer = NULL;
 static TaskHandle_t s_rxTask = NULL;
 static volatile bool s_rxStop = false;   // asks afsk_rx_task to exit
 static volatile bool s_rxExited = false; // set by afsk_rx_task on the way out
+// Receive-task hold used by afskSetModem(). The requester raises
+// s_rxPauseReq; afsk_rx_task acknowledges with s_rxPaused at the top of its
+// loop, between two conversion frames, and waits there until the request is
+// withdrawn. A task held this way is never in the middle of demodulating or of
+// writing a frame into the AX.25 receive ring, which is what the rebuild
+// relies on.
+static volatile bool s_rxPauseReq = false;
+static volatile bool s_rxPaused = false;
 
+// Transmit state shared by the service task and the DAC ISR, which runs on
+// the other core. Stores are release and loads acquire (see setTransmit()):
+// the order in which a key-down publishes them is what the service task
+// relies on to never key up inside the previous key-down.
 static volatile bool s_txActive = false;
 static volatile bool s_txStopPending = false;
 static volatile bool s_fullDuplex = true;
@@ -196,6 +215,7 @@ static float s_agcGain = 1.0f;
 static int s_offset = 0; // DC offset of the input, in mV
 static int s_mVrms = 0;  // last RMS reading, in mV
 static uint8_t s_dcdCnt = 0;
+static bool s_gateOpen = false; // receive gate state of the previous block
 
 // Raw ADC extremes of the last completed block, before DC removal, AGC and
 // decimation. Written by AFSK_Poll() and read by afskGetRawMinMax() from
@@ -224,6 +244,37 @@ static float s_bandB0, s_bandB2, s_bandA1, s_bandA2;
 static float s_bandX1[2], s_bandX2[2], s_bandY1[2], s_bandY2[2];
 static float s_mvPerCount = 0.806f;
 static int s_bandMvRms = 0;
+
+// Receive DSP load: wall-clock time AFSK_Poll() spends on each block, against
+// the MODEM_BLOCK_SIZE / MODEM_ADC_SAMPLERATE seconds of audio the block
+// holds. The window figures (sum, count, peak) are cleared by the receive task
+// itself on the first block after afskGetDspLoad() asks for it, so the reader
+// never writes them; the maximum only restarts with afskResetRxCounters().
+#define DSP_BLOCK_US ((uint32_t)((1000000ULL * MODEM_BLOCK_SIZE) / MODEM_ADC_SAMPLERATE))
+static volatile uint32_t s_dspBusySumUs = 0;
+static volatile uint32_t s_dspBlocks = 0;
+static volatile uint32_t s_dspPeakUs = 0;
+static volatile uint32_t s_dspMaxUs = 0;
+static volatile bool s_dspWindowReset = false;
+
+// Receive capture (afskCaptureStart()): a ring of records written by the
+// receive task and read by one other task. s_capHead counts records written,
+// s_capTail records read; each side only moves its own counter, so the ring
+// needs no lock. s_capRing is published last on start and cleared first on
+// stop, and the ring is freed only after the receive task has had time to
+// finish any block that still holds the old pointer.
+static afsk_capture_block_t *volatile s_capRing = NULL;
+static uint32_t s_capSlots = 0;
+static volatile uint32_t s_capHead = 0;
+static volatile uint32_t s_capTail = 0;
+static uint32_t s_capSeq = 0;
+static volatile uint32_t s_capDropped = 0;
+
+static void capture_block(const float *audio, int16_t rawMin, int16_t rawMax, uint32_t busyUs, bool gateOpen, bool blanked);
+
+// A window nobody reads is restarted after one hour of blocks, which keeps the
+// busy-time sum far inside 32 bits at any load.
+#define DSP_WINDOW_MAX_BLOCKS ((uint32_t)(3600ULL * MODEM_ADC_SAMPLERATE / MODEM_BLOCK_SIZE))
 
 // DAC sample rate the modulator is programmed for. Fixed while the modem runs:
 // AFSK_init() turns it into the sample-clock alarm period and ModemInit() turns
@@ -302,6 +353,13 @@ static inline uint8_t IRAM_ATTR dac_scale(uint8_t s) {
 static uint16_t s_gateOnMv = 10;
 static uint16_t s_gateOffMv = 5;
 static uint16_t s_pendGateMv = 10;
+
+// Impulse blanker on the raw ADC stream of the AFSK profiles (see
+// impulse_blanker.h). s_pendBlank is written by afskSetRxFrontEnd() and
+// copied into s_blankOn by afskSetModem() while the receive task is held.
+static impulse_blanker_t s_blanker;
+static bool s_blankOn = true;
+static bool s_pendBlank = true;
 
 // Receive gain: automatic, or fixed at s_fixedGain.
 static bool s_agcFixed = false;
@@ -611,8 +669,17 @@ static int64_t rgbTimeout = 0;
 // context must be made atomic with respect to that ISR. s_pttMux guards
 // exactly that variable; it must never be held around gpio_set_level(), which
 // is not guaranteed ISR-safe on this target.
-static const int8_t s_pttGpio = MODEM_PTT_GPIO;
+//
+// DRAM_ATTR: setPtt() reads s_pttGpio from the cache-safe DAC ISR. A plain
+// static const lands in flash .rodata, and although the optimizer usually
+// folds the value into the code, nothing guarantees it at -Og; kept in DRAM,
+// the load stays valid while the flash cache is disabled.
+static const DRAM_ATTR int8_t s_pttGpio = MODEM_PTT_GPIO;
 static bool s_pttActiveHigh = MODEM_PTT_ACTIVE_HIGH ? true : false;
+// When set, setPtt() drives the idle level whatever it is asked for (see
+// afskSetPttInhibit()). Guarded by s_pttMux together with s_pttActiveHigh, so
+// setPtt() snapshots both in one critical section.
+static bool s_pttInhibit = false;
 static portMUX_TYPE s_pttMux = portMUX_INITIALIZER_UNLOCKED;
 
 bool afsk_gpio_is_output_capable(int8_t gpio) {
@@ -656,6 +723,22 @@ void AFSK_setPttActiveHigh(bool active_high) {
 
     if (s_inited && s_pttGpio >= 0 && !getTransmit())
         gpio_set_level((gpio_num_t)s_pttGpio, active_high ? 0 : 1);
+}
+
+void afskSetPttInhibit(bool inhibit) {
+    bool activeHigh;
+
+    portENTER_CRITICAL(&s_pttMux);
+    s_pttInhibit = inhibit;
+    activeHigh = s_pttActiveHigh;
+    portEXIT_CRITICAL(&s_pttMux);
+
+    // Setting the inhibit releases a line that is keyed right now. The DAC
+    // ISR only drives the pin at key-up and key-down, so without this write a
+    // transmission already under way would stay on the air until it ended.
+    // Clearing it writes nothing: the next key-up drives the line itself.
+    if (inhibit && s_inited && s_pttGpio >= 0)
+        gpio_set_level((gpio_num_t)s_pttGpio, activeHigh ? 0 : 1);
 }
 
 // IRAM_ATTR: reachable from dac_timer_isr() (IRAM ISR) via setPtt(), which
@@ -702,27 +785,29 @@ void IRAM_ATTR LED_Status2(uint8_t r, uint8_t g, uint8_t b) {
 // LED_Status2() above.
 void IRAM_ATTR setPtt(bool state) {
     // s_pttGpio is a compile-time constant (::MODEM_PTT_GPIO), so only the
-    // polarity needs to be snapshotted under the spinlock
-    // AFSK_setPttActiveHigh() uses - short enough to be fine from IRAM/ISR
-    // context, and it can never observe a half-applied change.
+    // polarity and the inhibit need to be snapshotted under the spinlock
+    // AFSK_setPttActiveHigh() and afskSetPttInhibit() use - short enough to be
+    // fine from IRAM/ISR context, and it can never observe a half-applied
+    // change. The TX LED follows the line as actually driven.
     portENTER_CRITICAL_ISR(&s_pttMux);
     bool activeHigh = s_pttActiveHigh;
+    bool keyed = state && !s_pttInhibit;
     portEXIT_CRITICAL_ISR(&s_pttMux);
 
     if (s_pttGpio >= 0)
-        gpio_ll_set_level(&GPIO, (uint32_t)s_pttGpio, activeHigh ? state : !state);
-    if (state)
+        gpio_ll_set_level(&GPIO, (uint32_t)s_pttGpio, activeHigh ? keyed : !keyed);
+    if (keyed)
         LED_Status2(255, 0, 0);
     else
         LED_Status2(0, 0, 0);
 }
 
-bool getTransmit(void) {
-    return s_txActive;
+bool IRAM_ATTR getTransmit(void) {
+    return __atomic_load_n(&s_txActive, __ATOMIC_ACQUIRE);
 }
 
 bool AFSK_TxTeardownPending(void) {
-    return s_txStopPending;
+    return __atomic_load_n(&s_txStopPending, __ATOMIC_ACQUIRE);
 }
 
 // @brief Key up / key down.
@@ -733,23 +818,32 @@ bool AFSK_TxTeardownPending(void) {
 // more than lower a flag; AFSK_ServiceTx() finishes the job from a task.
 void IRAM_ATTR setTransmit(bool val) {
     if (val) {
-        if (!s_txActive) {
-            s_txStopPending = false;
-            s_txActive = true;
+        if (!getTransmit()) {
+            __atomic_store_n(&s_txStopPending, false, __ATOMIC_RELEASE);
+            // Release: the transmit state the caller prepared (stage, first
+            // byte, CRC seed) is visible to the DAC ISR before it sees the
+            // transmitter active.
+            __atomic_store_n(&s_txActive, true, __ATOMIC_RELEASE);
             if (s_dacTimer && !s_dacTimerRunning) {
                 gptimer_start(s_dacTimer);
                 s_dacTimerRunning = true;
             }
         }
     } else {
-        s_txActive = false;
+        // The pending teardown is raised before the transmitting flag is
+        // cleared, never after. Whoever sees the transmitter idle therefore
+        // also sees the teardown it still owes, so Ax25TransmitCheck() cannot
+        // take the gap between the two for a finished key-down and key up a
+        // new frame whose setTransmit(true) this call would then undo.
+        __atomic_store_n(&s_txStopPending, true, __ATOMIC_RELEASE);
+        __atomic_store_n(&s_txActive, false, __ATOMIC_RELEASE);
         // Drop the PTT GPIO right here, at key-down. This is the only teardown
         // step that is safe to run from the DAC ISR: setPtt() is IRAM_ATTR and
         // does nothing heavier than a spinlock-guarded gpio_set_level() (the
         // status LED it also touches is compiled out when MODEM_LED_*_GPIO are
         // -1). The rest of the teardown - stopping the DAC sample timer,
         // parking the DAC, flushing the RX FIFO - is NOT ISR-safe and stays
-        // deferred to AFSK_ServiceTx() via s_txStopPending below.
+        // deferred to AFSK_ServiceTx() via s_txStopPending above.
         //
         // The pin drop must NOT be deferred with it: AFSK_ServiceTx() runs at
         // most once per service-task period (>= 1 tick) and behind an unbounded
@@ -761,7 +855,6 @@ void IRAM_ATTR setTransmit(bool val) {
         // idempotent setPtt(false) in AFSK_ServiceTx() re-asserts the idle
         // level as a belt-and-suspenders measure.
         setPtt(false);
-        s_txStopPending = true;
     }
 }
 
@@ -774,7 +867,8 @@ bool afskGetFullDuplex(void) {
     return s_fullDuplex;
 }
 
-void afskSetRxFrontEnd(uint16_t gateMv, uint16_t hpfHz, bool agcFixed, int8_t fixedGainDb) {
+void afskSetRxFrontEnd(uint16_t gateMv, uint16_t hpfHz, bool agcFixed, int8_t fixedGainDb, bool impulseBlank) {
+    s_pendBlank = impulseBlank;
     s_pendGateMv = gateMv;
     s_pendHpfHz = hpfHz;
     s_pendAgcFixed = agcFixed;
@@ -792,6 +886,37 @@ uint32_t afskGetPoolOverflows(void) {
 void afskResetRxCounters(void) {
     s_fifoDrops = 0;
     s_poolOvf = 0;
+    s_dspMaxUs = 0;
+    s_blanker.repaired = 0;
+}
+
+uint32_t afskGetImpulsesRepaired(void) {
+    return s_blanker.repaired;
+}
+
+// @brief Busy time of one block, in microseconds, as thousandths of the
+//        block's audio duration, saturated to the uint16_t range.
+static uint16_t dsp_permille(uint32_t busyUs) {
+    uint64_t v = ((uint64_t)busyUs * 1000u) / DSP_BLOCK_US;
+    return (uint16_t)((v > UINT16_MAX) ? UINT16_MAX : v);
+}
+
+void afskGetDspLoad(uint16_t *meanPermille, uint16_t *peakPermille, uint16_t *maxPermille) {
+    uint32_t blocks = s_dspBlocks;
+    uint32_t sum = s_dspBusySumUs;
+    uint32_t peak = s_dspPeakUs;
+    uint32_t max = s_dspMaxUs;
+
+    s_dspWindowReset = true;
+
+    // A block held up by a reconfiguration of the modem can read far above
+    // real time; the figures saturate rather than wrap.
+    if (meanPermille)
+        *meanPermille = dsp_permille((blocks > 0) ? sum / blocks : 0);
+    if (peakPermille)
+        *peakPermille = dsp_permille(peak);
+    if (maxPermille)
+        *maxPermille = dsp_permille(max);
 }
 
 esp_err_t afskSetDacSampleRate(uint32_t rate) {
@@ -973,25 +1098,35 @@ static bool IRAM_ATTR dac_timer_isr(gptimer_handle_t timer, const gptimer_alarm_
     (void)edata;
     (void)user_ctx;
 
-    if (s_txActive) {
+    if (getTransmit()) {
         uint8_t sinwave = MODEM_BAUDRATE_TIMER_HANDLER();
-        dac_write_isr(dac_scale(sinwave));
+        // The key-down happens inside the handler. From then on the DAC
+        // belongs to AFSK_ServiceTx(), which parks it at mid-scale, so the
+        // sample computed on the way out is not written.
+        if (getTransmit())
+            dac_write_isr(dac_scale(sinwave));
     }
     return false;
 }
 
 // @brief Deferred TX teardown. Must run in task context.
 void AFSK_ServiceTx(void) {
-    if (!s_txStopPending)
+    if (!AFSK_TxTeardownPending())
+        return;
+
+    // The teardown is raised before the transmitting flag is cleared, so on
+    // the other core the DAC ISR may still be finishing the key-down. It is
+    // left to complete; the next service tick carries out the teardown.
+    if (getTransmit())
         return;
 
     // s_txStopPending is cleared only after the teardown work below (and
     // setPtt(false) in particular) has run. Every reader of "is teardown
-    // done" - ModemTxTeardownPending() / AFSK_TxTeardownPending(), and
-    // therefore pollTxEvents()'s "PTT OFF (unkeyed)" log gate in ax25.c, plus
-    // any getTransmit()-style guard - takes s_txStopPending == false as proof
-    // the PTT GPIO has already been released. Clearing the flag last means
-    // nothing can observe "teardown done" before the pin is genuinely idle.
+    // done" - ModemTxTeardownPending() / AFSK_TxTeardownPending(), which gate
+    // the next key-up in Ax25TransmitCheck() - takes s_txStopPending == false
+    // as proof that the sample clock is stopped and the PTT GPIO released.
+    // Clearing the flag last means nothing can observe "teardown done" before
+    // that is true.
 
     if (s_dacTimer && s_dacTimerRunning) {
         gptimer_stop(s_dacTimer);
@@ -1004,11 +1139,20 @@ void AFSK_ServiceTx(void) {
     // transmission leaking back in, so throw them away. In full duplex the tail
     // of our own frame is still in the FIFO and must be demodulated - that is
     // exactly what the GPIO ADC -> GPIO DAC loopback test relies on.
-    if (!s_fullDuplex)
+    //
+    // The carrier detect is cleared with it for the same reason: adc_ingest()
+    // kept every sample of the key-up away from the demodulators, so their DCD
+    // still describes the channel as it was before this station keyed up. In
+    // full duplex the demodulators heard the whole transmission and their DCD
+    // is current, and resetting it would disturb the frame still being
+    // decoded from the FIFO.
+    if (!s_fullDuplex) {
         AFSK_FlushFifo();
+        s_dcdResetReq = true;
+    }
 
     setPtt(false);
-    s_txStopPending = false; // only now is teardown actually complete
+    __atomic_store_n(&s_txStopPending, false, __ATOMIC_RELEASE); // only now is teardown actually complete
     ESP_LOGD(TAG, "TX stopped");
 }
 
@@ -1127,7 +1271,7 @@ static inline void diag_capture_push(int16_t raw) {
 static void adc_ingest(const uint8_t *buf, uint32_t size) {
     // Half duplex: do not fill the FIFO while transmitting, otherwise the
     // garbage captured during TX corrupts the demodulator state when drained.
-    if (!s_fullDuplex && s_txActive)
+    if (!s_fullDuplex && getTransmit())
         return;
 
     uint32_t head = s_fifo.head;
@@ -1309,9 +1453,15 @@ void AFSK_Poll(void) {
             s_flushReq = false;
             s_fifo.tail = s_fifo.head;
         }
+        if (s_dcdResetReq) {
+            s_dcdResetReq = false;
+            ModemResetDcd();
+        }
 
         if (rb_size(&s_fifo) < (uint32_t)MODEM_BLOCK_SIZE)
             break;
+
+        const int64_t blockStartUs = esp_timer_get_time();
 
         mVsum = 0;
         mVsumCount = 0;
@@ -1319,12 +1469,22 @@ void AFSK_Poll(void) {
         int16_t rawMin = INT16_MAX;
         int16_t rawMax = INT16_MIN;
 
+        // The blanker only runs for the decimated profiles: G3RUH's baseband
+        // changes too fast between conversions for a glitch to stand out.
+        const bool blank = s_blankOn && (ModemConfig.modem != MODEM_MODEM_G3RUH) && (MODEM_RESAMPLE_RATIO > 1);
+        const uint32_t repairedBefore = s_blanker.repaired;
+
         // The RMS/level measurement only needs a fraction of the samples.
         int m = ((MODEM_RESAMPLE_RATIO > 1) || (ModemConfig.modem == MODEM_MODEM_G3RUH)) ? 4 : 1;
 
         for (int x = 0; x < MODEM_BLOCK_SIZE; x++) {
             if (!rb_pop(&s_fifo, &adc))
                 break;
+
+            // Glitches are removed before anything else sees the sample: the
+            // DC tracker, the level and headroom figures, and the decimator
+            // that would spread a glitch over the whole tone band.
+            adc = impulse_blanker_step(&s_blanker, adc, blank);
 
             // running DC average
             s_avgSum += adc - (int)s_avgBuf[s_avgIdx];
@@ -1415,6 +1575,16 @@ void AFSK_Poll(void) {
 
         bool signalPresent = (s_gateOnMv == 0) || (s_dcdCnt > 3) || (ModemConfig.modem == MODEM_MODEM_G3RUH);
 
+        // The demodulators only update their carrier detect on the samples
+        // they are fed. Once the gate closes they are fed nothing, so a lock
+        // taken on the last blocks before it closed - often the noise that
+        // follows a transmission while the gate level decays - would
+        // otherwise keep reporting a busy channel for as long as it stays
+        // quiet.
+        if (s_gateOpen && !signalPresent)
+            ModemResetDcd();
+        s_gateOpen = signalPresent;
+
         if (signalPresent) {
             // Track the level only while there is something to track, and
             // before feeding, so the block that opened the gate is already
@@ -1428,7 +1598,97 @@ void AFSK_Poll(void) {
         } else if (decimate) {
             hold_push(s_audio, count);
         }
+
+        if (s_dspWindowReset || (s_dspBlocks >= DSP_WINDOW_MAX_BLOCKS)) {
+            s_dspWindowReset = false;
+            s_dspBusySumUs = 0;
+            s_dspBlocks = 0;
+            s_dspPeakUs = 0;
+        }
+        uint32_t busyUs = (uint32_t)(esp_timer_get_time() - blockStartUs);
+        s_dspBusySumUs += busyUs;
+        s_dspBlocks++;
+        if (busyUs > s_dspPeakUs)
+            s_dspPeakUs = busyUs;
+        if (busyUs > s_dspMaxUs)
+            s_dspMaxUs = busyUs;
+
+        if (decimate)
+            capture_block(s_audio, rawMin, rawMax, busyUs, signalPresent, s_blanker.repaired != repairedBefore);
     }
+}
+
+esp_err_t afskCaptureStart(uint32_t slots) {
+    if ((slots < 4) || (slots > 1000))
+        return ESP_ERR_INVALID_ARG;
+    if ((s_capRing != NULL) || (ModemConfig.modem == MODEM_MODEM_G3RUH) || (MODEM_RESAMPLE_RATIO <= 1))
+        return ESP_ERR_INVALID_STATE;
+
+    afsk_capture_block_t *ring = (afsk_capture_block_t *)malloc(slots * sizeof(afsk_capture_block_t));
+    if (ring == NULL)
+        return ESP_ERR_NO_MEM;
+
+    s_capSlots = slots;
+    s_capHead = 0;
+    s_capTail = 0;
+    s_capSeq = 0;
+    s_capDropped = 0;
+    __atomic_store_n(&s_capRing, ring, __ATOMIC_RELEASE);
+    return ESP_OK;
+}
+
+bool afskCaptureRead(afsk_capture_block_t *out) {
+    afsk_capture_block_t *ring = __atomic_load_n(&s_capRing, __ATOMIC_ACQUIRE);
+    if (ring == NULL)
+        return false;
+
+    uint32_t tail = s_capTail;
+    if (__atomic_load_n(&s_capHead, __ATOMIC_ACQUIRE) == tail)
+        return false;
+
+    memcpy(out, &ring[tail % s_capSlots], sizeof(*out));
+    __atomic_store_n(&s_capTail, tail + 1, __ATOMIC_RELEASE);
+    return true;
+}
+
+uint32_t afskCaptureStop(void) {
+    afsk_capture_block_t *ring = __atomic_exchange_n(&s_capRing, NULL, __ATOMIC_ACQ_REL);
+    if (ring != NULL) {
+        // One block takes at most a few milliseconds; this covers a block
+        // that picked up the pointer just before it was cleared.
+        vTaskDelay(pdMS_TO_TICKS(100));
+        free(ring);
+    }
+    return s_capDropped;
+}
+
+// @brief Append the block just processed to the receive capture, if one runs.
+static void capture_block(const float *audio, int16_t rawMin, int16_t rawMax, uint32_t busyUs, bool gateOpen, bool blanked) {
+    afsk_capture_block_t *ring = __atomic_load_n(&s_capRing, __ATOMIC_ACQUIRE);
+    if (ring == NULL)
+        return;
+
+    uint32_t seq = s_capSeq++;
+    uint32_t head = s_capHead;
+    if ((head - __atomic_load_n(&s_capTail, __ATOMIC_ACQUIRE)) >= s_capSlots) {
+        s_capDropped++;
+        return;
+    }
+
+    afsk_capture_block_t *rec = &ring[head % s_capSlots];
+    rec->seq = seq;
+    rec->raw_min = rawMin;
+    rec->raw_max = rawMax;
+    rec->busy_us = (uint16_t)((busyUs > UINT16_MAX) ? UINT16_MAX : busyUs);
+    rec->flags = (uint8_t)((gateOpen ? AFSK_CAPTURE_FLAG_GATE_OPEN : 0) | (blanked ? AFSK_CAPTURE_FLAG_BLANKED : 0) |
+                           (((rawMax >= AFSK_RAW_CLIP_HIGH) || (rawMin <= AFSK_RAW_CLIP_LOW)) ? AFSK_CAPTURE_FLAG_CLIP : 0));
+    float g = s_agcGain * 16.0f + 0.5f;
+    rec->agc_x16 = (uint8_t)((g > 255.0f) ? 255.0f : g);
+    for (int i = 0; i < AFSK_CAPTURE_SAMPLES; i++) {
+        float v = audio[i] * 16384.0f;
+        rec->samples[i] = (int16_t)((v > 32767.0f) ? 32767.0f : ((v < -32768.0f) ? -32768.0f : v));
+    }
+    __atomic_store_n(&s_capHead, head + 1, __ATOMIC_RELEASE);
 }
 
 static void afsk_rx_task(void *arg) {
@@ -1443,6 +1703,18 @@ static void afsk_rx_task(void *arg) {
     static uint8_t convBuf[MODEM_ADC_CONV_FRAME_BYTES];
 
     while (!s_rxStop) {
+        // Hold point for afskSetModem(): here, between two conversion frames,
+        // nothing of the demodulators or of the AX.25 receive ring is in use.
+        // Leaving it goes back through the loop head, so a request raised
+        // again in the meantime is honoured before any sample is processed.
+        if (__atomic_load_n(&s_rxPauseReq, __ATOMIC_ACQUIRE)) {
+            __atomic_store_n(&s_rxPaused, true, __ATOMIC_RELEASE);
+            while (__atomic_load_n(&s_rxPauseReq, __ATOMIC_ACQUIRE) && !s_rxStop)
+                vTaskDelay(1);
+            __atomic_store_n(&s_rxPaused, false, __ATOMIC_RELEASE);
+            continue;
+        }
+
         uint32_t got = 0;
 
         // Blocks on the driver's own pool. Its ISR fills that pool with an
@@ -1473,18 +1745,38 @@ static void afsk_rx_task(void *arg) {
 // Modem profile
 // ------------------------------------------------------------------
 
-void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t preamble, uint8_t fx25Mode, uint16_t minUnkeyMs) {
+// @brief Hold afsk_rx_task at the top of its loop and wait until it is there.
+//
+// The wait is bounded by one ADC read timeout plus one DSP block. A task that
+// has already left its loop is not waited for.
+static void rxPause(void) {
+    if (s_rxTask == NULL)
+        return;
+    __atomic_store_n(&s_rxPauseReq, true, __ATOMIC_RELEASE);
+    while (!__atomic_load_n(&s_rxPaused, __ATOMIC_ACQUIRE) && !s_rxExited)
+        vTaskDelay(1);
+}
+
+// @brief Let afsk_rx_task continue after rxPause().
+static void rxResume(void) {
+    __atomic_store_n(&s_rxPauseReq, false, __ATOMIC_RELEASE);
+}
+
+void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t preamble, uint16_t txTail, uint8_t fx25Mode, uint16_t minUnkeyMs) {
     // afsk_rx_task runs continuously on its own (possibly pinned) core,
     // calling AFSK_Poll() -> MODEM_DECODE() -> demodulate() -> filterRun()
-    // on whatever is currently in demodState[]. ModemInit() below does a
-    // memset() of demodState[] followed by piecemeal reassignment of each
-    // filter's coeffs/taps. If the RX task runs concurrently with that, it
-    // can observe a torn/inconsistent DemodState (e.g. a stale nonzero
-    // `taps` paired with a just-cleared NULL `coeffs`), which crashes
-    // filterRun() with a NULL-pointer read. Suspend the RX task for the
-    // duration of the reinit so no profile switch can race it.
-    if (s_rxTask)
-        vTaskSuspend(s_rxTask);
+    // on whatever is currently in demodState[], and Ax25BitParse() writes the
+    // frames it completes into the AX.25 receive ring. ModemInit() below does
+    // a memset() of demodState[] followed by piecemeal reassignment of each
+    // filter's coeffs/taps, and Ax25Init() resets the ring indices. A receive
+    // task running concurrently could observe a torn DemodState (a stale
+    // nonzero `taps` paired with a just-cleared NULL `coeffs` crashes
+    // filterRun()) or publish a frame slot computed against the old indices.
+    // It is therefore held at the top of its loop, where it is between two
+    // conversion frames and touches neither, for the whole rebuild. Stopping
+    // it there rather than suspending it wherever it happens to be is what
+    // makes the hold point safe.
+    rxPause();
 
     ModemConfig.flatAudioIn = flatAudio ? 1 : 0;
     ModemConfig.usePWM = 1;
@@ -1502,6 +1794,7 @@ void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t pream
 #endif
     Ax25TimeSlot(timeSlot);
     Ax25TxDelay(preamble);
+    Ax25TxTail(txTail);
     Ax25MinUnkeyTime(minUnkeyMs);
 
     // Reset the RX front-end so a profile change cannot leak old state, and
@@ -1511,11 +1804,14 @@ void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t pream
     s_avgSum = 0;
     s_avg = 2048;
     s_dcdCnt = 0;
+    s_gateOpen = false;
     s_holdHead = 0;
     s_holdCount = 0;
 
     s_gateOnMv = s_pendGateMv;
     s_gateOffMv = (uint16_t)(s_pendGateMv / 2);
+    s_blankOn = s_pendBlank;
+    impulse_blanker_reset(&s_blanker);
     hpf_setup(s_pendHpfHz);
     s_agcFixed = s_pendAgcFixed;
     s_fixedGain = powf(10.0f, (float)s_pendFixedGainDb / 20.0f);
@@ -1524,8 +1820,7 @@ void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t pream
     s_bandMvRms = 0;
     AFSK_FlushFifo();
 
-    if (s_rxTask)
-        vTaskResume(s_rxTask);
+    rxResume();
 
     // Logged only once the receive task runs again: the console takes several
     // milliseconds per line, longer in total than the ADC driver's pool can
@@ -1533,8 +1828,9 @@ void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t pream
     ESP_LOGI(TAG, "modem=%d adcRate=%d blockSize=%d resample=%d demodRate=%d", (int)ModemConfig.modem, MODEM_ADC_SAMPLERATE, MODEM_BLOCK_SIZE,
              MODEM_RESAMPLE_RATIO, MODEM_DEMOD_SAMPLERATE);
     ModemLogConfig();
-    ESP_LOGI(TAG, "RX front end: gate %s%u mV (tone band), high-pass %s%u Hz, gain %s %.2fx", s_gateOnMv ? "" : "off/", (unsigned)s_gateOnMv,
-             s_hpfOn ? "" : "off/", (unsigned)s_pendHpfHz, s_agcFixed ? "fixed" : "auto, start", (double)s_agcGain);
+    ESP_LOGI(TAG, "RX front end: impulse blanker %s, gate %s%u mV (tone band), high-pass %s%u Hz, gain %s %.2fx", s_blankOn ? "on" : "off",
+             s_gateOnMv ? "" : "off/", (unsigned)s_gateOnMv, s_hpfOn ? "" : "off/", (unsigned)s_pendHpfHz, s_agcFixed ? "fixed" : "auto, start",
+             (double)s_agcGain);
 }
 
 // ------------------------------------------------------------------
@@ -1766,7 +2062,7 @@ esp_err_t AFSK_init(void) {
     }
 
     setTransmit(false);
-    s_txStopPending = false;
+    __atomic_store_n(&s_txStopPending, false, __ATOMIC_RELEASE); // nothing was transmitted, so no teardown is owed
     s_inited = true;
     ESP_LOGI(TAG, "AFSK hardware ready (%s duplex)", s_fullDuplex ? "full" : "half");
     return ESP_OK;
@@ -1779,10 +2075,10 @@ void AFSK_deinit(void) {
     if (s_rxTask) {
         TaskHandle_t rx = s_rxTask;
 
-        // Resume first: afskSetModem() may have left it suspended, and a
-        // suspended task will never see s_rxStop.
-        vTaskResume(rx);
+        // A task held by afskSetModem() leaves its hold point as soon as it
+        // sees s_rxStop, so no separate release is needed.
         s_rxStop = true;
+        rxResume();
         for (int i = 0; (i < 40) && !s_rxExited; i++) // the read timeout is 100 ms
             vTaskDelay(pdMS_TO_TICKS(10));
         if (!s_rxExited) {

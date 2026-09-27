@@ -55,11 +55,34 @@ Requirements
 ------------
   Python 3.7+ (uses dataclasses)
   pip install pyserial
+  pip install requests    (only needed for --transport web, see below)
   multimon-ng   (reference decoder)
   direwolf      (optional second reference; sudo apt install direwolf)
   sox           (audio conversion / resampling / gain)
   PipeWire      running, plus its command-line tools pw-cat and pw-dump
                 (Debian/Ubuntu: sudo apt install pipewire-bin)
+
+Transports (--transport serial | web)
+--------------------------------------
+By default the bench reads the ESP32 console over a USB serial cable
+(--serial_port, unchanged). --transport web instead reads the same console
+text through the station's existing web admin "Logs" page API
+(/logs/start, /logs/read, /logs/stop), so the bench can run against a
+station reachable only over Wi-Fi/Ethernet, with no cable attached. It needs
+--web_host (and, if the station has an admin account configured,
+--web_user/--web_password). It cannot reset the ESP32 (--reset is rejected)
+and cannot see the ROM boot banner, and its 50-line/255-char-per-line ring
+buffer on the firmware side means a very long "RX:" line, or a burst of many
+packets between two polls, needs care - see --help for --web_poll_interval
+and the WebLogCollector class docstring for the details.
+
+With --transport web (and unless --no_modem_optimize is given) the bench also
+tunes the station's Radiomodem page before the real test: it first applies a
+known-good AFSK1200 receive chain, then chooses the playback volume, and then,
+at that volume, searches the "Receive demodulator" section of the page - and
+only that section - for the settings that decode best (--demod_max_rounds,
+0 skips it). Every value changed is listed in the final report; see the
+ModemOptimizer and DemodSearch classes for the rules.
 
 Usage
 -----
@@ -282,8 +305,8 @@ _CATALOG = {
         "test_aprs_wavs - esp32idf_APRS regression bench":
             "test_aprs_wavs - banco de pruebas de regresión de esp32idf_APRS",
         "Console  (program output)": "Consola  (salida del programa)",
-        "Serial  (raw data from the ESP32, unfiltered)":
-            "Serie  (datos crudos del ESP32, sin filtrar)",
+        "ESP32 console  (raw serial data, or the web log API with --transport web)":
+            "Consola del ESP32  (datos crudos de la serie, o la API de logs web con --transport web)",
         "Language of the messages, the help texts and this window. The default is the system language, or English when it is not one of the three.":
             "Idioma de los mensajes, de los textos de ayuda y de esta ventana. Por omisión, el idioma del sistema, o inglés si no es ninguno de los tres.",
         "%s: gain %.3f (%+.1f dB) on a file peaking at %.3f would clip inside sox (max usable gain %.3f). Use --normalise, or lower the gain and raise the hardware level instead.":
@@ -530,8 +553,8 @@ _CATALOG = {
         "\n[audio] player failed (rc=%s): %s\n": "\n[audio] falló el reproductor (rc=%s): %s\n",
         "\n[gui] stopped by user\n": "\n[gui] detenido por el usuario\n",
         "Cannot open serial port %s: %s\n": "No se puede abrir el puerto serie %s: %s\n",
-        "       [progress %s / %s] multimon=%d  ok=%d  not-decoded=%d  different=%d  (serial lines seen: %d)":
-            "       [avance %s / %s] multimon=%d  ok=%d  no-decodificados=%d  distintos=%d  (líneas de serie vistas: %d)",
+        "       [progress %s / %s] multimon=%d  ok=%d  not-decoded=%d  different=%d  (console lines seen: %d)":
+            "       [avance %s / %s] multimon=%d  ok=%d  no-decodificados=%d  distintos=%d  (líneas de consola vistas: %d)",
         "      probe incomplete: %d/%d packet(s) after %d pass(es) over the wav set - check the audio routing and the files":
             "      sondeo incompleto: %d/%d paquete(s) tras %d pasada(s) sobre el conjunto de wav; revisá el ruteo de audio y los archivos",
         "      score fell %.0f points below the best - the lower knee is past, no need to go quieter":
@@ -821,8 +844,323 @@ _CATALOG = {
             'No se puede escribir el informe CSV %s: %s\n',
         '\n[dw] Direwolf did not exit within %.0f s after the end of the audio - killing it\n':
             '\n[dw] Direwolf no terminó %.0f s después del final del audio: se lo mata\n',
-        '       [progress %s / %s] multimon=%d  direwolf=%d  ok=%d  not-decoded=%d  different=%d  (serial lines seen: %d)':
-            '       [avance %s / %s] multimon=%d  direwolf=%d  ok=%d  no-decodificados=%d  distintos=%d  (líneas de serie vistas: %d)',
+        '       [progress %s / %s] multimon=%d  direwolf=%d  ok=%d  not-decoded=%d  different=%d  (console lines seen: %d)':
+            '       [avance %s / %s] multimon=%d  direwolf=%d  ok=%d  no-decodificados=%d  distintos=%d  (líneas de consola vistas: %d)',
+        "how the bench reads the ESP32 console: 'serial' (default, a "
+        "USB cable via pyserial) or 'web' (the station's web admin "
+        "/logs/* HTTP API over Wi-Fi/Ethernet, no cable needed - see "
+        "--web_host, --web_user, --web_password). Gaps versus serial: "
+        "no --reset, no ROM boot banner visibility, no raw serial pane "
+        "in --gui.":
+            "cómo el banco de pruebas lee la consola del ESP32: 'serial' "
+            "(por defecto, un cable USB vía pyserial) o 'web' (la API HTTP "
+            "/logs/* del panel web de la estación, por Wi-Fi/Ethernet, sin "
+            "cable - ver --web_host, --web_user, --web_password). "
+            "Diferencias respecto a serial: sin --reset, sin visibilidad "
+            "del banner de arranque de la ROM, sin panel serie en bruto en "
+            "--gui.",
+        "web admin host[:port] of the ESP32 station, e.g. "
+        "192.168.1.50 or 192.168.1.50:8080 (required with "
+        "--transport web)":
+            "host[:puerto] del panel web de la estación ESP32, p. ej. "
+            "192.168.1.50 o 192.168.1.50:8080 (obligatorio con "
+            "--transport web)",
+        "web admin username (HTTP Basic Auth), same account as the "
+        "station's /wireless or /system page; omit only if the "
+        "station has no admin username configured":
+            "usuario del panel web (HTTP Basic Auth), la misma cuenta que "
+            "la página /wireless o /system de la estación; omítelo solo si "
+            "la estación no tiene un usuario de administrador configurado",
+        "web admin password (HTTP Basic Auth)":
+            "contraseña del panel web (HTTP Basic Auth)",
+        "how often /logs/read is polled, in seconds (default %.2f). "
+        "Must stay comfortably under the firmware's %d s idle timeout "
+        "and short enough not to miss bursts against its %d-line ring "
+        "buffer; lower it further if the station also logs heavily.":
+            "con qué frecuencia se sondea /logs/read, en segundos (por "
+            "defecto %.2f). Debe quedar cómodamente por debajo del tiempo "
+            "de espera de inactividad de %d s del firmware y ser lo "
+            "bastante corto para no perder ráfagas frente a su búfer "
+            "circular de %d líneas; bájalo más si la estación también "
+            "registra mucho.",
+        "--transport web requires --web_host (e.g. 192.168.1.50)\n":
+            "--transport web requiere --web_host (p. ej. 192.168.1.50)\n",
+        "--serial_port cannot be combined with --transport web "
+        "(the web transport does not use a serial port)\n":
+            "--serial_port no se puede combinar con --transport web (el "
+            "transporte web no usa un puerto serie)\n",
+        "--reset is not supported with --transport web: there is "
+        "no hardware reset over the web admin API; drop --reset or "
+        "use --transport serial\n":
+            "--reset no es compatible con --transport web: no hay "
+            "reinicio por hardware a través de la API web; quita --reset "
+            "o usa --transport serial\n",
+        "--web_poll_interval must be > 0 and well below %g s (the "
+        "firmware's idle timeout) (got %g)\n":
+            "--web_poll_interval debe ser > 0 y quedar bien por debajo de "
+            "%g s (el tiempo de espera de inactividad del firmware) (se "
+            "obtuvo %g)\n",
+        "Web: %s (poll every %.2f s)   Audio: %s":
+            "Web: %s (sondeo cada %.2f s)   Audio: %s",
+        "  WARNING: web transport - no hardware reset and no ROM boot "
+        "banner visibility (see --transport in --help).":
+            "  AVISO: transporte web - sin reinicio por hardware ni "
+            "visibilidad del banner de arranque de la ROM (ver "
+            "--transport en --help).",
+        "Cannot set up the web transport: %s\n":
+            "No se pudo configurar el transporte web: %s\n",
+        "Cannot start the web log collector at %s: %s\n":
+            "No se pudo iniciar el colector de registros web en %s: %s\n",
+        "with --transport web: do not touch the station's Radiomodem "
+        "settings before the test (by default the bench reads the "
+        "receive-chain settings over the web admin's Radiomodem page "
+        "and applies the ones known to give the cleanest AFSK1200 "
+        "decoding - RX EQ preset, band-pass edges/taps, RX gate, "
+        "high-pass, AGC mode and impulse blanker, all of the Receive "
+        "demodulator section; nothing else on the page is ever changed "
+        "- before the auto-volume "
+        "calibration and the real test, and once the volume is chosen "
+        "searches the Receive demodulator section - and only that section "
+        "- for the settings that decode best at that volume; every value "
+        "it changes is listed at the end of the run). Has no effect with "
+        "--transport serial.":
+            "con --transport web: no tocar la configuración del Radiomodem "
+            "de la estación antes de la prueba (por omisión el banco lee la "
+            "configuración de la cadena de recepción en la página Radiomodem "
+            "del admin web y aplica los valores que se sabe que dan la "
+            "decodificación AFSK1200 más limpia - preset de ecualización de "
+            "RX, bordes/taps del pasabanda, gate de RX, pasaaltos, modo AGC y "
+            "eliminador de impulsos, todos de la sección Demodulador de "
+            "recepción; nada más de la página se cambia nunca - antes de la "
+            "calibración automática de volumen y de la prueba real, y una "
+            "vez elegido el volumen busca en la sección Demodulador de "
+            "recepción - y sólo en esa sección - los valores que mejor "
+            "decodifican con ese volumen; cada valor que cambia se lista al "
+            "final de la corrida). No tiene efecto con --transport serial.",
+        "\nRadiomodem calibration (--transport web): reading and optimising "
+        "the receive chain at %s ...":
+            "\nCalibración del Radiomodem (--transport web): leyendo y "
+            "optimizando la cadena de recepción en %s ...",
+        "  %d value(s) changed - see the end-of-run report for details.":
+            "  %d valor(es) modificado(s) - ver el informe final para más detalles.",
+        "  Every value was already at the recommended setting - "
+        "nothing changed.":
+            "  Todos los valores ya estaban en el ajuste recomendado - no se "
+            "cambió nada.",
+        "  WARNING: Radiomodem calibration failed (%s) - "
+        "continuing with the station's current settings.\n":
+            "  ATENCIÓN: falló la calibración del Radiomodem (%s) - se "
+            "continúa con la configuración actual de la estación.\n",
+        "  Radiomodem calibration (--transport web) FAILED: %s":
+            "  Calibración del Radiomodem (--transport web) FALLIDA: %s",
+        "  -- Radiomodem calibration (--transport web) --------------------":
+            "  -- Calibración del Radiomodem (--transport web) ----------------",
+        "  Every value was already at the recommended setting - nothing changed.":
+            "  Todos los valores ya estaban en el ajuste recomendado - no se cambió nada.",
+        "on": "activado",
+        "off": "desactivado",
+        "AFSK modulation": "Modulación AFSK",
+        "Enable audio modem": "Habilitar módem de audio",
+        "Flat audio input": "Entrada de audio plana",
+        "RX EQ preset": "Preset de ecualización de RX",
+        "RX band-pass low edge (Hz)": "Borde inferior del pasabanda de RX (Hz)",
+        "RX band-pass high edge (Hz)": "Borde superior del pasabanda de RX (Hz)",
+        "RX band-pass taps": "Taps del pasabanda de RX",
+        "RX gate (mV RMS)": "Gate de RX (mV RMS)",
+        "RX high-pass corner (Hz)": "Corte del pasaaltos de RX (Hz)",
+        "RX AGC mode": "Modo AGC de RX",
+        "RX fixed gain (dB)": "Ganancia fija de RX (dB)",
+        "RX impulse blanker": "Eliminador de impulsos de RX",
+        "ADC self-bias": "Autopolarización del ADC",
+        "RX clip warning": "Advertencia de recorte de RX",
+        '  [radio] POST #%d: ADC self-bias read %s, sent %s, read back %s':
+            '  [radio] POST #%d: polarización del ADC leída %s, enviada %s, releída %s',
+        '  [radio] check after %s: ADC self-bias %s':
+            '  [radio] verificación después de %s: polarización del ADC %s',
+        "with --transport web: file recording every read and write of the station's Radiomodem page during the run (page HTML, POST bodies, the ADC self-bias state at every check); empty string disables it (default: test_aprs_wavs_web.log)":
+            'con --transport web: archivo que registra cada lectura y escritura de la página Radiomodem de la estación durante la corrida (HTML de la página, cuerpos de los POST, el estado de la polarización del ADC en cada verificación); cadena vacía lo desactiva (por omisión: test_aprs_wavs_web.log)',
+        'Web journal (every Radiomodem page read/write): %s':
+            'Registro web (cada lectura/escritura de la página Radiomodem): %s',
+        'a page read without the ADC self-bias checkbox is never POSTed back':
+            'una página leída sin la casilla de polarización del ADC nunca se reenvía por POST',
+        'the station RESTARTED (its log clock went back to zero)':
+            'la estación SE REINICIÓ (su reloj de log volvió a cero)',
+        'the station logged a configuration load failure / factory defaults':
+            'la estación registró una falla al cargar la configuración / valores de fábrica',
+        "the station logged 'ADC input self-bias disabled'":
+            "la estación registró 'ADC input self-bias disabled'",
+        'the Radiomodem page could not be read back (%s)':
+            'no se pudo volver a leer la página Radiomodem (%s)',
+        'changed outside the Receive demodulator section: %s':
+            'cambió fuera de la sección Demodulador de recepción: %s',
+        'after %s: %s':
+            'después de %s: %s',
+        'the probe at %+.1f dB':
+            'el sondeo a %+.1f dB',
+        'test file %d/%d':
+            'el archivo de prueba %d/%d',
+        'STATION STATE CHANGED - RUN STOPPED: %s\n':
+            'CAMBIÓ EL ESTADO DE LA ESTACIÓN - CORRIDA DETENIDA: %s\n',
+        "The bench wrote nothing more to the station after this. Check the station's configuration by hand (Radiomodem page, and the other pages if it restarted with factory defaults) before running again.\n":
+            'El banco no escribió nada más en la estación a partir de esto. Revisá a mano la configuración de la estación (página Radiomodem, y las demás páginas si se reinició con valores de fábrica) antes de volver a correr.\n',
+        'a station restart during the run is detected from the web log alone':
+            'un reinicio de la estación durante la corrida se detecta sólo con el log web',
+        'ADC self-bias going off on the station stops the run and names it':
+            'si la polarización del ADC se apaga en la estación, la corrida se detiene y lo indica',
+        'if a save switches ADC self-bias off anyway, the bench stops and puts it back on':
+            'si un guardado apaga igual la polarización del ADC, el banco se detiene y la vuelve a encender',
+        'full web calibration keeps ADC self-bias ON and every field outside the Receive demodulator section as it was':
+            'la calibración web completa mantiene la polarización del ADC ACTIVADA y cada campo fuera del Demodulador de recepción como estaba',
+        'an ambiguous page is refused before anything is POSTed':
+            'una página ambigua se rechaza antes de enviar cualquier POST',
+        'Radiomodem page read before any change: ADC input self-bias is %s on the station (the bench never changes it).':
+            'Página Radiomodem leída antes de cualquier cambio: la polarización interna de la entrada del ADC está %s en la estación (el banco nunca la cambia).',
+        "  WARNING: cannot read the station's Radiomodem page (%s) - the bench will not change anything on the station.\n":
+            '  ATENCIÓN: no se puede leer la página Radiomodem de la estación (%s) - el banco no cambiará nada en la estación.\n',
+        '  WARNING: could not re-read the Radiomodem page to verify it (%s).\n':
+            '  ATENCIÓN: no se pudo volver a leer la página Radiomodem para verificarla (%s).\n',
+        'Radiomodem page verified at the end of the run: nothing outside the Receive demodulator section differs from the start.':
+            'Página Radiomodem verificada al final de la corrida: nada fuera de la sección Demodulador de recepción difiere del inicio.',
+        '  ERROR: field(s) outside the Receive demodulator section differ from the start of the run: %s - restoring them now.\n':
+            '  ERROR: campo(s) fuera de la sección Demodulador de recepción difieren del inicio de la corrida: %s - se restauran ahora.\n',
+        '  Restored: %s\n':
+            '  Restaurado: %s\n',
+        '  ERROR: restoring failed (%s) - check the Radiomodem page by hand.\n':
+            '  ERROR: falló la restauración (%s) - revisá la página Radiomodem a mano.\n',
+        '  Radiomodem - outside the Receive demodulator section (never changed)':
+            '  Radiomodem - fuera de la sección Demodulador de recepción (nunca se cambia)',
+        'DIFFERS from the start of the run: %s':
+            'DIFIERE del inicio de la corrida: %s',
+        'had changed and was RESTORED: %s':
+            'había cambiado y se RESTAURÓ: %s',
+        '%d field(s) verified identical to the start of the run':
+            '%d campo(s) verificado(s) idéntico(s) al inicio de la corrida',
+        '--transport web uses web information only':
+            '--transport web usa sólo información web',
+        'wait_ready() over the web reads only the web log API (no boot banner, no serial)':
+            'wait_ready() por web lee sólo la API de logs web (sin banner de arranque, sin serie)',
+        'the web transport does not need pyserial':
+            'el transporte web no necesita pyserial',
+        "Checking the station's web log API ...":
+            'Verificando la API de logs web de la estación ...',
+        '  web log API is alive (%d console line(s) so far); starting now.':
+            '  la API de logs web responde (%d línea(s) de consola hasta ahora); se empieza ya.',
+        '  WARNING: no console line received through the web log API yet. The firmware may be quiet until it hears/sends something; continuing.':
+            '  AVISO: todavía no llegó ninguna línea de consola por la API de logs web. El firmware puede estar callado hasta que oiga/envíe algo; se continúa.',
+        'the pre-test summary lists the volume and every Receive demodulator value, marking the modified ones':
+            'el resumen previo a la prueba lista el volumen y todos los valores del Demodulador de recepción, marcando los modificados',
+        'SETTINGS FOR THE REAL TEST (selected by calibration)':
+            'VALORES PARA LA PRUEBA REAL (seleccionados por la calibración)',
+        '  Volume (ESP32 playback gain) - %s':
+            '  Volumen (ganancia de reproducción del ESP32) - %s',
+        'gain':
+            'ganancia',
+        '[MODIFIED]':
+            '[MODIFICADO]',
+        '[unchanged]':
+            '[sin cambios]',
+        '  Radiomodem - Receive demodulator section':
+            '  Radiomodem - sección Demodulador de recepción',
+        'not available (--transport serial)':
+            'no disponible (--transport serial)',
+        '    %d value(s) modified in this section; nothing outside it was touched.':
+            '    %d valor(es) modificado(s) en esta sección; no se tocó nada fuera de ella.',
+        'fixed by --volume (--no_auto_volume)':
+            'fijado por --volume (--no_auto_volume)',
+        'selected by the auto-volume calibration':
+            'seleccionado por la calibración automática de volumen',
+        'could not be read: %s':
+            'no se pudo leer: %s',
+        'read only: --no_modem_optimize, calibration did not change it':
+            'sólo lectura: --no_modem_optimize, la calibración no la cambió',
+        'the values before calibration could not be read; modified values cannot be marked':
+            'no se pudieron leer los valores previos a la calibración; no se pueden marcar los modificados',
+        "  WARNING: 'RX clip warning' is off on the station (Radiomodem page, Audio interface) - the auto-volume search cannot see over-range and may pick a clipping level. Not changed by the bench.\n":
+            "  ATENCIÓN: la 'Advertencia de recorte de RX' está desactivada en la estación (página Radiomodem, Interfaz de audio) - la búsqueda de volumen automático no puede ver el sobre-rango y puede elegir un nivel que recorta. El banco no la cambia.\n",
+        "  WARNING: the station's audio modem is disabled (Radiomodem page) - the ESP32 will decode nothing. Not changed by the bench.\n":
+            '  ATENCIÓN: el módem de audio de la estación está deshabilitado (página Radiomodem) - el ESP32 no decodificará nada. El banco no lo cambia.\n',
+        "  WARNING: the station's AFSK modulation is not 1200 Bd (Bell202) - the WAV set is 1200 Bd APRS. Not changed by the bench.\n":
+            '  ATENCIÓN: la modulación AFSK de la estación no es 1200 Bd (Bell202) - los WAV son APRS a 1200 Bd. El banco no la cambia.\n',
+        'Radiomodem calibration changes nothing outside the Receive demodulator section (ADC self-bias included)':
+            'la calibración del Radiomodem no cambia nada fuera de la sección Demodulador de recepción (autopolarización del ADC incluida)',
+        '      better than the current best (%.1f%% -> %.1f%%): kept':
+            '      mejor que el mejor actual (%.1f%% -> %.1f%%): se conserva',
+        '    The starting settings were kept - nothing changed.':
+            '    Se conservaron los valores iniciales - no se cambió nada.',
+        '    decode rate %.1f%% at the start, %.1f%% with the chosen settings (%d probe(s))':
+            '    tasa de decodificación %.1f%% al inicio, %.1f%% con los valores elegidos (%d sondeo(s))',
+        '  (over-range reported)':
+            '  (se informó sobre-rango)',
+        '  -- Receive demodulator search (--transport web) ----------------':
+            '  -- Búsqueda del demodulador de recepción (--transport web) -----',
+        '  Confirmation did not hold (pooled %.1f%% vs %.1f%% at the start): back to the starting settings.':
+            '  La confirmación no se sostuvo (conjunto %.1f%% frente a %.1f%% al inicio): se vuelve a los valores iniciales.',
+        '  Decode rate: %.1f%% with the starting settings, %.1f%% with the chosen ones':
+            '  Tasa de decodificación: %.1f%% con los valores iniciales, %.1f%% con los elegidos',
+        '  Gain %.3f (%+.1f dB), budget %d probe(s) of %d packet(s); bit repair and the Custom tilts are left as they are':
+            '  Ganancia %.3f (%+.1f dB), presupuesto %d sondeo(s) de %d paquete(s); la reparación de bits y las inclinaciones Custom quedan como están',
+        '  Nothing decoded with the starting settings - no basis to compare demodulator settings; leaving them unchanged.':
+            '  No se decodificó nada con los valores iniciales - no hay base para comparar valores del demodulador; se dejan sin cambios.',
+        '  Probe budget spent; stopping the search (raise it with --demod_max_rounds).':
+            '  Se agotó el presupuesto de sondeos; se detiene la búsqueda (ampliálo con --demod_max_rounds).',
+        '  Receive demodulator search (--transport web) FAILED: %s':
+            '  Búsqueda del demodulador de recepción (--transport web) FALLIDA: %s',
+        '  The starting Receive demodulator settings were already the best measured - nothing changed.':
+            '  Los valores iniciales del Demodulador de recepción ya eran los mejores medidos - no se cambió nada.',
+        "  WARNING: Receive demodulator search failed (%s) - continuing with the station's settings from before the search.\n":
+            '  ATENCIÓN: falló la búsqueda del demodulador de recepción (%s) - se continúa con la configuración que tenía la estación antes de la búsqueda.\n',
+        '  [demod %2d/%d] %-44s mm=%d ok=%d diff=%d hdr=%d miss=%d extra=%d  score=%.1f%%':
+            '  [demod %2d/%d] %-44s mm=%d ok=%d dif=%d enc=%d falt=%d extra=%d  puntaje=%.1f%%',
+        '%d POST(s)':
+            '%d POST(s)',
+        '%d probe(s)':
+            '%d sondeo(s)',
+        '%d probe(s) for a budget of %d':
+            '%d sondeo(s) para un presupuesto de %d',
+        '--demod_max_rounds must be >= 0 (got %d)\n':
+            '--demod_max_rounds debe ser >= 0 (se recibió %d)\n',
+        'RECEIVE DEMODULATOR SEARCH (Radiomodem page, Receive demodulator section only)':
+            'BÚSQUEDA DEL DEMODULADOR DE RECEPCIÓN (página Radiomodem, sólo la sección Demodulador de recepción)',
+        'RX bit repair':
+            'Reparación de bits de RX',
+        'RX custom demodulator count':
+            'Cantidad de demoduladores Custom de RX',
+        'RX custom tilt 1 (dB)':
+            'Inclinación Custom 1 de RX (dB)',
+        'RX custom tilt 2 (dB)':
+            'Inclinación Custom 2 de RX (dB)',
+        'RX custom tilt 3 (dB)':
+            'Inclinación Custom 3 de RX (dB)',
+        'Radiomodem calibration leaves every other field of the page as it was (duty cycle included)':
+            'la calibración del Radiomodem deja como estaba cualquier otro campo de la página (ciclo de trabajo incluido)',
+        'Radiomodem page: whole-form POST and Receive demodulator search':
+            'Página Radiomodem: POST del formulario completo y búsqueda del demodulador de recepción',
+        '\nReceive demodulator search interrupted - keeping the best settings measured so far.':
+            '\nBúsqueda del demodulador de recepción interrumpida - se conservan los mejores valores medidos hasta ahora.',
+        'a tight budget still ends on a measured, applied setting':
+            'con un presupuesto ajustado igual termina en valores medidos y aplicados',
+        'changed: %r':
+            'cambiado: %r',
+        'confirmation of the best settings':
+            'confirmación de los mejores valores',
+        'demodulator search changes nothing outside the Receive demodulator section (bit repair and Custom tilts included)':
+            'la búsqueda del demodulador no cambia nada fuera de la sección Demodulador de recepción (reparación de bits e inclinaciones Custom incluidas)',
+        'demodulator search keeps a setting when the alternatives only tie':
+            'la búsqueda del demodulador conserva un valor cuando las alternativas sólo empatan',
+        'demodulator search keeps the settings that decode better':
+            'la búsqueda del demodulador conserva los valores que decodifican mejor',
+        'demodulator search stays within its probe budget':
+            'la búsqueda del demodulador respeta su presupuesto de sondeos',
+        'every demodulator-search POST carries the whole form':
+            'cada POST de la búsqueda del demodulador lleva el formulario completo',
+        'got preset=%r hpf=%r':
+            'se obtuvo preset=%r hpf=%r',
+        'starting settings':
+            'valores iniciales',
+        'the Radiomodem form is scraped whole, and only that form':
+            'el formulario Radiomodem se lee completo, y sólo ese formulario',
+        'with --transport web and without --no_modem_optimize: budget of the Receive demodulator search that runs after the volume is chosen, in probes of --auto_volume_batch packets (default %d; 0 skips the search)':
+            'con --transport web y sin --no_modem_optimize: presupuesto de la búsqueda del demodulador de recepción que corre después de elegir el volumen, en sondeos de --auto_volume_batch paquetes (por omisión %d; 0 omite la búsqueda)',
     },
     "it": {
         "SUMMARY": "RIEPILOGO",
@@ -863,8 +1201,8 @@ _CATALOG = {
         "test_aprs_wavs - esp32idf_APRS regression bench":
             "test_aprs_wavs - banco di prova di regressione di esp32idf_APRS",
         "Console  (program output)": "Console  (output del programma)",
-        "Serial  (raw data from the ESP32, unfiltered)":
-            "Seriale  (dati grezzi dall'ESP32, non filtrati)",
+        "ESP32 console  (raw serial data, or the web log API with --transport web)":
+            "Console dell'ESP32  (dati grezzi della seriale, o l'API dei log web con --transport web)",
         "Language of the messages, the help texts and this window. The default is the system language, or English when it is not one of the three.":
             "Lingua dei messaggi, dei testi di aiuto e di questa finestra. Per impostazione predefinita, la lingua di sistema, o inglese se non è una delle tre.",
         "%s: gain %.3f (%+.1f dB) on a file peaking at %.3f would clip inside sox (max usable gain %.3f). Use --normalise, or lower the gain and raise the hardware level instead.":
@@ -1110,8 +1448,8 @@ _CATALOG = {
         "\n[audio] player failed (rc=%s): %s\n": "\n[audio] il player è fallito (rc=%s): %s\n",
         "\n[gui] stopped by user\n": "\n[gui] fermato dall'utente\n",
         "Cannot open serial port %s: %s\n": "Impossibile aprire la porta seriale %s: %s\n",
-        "       [progress %s / %s] multimon=%d  ok=%d  not-decoded=%d  different=%d  (serial lines seen: %d)":
-            "       [avanzamento %s / %s] multimon=%d  ok=%d  non-decodificati=%d  diversi=%d  (righe seriali viste: %d)",
+        "       [progress %s / %s] multimon=%d  ok=%d  not-decoded=%d  different=%d  (console lines seen: %d)":
+            "       [avanzamento %s / %s] multimon=%d  ok=%d  non-decodificati=%d  diversi=%d  (righe di console viste: %d)",
         "      probe incomplete: %d/%d packet(s) after %d pass(es) over the wav set - check the audio routing and the files":
             "      sondaggio incompleto: %d/%d pacchetto/i dopo %d passaggio/i sull'insieme di wav; controlla il routing audio e i file",
         "      score fell %.0f points below the best - the lower knee is past, no need to go quieter":
@@ -1401,16 +1739,335 @@ _CATALOG = {
             'Impossibile scrivere il rapporto CSV %s: %s\n',
         '\n[dw] Direwolf did not exit within %.0f s after the end of the audio - killing it\n':
             "\n[dw] Direwolf non è uscito entro %.0f s dalla fine dell'audio: viene terminato\n",
-        '       [progress %s / %s] multimon=%d  direwolf=%d  ok=%d  not-decoded=%d  different=%d  (serial lines seen: %d)':
-            '       [avanzamento %s / %s] multimon=%d  direwolf=%d  ok=%d  non-decodificati=%d  diversi=%d  (righe seriali viste: %d)',
+        '       [progress %s / %s] multimon=%d  direwolf=%d  ok=%d  not-decoded=%d  different=%d  (console lines seen: %d)':
+            '       [avanzamento %s / %s] multimon=%d  direwolf=%d  ok=%d  non-decodificati=%d  diversi=%d  (righe di console viste: %d)',
+        "how the bench reads the ESP32 console: 'serial' (default, a "
+        "USB cable via pyserial) or 'web' (the station's web admin "
+        "/logs/* HTTP API over Wi-Fi/Ethernet, no cable needed - see "
+        "--web_host, --web_user, --web_password). Gaps versus serial: "
+        "no --reset, no ROM boot banner visibility, no raw serial pane "
+        "in --gui.":
+            "come il banco di prova legge la console dell'ESP32: 'serial' "
+            "(predefinito, un cavo USB via pyserial) oppure 'web' (l'API "
+            "HTTP /logs/* del pannello web della stazione, via "
+            "Wi-Fi/Ethernet, senza cavo - vedi --web_host, --web_user, "
+            "--web_password). Differenze rispetto a serial: niente "
+            "--reset, nessuna visibilità del banner di avvio della ROM, "
+            "nessun pannello seriale grezzo in --gui.",
+        "web admin host[:port] of the ESP32 station, e.g. "
+        "192.168.1.50 or 192.168.1.50:8080 (required with "
+        "--transport web)":
+            "host[:porta] del pannello web della stazione ESP32, es. "
+            "192.168.1.50 oppure 192.168.1.50:8080 (obbligatorio con "
+            "--transport web)",
+        "web admin username (HTTP Basic Auth), same account as the "
+        "station's /wireless or /system page; omit only if the "
+        "station has no admin username configured":
+            "utente del pannello web (HTTP Basic Auth), lo stesso account "
+            "della pagina /wireless o /system della stazione; omettilo "
+            "solo se la stazione non ha un utente amministratore "
+            "configurato",
+        "web admin password (HTTP Basic Auth)":
+            "password del pannello web (HTTP Basic Auth)",
+        "how often /logs/read is polled, in seconds (default %.2f). "
+        "Must stay comfortably under the firmware's %d s idle timeout "
+        "and short enough not to miss bursts against its %d-line ring "
+        "buffer; lower it further if the station also logs heavily.":
+            "ogni quanto viene interrogato /logs/read, in secondi "
+            "(predefinito %.2f). Deve restare comodamente sotto il "
+            "timeout di inattività di %d s del firmware ed essere "
+            "abbastanza breve da non perdere raffiche rispetto al suo "
+            "buffer circolare da %d righe; abbassalo ulteriormente se la "
+            "stazione registra molto.",
+        "--transport web requires --web_host (e.g. 192.168.1.50)\n":
+            "--transport web richiede --web_host (es. 192.168.1.50)\n",
+        "--serial_port cannot be combined with --transport web "
+        "(the web transport does not use a serial port)\n":
+            "--serial_port non può essere combinato con --transport web "
+            "(il trasporto web non usa una porta seriale)\n",
+        "--reset is not supported with --transport web: there is "
+        "no hardware reset over the web admin API; drop --reset or "
+        "use --transport serial\n":
+            "--reset non è supportato con --transport web: non esiste un "
+            "reset hardware tramite l'API web; togli --reset oppure usa "
+            "--transport serial\n",
+        "--web_poll_interval must be > 0 and well below %g s (the "
+        "firmware's idle timeout) (got %g)\n":
+            "--web_poll_interval deve essere > 0 e ben al di sotto di "
+            "%g s (il timeout di inattività del firmware) (ottenuto "
+            "%g)\n",
+        "Web: %s (poll every %.2f s)   Audio: %s":
+            "Web: %s (interrogazione ogni %.2f s)   Audio: %s",
+        "  WARNING: web transport - no hardware reset and no ROM boot "
+        "banner visibility (see --transport in --help).":
+            "  AVVISO: trasporto web - nessun reset hardware e nessuna "
+            "visibilità del banner di avvio della ROM (vedi --transport "
+            "in --help).",
+        "Cannot set up the web transport: %s\n":
+            "Impossibile configurare il trasporto web: %s\n",
+        "Cannot start the web log collector at %s: %s\n":
+            "Impossibile avviare il collettore di log web su %s: %s\n",
+        "with --transport web: do not touch the station's Radiomodem "
+        "settings before the test (by default the bench reads the "
+        "receive-chain settings over the web admin's Radiomodem page "
+        "and applies the ones known to give the cleanest AFSK1200 "
+        "decoding - RX EQ preset, band-pass edges/taps, RX gate, "
+        "high-pass, AGC mode and impulse blanker, all of the Receive "
+        "demodulator section; nothing else on the page is ever changed "
+        "- before the auto-volume "
+        "calibration and the real test, and once the volume is chosen "
+        "searches the Receive demodulator section - and only that section "
+        "- for the settings that decode best at that volume; every value "
+        "it changes is listed at the end of the run). Has no effect with "
+        "--transport serial.":
+            "con --transport web: non modificare la configurazione del "
+            "Radiomodem della stazione prima della prova (per impostazione "
+            "predefinita il banco legge la configurazione della catena di "
+            "ricezione dalla pagina Radiomodem dell'admin web e applica i "
+            "valori noti per dare la decodifica AFSK1200 più pulita - "
+            "preset EQ RX, bordi/taps del passabanda, gate RX, passa-alto, "
+            "modalità AGC e blanker degli impulsi, tutti della sezione "
+            "Demodulatore di ricezione; nient'altro della pagina viene mai "
+            "modificato - prima della calibrazione automatica del volume e della prova "
+            "reale, e una volta scelto il volume cerca nella sezione "
+            "Demodulatore di ricezione - e solo in quella sezione - i valori "
+            "che decodificano meglio a quel volume; ogni valore modificato è "
+            "elencato alla fine dell'esecuzione). Non ha effetto con "
+            "--transport serial.",
+        "\nRadiomodem calibration (--transport web): reading and optimising "
+        "the receive chain at %s ...":
+            "\nCalibrazione del Radiomodem (--transport web): lettura e "
+            "ottimizzazione della catena di ricezione su %s ...",
+        "  %d value(s) changed - see the end-of-run report for details.":
+            "  %d valore/i modificato/i - vedi il rapporto finale per i dettagli.",
+        "  Every value was already at the recommended setting - "
+        "nothing changed.":
+            "  Tutti i valori erano già impostati sul valore consigliato - "
+            "nessuna modifica.",
+        "  WARNING: Radiomodem calibration failed (%s) - "
+        "continuing with the station's current settings.\n":
+            "  AVVISO: calibrazione del Radiomodem fallita (%s) - si "
+            "continua con la configurazione attuale della stazione.\n",
+        "  Radiomodem calibration (--transport web) FAILED: %s":
+            "  Calibrazione del Radiomodem (--transport web) FALLITA: %s",
+        "  -- Radiomodem calibration (--transport web) --------------------":
+            "  -- Calibrazione del Radiomodem (--transport web) ---------------",
+        "  Every value was already at the recommended setting - nothing changed.":
+            "  Tutti i valori erano già impostati sul valore consigliato - nessuna modifica.",
+        "on": "attivo",
+        "off": "disattivo",
+        "AFSK modulation": "Modulazione AFSK",
+        "Enable audio modem": "Abilita modem audio",
+        "Flat audio input": "Ingresso audio piatto",
+        "RX EQ preset": "Preset EQ RX",
+        "RX band-pass low edge (Hz)": "Bordo inferiore del passabanda RX (Hz)",
+        "RX band-pass high edge (Hz)": "Bordo superiore del passabanda RX (Hz)",
+        "RX band-pass taps": "Taps del passabanda RX",
+        "RX gate (mV RMS)": "Gate RX (mV RMS)",
+        "RX high-pass corner (Hz)": "Taglio del passa-alto RX (Hz)",
+        "RX AGC mode": "Modalità AGC RX",
+        "RX fixed gain (dB)": "Guadagno fisso RX (dB)",
+        "RX impulse blanker": "Blanker degli impulsi RX",
+        "ADC self-bias": "Autopolarizzazione ADC",
+        "RX clip warning": "Avviso di clipping RX",
+        '  [radio] POST #%d: ADC self-bias read %s, sent %s, read back %s':
+            '  [radio] POST #%d: autopolarizzazione ADC letta %s, inviata %s, riletta %s',
+        '  [radio] check after %s: ADC self-bias %s':
+            '  [radio] verifica dopo %s: autopolarizzazione ADC %s',
+        "with --transport web: file recording every read and write of the station's Radiomodem page during the run (page HTML, POST bodies, the ADC self-bias state at every check); empty string disables it (default: test_aprs_wavs_web.log)":
+            "con --transport web: file che registra ogni lettura e scrittura della pagina Radiomodem della stazione durante l'esecuzione (HTML della pagina, corpi dei POST, lo stato dell'autopolarizzazione ADC a ogni verifica); stringa vuota lo disattiva (predefinito: test_aprs_wavs_web.log)",
+        'Web journal (every Radiomodem page read/write): %s':
+            'Registro web (ogni lettura/scrittura della pagina Radiomodem): %s',
+        'a page read without the ADC self-bias checkbox is never POSTed back':
+            'una pagina letta senza la casella di autopolarizzazione ADC non viene mai reinviata via POST',
+        'the station RESTARTED (its log clock went back to zero)':
+            "la stazione si è RIAVVIATA (l'orologio del log è tornato a zero)",
+        'the station logged a configuration load failure / factory defaults':
+            'la stazione ha registrato un errore di caricamento della configurazione / valori di fabbrica',
+        "the station logged 'ADC input self-bias disabled'":
+            "la stazione ha registrato 'ADC input self-bias disabled'",
+        'the Radiomodem page could not be read back (%s)':
+            'impossibile rileggere la pagina Radiomodem (%s)',
+        'changed outside the Receive demodulator section: %s':
+            'modificato fuori dalla sezione Demodulatore di ricezione: %s',
+        'after %s: %s':
+            'dopo %s: %s',
+        'the probe at %+.1f dB':
+            'il sondaggio a %+.1f dB',
+        'test file %d/%d':
+            'il file di prova %d/%d',
+        'STATION STATE CHANGED - RUN STOPPED: %s\n':
+            'STATO DELLA STAZIONE CAMBIATO - ESECUZIONE FERMATA: %s\n',
+        "The bench wrote nothing more to the station after this. Check the station's configuration by hand (Radiomodem page, and the other pages if it restarted with factory defaults) before running again.\n":
+            'Da qui in poi il banco non ha scritto più nulla sulla stazione. Controlla a mano la configurazione della stazione (pagina Radiomodem, e le altre pagine se si è riavviata con i valori di fabbrica) prima di rilanciare.\n',
+        'a station restart during the run is detected from the web log alone':
+            "un riavvio della stazione durante l'esecuzione viene rilevato dal solo log web",
+        'ADC self-bias going off on the station stops the run and names it':
+            "se l'autopolarizzazione ADC si spegne sulla stazione, l'esecuzione si ferma e lo indica",
+        'if a save switches ADC self-bias off anyway, the bench stops and puts it back on':
+            "se un salvataggio spegne comunque l'autopolarizzazione ADC, il banco si ferma e la riaccende",
+        'full web calibration keeps ADC self-bias ON and every field outside the Receive demodulator section as it was':
+            "la calibrazione web completa mantiene l'autopolarizzazione ADC ATTIVA e ogni campo fuori dal Demodulatore di ricezione com'era",
+        'an ambiguous page is refused before anything is POSTed':
+            'una pagina ambigua viene rifiutata prima di inviare qualsiasi POST',
+        'Radiomodem page read before any change: ADC input self-bias is %s on the station (the bench never changes it).':
+            "Pagina Radiomodem letta prima di qualsiasi modifica: l'autopolarizzazione dell'ingresso ADC è %s sulla stazione (il banco non la modifica mai).",
+        "  WARNING: cannot read the station's Radiomodem page (%s) - the bench will not change anything on the station.\n":
+            '  AVVISO: impossibile leggere la pagina Radiomodem della stazione (%s) - il banco non modificherà nulla sulla stazione.\n',
+        '  WARNING: could not re-read the Radiomodem page to verify it (%s).\n':
+            '  AVVISO: impossibile rileggere la pagina Radiomodem per verificarla (%s).\n',
+        'Radiomodem page verified at the end of the run: nothing outside the Receive demodulator section differs from the start.':
+            "Pagina Radiomodem verificata a fine esecuzione: nulla al di fuori della sezione Demodulatore di ricezione differisce dall'inizio.",
+        '  ERROR: field(s) outside the Receive demodulator section differ from the start of the run: %s - restoring them now.\n':
+            "  ERRORE: campo/i fuori dalla sezione Demodulatore di ricezione differiscono dall'inizio dell'esecuzione: %s - vengono ripristinati ora.\n",
+        '  Restored: %s\n':
+            '  Ripristinato: %s\n',
+        '  ERROR: restoring failed (%s) - check the Radiomodem page by hand.\n':
+            '  ERRORE: ripristino fallito (%s) - controlla a mano la pagina Radiomodem.\n',
+        '  Radiomodem - outside the Receive demodulator section (never changed)':
+            '  Radiomodem - fuori dalla sezione Demodulatore di ricezione (mai modificato)',
+        'DIFFERS from the start of the run: %s':
+            "DIFFERISCE dall'inizio dell'esecuzione: %s",
+        'had changed and was RESTORED: %s':
+            'era cambiato ed è stato RIPRISTINATO: %s',
+        '%d field(s) verified identical to the start of the run':
+            "%d campo/i verificato/i identico/i all'inizio dell'esecuzione",
+        '--transport web uses web information only':
+            '--transport web usa solo informazioni web',
+        'wait_ready() over the web reads only the web log API (no boot banner, no serial)':
+            "wait_ready() via web legge solo l'API dei log web (nessun banner di avvio, nessuna seriale)",
+        'the web transport does not need pyserial':
+            'il trasporto web non richiede pyserial',
+        "Checking the station's web log API ...":
+            "Verifica dell'API dei log web della stazione ...",
+        '  web log API is alive (%d console line(s) so far); starting now.':
+            "  l'API dei log web risponde (%d riga/righe di console finora); si parte subito.",
+        '  WARNING: no console line received through the web log API yet. The firmware may be quiet until it hears/sends something; continuing.':
+            "  AVVISO: nessuna riga di console ricevuta finora tramite l'API dei log web. Il firmware può restare silenzioso finché non riceve/invia qualcosa; si prosegue.",
+        'the pre-test summary lists the volume and every Receive demodulator value, marking the modified ones':
+            'il riepilogo prima della prova elenca il volume e tutti i valori del Demodulatore di ricezione, indicando quelli modificati',
+        'SETTINGS FOR THE REAL TEST (selected by calibration)':
+            'VALORI PER LA PROVA REALE (scelti dalla calibrazione)',
+        '  Volume (ESP32 playback gain) - %s':
+            "  Volume (guadagno di riproduzione dell'ESP32) - %s",
+        'gain':
+            'guadagno',
+        '[MODIFIED]':
+            '[MODIFICATO]',
+        '[unchanged]':
+            '[invariato]',
+        '  Radiomodem - Receive demodulator section':
+            '  Radiomodem - sezione Demodulatore di ricezione',
+        'not available (--transport serial)':
+            'non disponibile (--transport serial)',
+        '    %d value(s) modified in this section; nothing outside it was touched.':
+            '    %d valore/i modificato/i in questa sezione; nulla al di fuori è stato toccato.',
+        'fixed by --volume (--no_auto_volume)':
+            'fissato da --volume (--no_auto_volume)',
+        'selected by the auto-volume calibration':
+            'scelto dalla calibrazione automatica del volume',
+        'could not be read: %s':
+            'impossibile leggere: %s',
+        'read only: --no_modem_optimize, calibration did not change it':
+            "sola lettura: --no_modem_optimize, la calibrazione non l'ha modificata",
+        'the values before calibration could not be read; modified values cannot be marked':
+            'impossibile leggere i valori precedenti alla calibrazione; i valori modificati non possono essere indicati',
+        "  WARNING: 'RX clip warning' is off on the station (Radiomodem page, Audio interface) - the auto-volume search cannot see over-range and may pick a clipping level. Not changed by the bench.\n":
+            "  AVVISO: l'Avviso di clipping RX' è disattivato sulla stazione (pagina Radiomodem, Interfaccia audio) - la ricerca automatica del volume non vede il fuori scala e può scegliere un livello che satura. Il banco non lo modifica.\n",
+        "  WARNING: the station's audio modem is disabled (Radiomodem page) - the ESP32 will decode nothing. Not changed by the bench.\n":
+            "  AVVISO: il modem audio della stazione è disabilitato (pagina Radiomodem) - l'ESP32 non decodificherà nulla. Il banco non lo modifica.\n",
+        "  WARNING: the station's AFSK modulation is not 1200 Bd (Bell202) - the WAV set is 1200 Bd APRS. Not changed by the bench.\n":
+            '  AVVISO: la modulazione AFSK della stazione non è 1200 Bd (Bell202) - i WAV sono APRS a 1200 Bd. Il banco non la modifica.\n',
+        'Radiomodem calibration changes nothing outside the Receive demodulator section (ADC self-bias included)':
+            'la calibrazione del Radiomodem non cambia nulla fuori dalla sezione Demodulatore di ricezione (autopolarizzazione ADC inclusa)',
+        '      better than the current best (%.1f%% -> %.1f%%): kept':
+            '      migliore del migliore attuale (%.1f%% -> %.1f%%): mantenuto',
+        '    The starting settings were kept - nothing changed.':
+            '    Sono stati mantenuti i valori iniziali - nessuna modifica.',
+        '    decode rate %.1f%% at the start, %.1f%% with the chosen settings (%d probe(s))':
+            "    tasso di decodifica %.1f%% all'inizio, %.1f%% con i valori scelti (%d sondaggio/i)",
+        '  (over-range reported)':
+            '  (segnalato fuori scala)',
+        '  -- Receive demodulator search (--transport web) ----------------':
+            '  -- Ricerca del demodulatore di ricezione (--transport web) -----',
+        '  Confirmation did not hold (pooled %.1f%% vs %.1f%% at the start): back to the starting settings.':
+            "  La conferma non ha retto (complessivo %.1f%% contro %.1f%% all'inizio): si torna ai valori iniziali.",
+        '  Decode rate: %.1f%% with the starting settings, %.1f%% with the chosen ones':
+            '  Tasso di decodifica: %.1f%% con i valori iniziali, %.1f%% con quelli scelti',
+        '  Gain %.3f (%+.1f dB), budget %d probe(s) of %d packet(s); bit repair and the Custom tilts are left as they are':
+            '  Guadagno %.3f (%+.1f dB), budget %d sondaggio/i da %d pacchetti; la riparazione dei bit e le inclinazioni Custom restano come sono',
+        '  Nothing decoded with the starting settings - no basis to compare demodulator settings; leaving them unchanged.':
+            '  Nulla decodificato con i valori iniziali - nessuna base per confrontare i valori del demodulatore; restano invariati.',
+        '  Probe budget spent; stopping the search (raise it with --demod_max_rounds).':
+            '  Budget dei sondaggi esaurito; la ricerca si ferma (aumentalo con --demod_max_rounds).',
+        '  Receive demodulator search (--transport web) FAILED: %s':
+            '  Ricerca del demodulatore di ricezione (--transport web) FALLITA: %s',
+        '  The starting Receive demodulator settings were already the best measured - nothing changed.':
+            '  I valori iniziali del Demodulatore di ricezione erano già i migliori misurati - nessuna modifica.',
+        "  WARNING: Receive demodulator search failed (%s) - continuing with the station's settings from before the search.\n":
+            '  AVVISO: ricerca del demodulatore di ricezione fallita (%s) - si prosegue con la configurazione che la stazione aveva prima della ricerca.\n',
+        '  [demod %2d/%d] %-44s mm=%d ok=%d diff=%d hdr=%d miss=%d extra=%d  score=%.1f%%':
+            '  [demod %2d/%d] %-44s mm=%d ok=%d diff=%d hdr=%d mancanti=%d extra=%d  punteggio=%.1f%%',
+        '%d POST(s)':
+            '%d POST',
+        '%d probe(s)':
+            '%d sondaggio/i',
+        '%d probe(s) for a budget of %d':
+            '%d sondaggio/i per un budget di %d',
+        '--demod_max_rounds must be >= 0 (got %d)\n':
+            '--demod_max_rounds deve essere >= 0 (ricevuto %d)\n',
+        'RECEIVE DEMODULATOR SEARCH (Radiomodem page, Receive demodulator section only)':
+            'RICERCA DEL DEMODULATORE DI RICEZIONE (pagina Radiomodem, solo la sezione Demodulatore di ricezione)',
+        'RX bit repair':
+            'Riparazione dei bit RX',
+        'RX custom demodulator count':
+            'Numero di demodulatori Custom RX',
+        'RX custom tilt 1 (dB)':
+            'Inclinazione Custom 1 RX (dB)',
+        'RX custom tilt 2 (dB)':
+            'Inclinazione Custom 2 RX (dB)',
+        'RX custom tilt 3 (dB)':
+            'Inclinazione Custom 3 RX (dB)',
+        'Radiomodem calibration leaves every other field of the page as it was (duty cycle included)':
+            "la calibrazione del Radiomodem lascia com'era ogni altro campo della pagina (duty cycle incluso)",
+        'Radiomodem page: whole-form POST and Receive demodulator search':
+            'Pagina Radiomodem: POST del modulo completo e ricerca del demodulatore di ricezione',
+        '\nReceive demodulator search interrupted - keeping the best settings measured so far.':
+            '\nRicerca del demodulatore di ricezione interrotta - si mantengono i migliori valori misurati finora.',
+        'a tight budget still ends on a measured, applied setting':
+            'anche con un budget ridotto si finisce su valori misurati e applicati',
+        'changed: %r':
+            'modificati: %r',
+        'confirmation of the best settings':
+            'conferma dei valori migliori',
+        'demodulator search changes nothing outside the Receive demodulator section (bit repair and Custom tilts included)':
+            'la ricerca del demodulatore non cambia nulla fuori dalla sezione Demodulatore di ricezione (riparazione dei bit e inclinazioni Custom incluse)',
+        'demodulator search keeps a setting when the alternatives only tie':
+            'la ricerca del demodulatore mantiene un valore quando le alternative sono solo alla pari',
+        'demodulator search keeps the settings that decode better':
+            'la ricerca del demodulatore mantiene i valori che decodificano meglio',
+        'demodulator search stays within its probe budget':
+            'la ricerca del demodulatore rispetta il proprio budget di sondaggi',
+        'every demodulator-search POST carries the whole form':
+            'ogni POST della ricerca del demodulatore porta il modulo completo',
+        'got preset=%r hpf=%r':
+            'ottenuto preset=%r hpf=%r',
+        'starting settings':
+            'valori iniziali',
+        'the Radiomodem form is scraped whole, and only that form':
+            'il modulo Radiomodem viene letto per intero, e solo quel modulo',
+        'with --transport web and without --no_modem_optimize: budget of the Receive demodulator search that runs after the volume is chosen, in probes of --auto_volume_batch packets (default %d; 0 skips the search)':
+            'con --transport web e senza --no_modem_optimize: budget della ricerca del demodulatore di ricezione eseguita dopo la scelta del volume, in sondaggi da --auto_volume_batch pacchetti (predefinito %d; 0 salta la ricerca)',
     },
 }
 
+# pyserial is only needed by --transport serial. --transport web reads the
+# console through the station's web admin alone and must not depend on,
+# import-fail on, or open anything serial.
 try:
     import serial  # pyserial
 except ImportError:  # pragma: no cover
-    sys.stderr.write(T("pyserial is required:  pip install pyserial") + "\n")
-    sys.exit(2)
+    serial = None  # type: ignore
 
 # --------------------------------------------------------------------------
 # Constants
@@ -1455,6 +2112,39 @@ BOOT_BANNER_RE = re.compile(rb"rst:0x([0-9a-fA-F]+) \(([A-Z0-9_]+)\)")
 # line on the firmware decodes the audio it is fed:
 #   "I (7412) radiomodem: started: modem=0 half duplex, DAC=GPIO25 ADC=GPIO33"
 MODEM_READY_RE = re.compile(rb"radiomodem: started:")
+# ESP-IDF log timestamp: milliseconds since boot. Going backwards means the
+# station restarted (web transport: the boot banner itself is never seen).
+ESP_LOG_TS_RE = re.compile(rb"^[IWEDV] \((\d+)\)")
+# afskSetAdcSelfBias(false) - the firmware says the ADC pad bias went off.
+ESP_SELF_BIAS_OFF_RE = re.compile(rb"ADC input self-bias disabled")
+# main.c/app_config.c: configuration unreadable at boot, factory set applied.
+ESP_CONFIG_DEFAULTS_RE = re.compile(rb"applying factory defaults|Configuration load failed")
+
+# --------------------------------------------------------------------------
+# --transport web: limits of the firmware's log-mirror ring buffer
+# (components/webconfig/logcapture.h) that size the polling interval and the
+# line-wrap heuristic in WebLogCollector below.
+# --------------------------------------------------------------------------
+
+LOGCAPTURE_CAPACITY = 50        # lines kept; older ones are silently dropped
+LOGCAPTURE_LINE_MAX = 255       # characters per stored row; longer lines wrap
+LOGCAPTURE_IDLE_TIMEOUT_S = 10  # the mirror stops if /logs/read is not polled
+
+# Comfortably under LOGCAPTURE_IDLE_TIMEOUT_S, and far below the browser UI's
+# 1 s tick: a burst of several closely-spaced packets, each possibly wrapped
+# across 2+ ring rows, can fill the whole 50-line ring in well under a
+# second. Lower --web_poll_interval further if the station also logs
+# heavily (verbose Wi-Fi/GPS at INFO starves the ring faster).
+DEFAULT_WEB_POLL_INTERVAL = 0.4
+
+# A stored line that is exactly LOGCAPTURE_LINE_MAX characters long MAY be
+# the firmware wrapping one logical console line across two ring entries. If
+# the following line does not itself look like the start of a fresh log line
+# (same shape ESP_RX_RE anchors on), it is treated as the continuation and
+# the two are concatenated before matching ESP_RX_RE. This is a heuristic,
+# not a real fix: a genuine continuation line that happens to start with
+# this exact shape would be missed.
+LOG_LINE_PREFIX_RE = re.compile(r"^[IWED] \(\d+\) \w+:")
 
 # --------------------------------------------------------------------------
 # Auto-volume calibration
@@ -2236,6 +2926,8 @@ class SerialCollector(threading.Thread):
 
     def __init__(self, port: str, baud: int = SERIAL_BAUD, reset: bool = False) -> None:
         super().__init__(daemon=True)
+        if serial is None:
+            raise OSError(T("pyserial is required:  pip install pyserial"))
         self.ser = serial.Serial()
         self.ser.port = port
         self.ser.baudrate = baud
@@ -2325,7 +3017,7 @@ class SerialCollector(threading.Thread):
         while not self._halt.is_set():
             try:
                 chunk = self.ser.read(4096)
-            except (serial.SerialException, OSError) as exc:
+            except OSError as exc:      # serial.SerialException is an OSError
                 if not self._halt.is_set():
                     sys.stderr.write(T("\n[serial] read error: %s\n") % exc)
                 break
@@ -2436,6 +3128,1491 @@ class SerialCollector(threading.Thread):
             pass
         if self.is_alive():
             self.join(timeout=2)
+
+
+# --------------------------------------------------------------------------
+# Web log collector (--transport web): same job as SerialCollector, over the
+# station's web admin /logs/* HTTP API instead of a serial cable. See
+# web_transport_spec.md for the full design; the short version is in the
+# class docstring below.
+# --------------------------------------------------------------------------
+
+
+class WebCollectorError(Exception):
+    """Anything wrong with the web transport: bad credentials, unreachable
+    host, unexpected response shape. Raised out of __init__/start() so
+    callers can report it exactly like a serial-port-open failure; never
+    raised out of stop()."""
+
+
+class WebLogCollector(threading.Thread):
+    """Reads the ESP32 console through the station's web admin "Logs" page
+    API (POST /logs/start, /logs/read, /logs/stop) instead of a serial port.
+
+    Deliberately the same public surface as SerialCollector (attributes and
+    methods), so it is a drop-in replacement wherever a `col` object is
+    threaded through today: main(), wait_ready(), VolumeSearch,
+    run_one_wav() all use it purely through that surface.
+
+    Capability gaps versus the serial transport - documented here rather
+    than papered over:
+      * no hardware reset. There is no equivalent of DTR/RTS-driven EN over
+        HTTP, so --reset is rejected in argument parsing when this
+        transport is selected.
+      * no ROM boot banner visibility: the boot banner is printed before
+        the web server itself is even running, so snapshot_boot() always
+        reports "no boot banner" here (count == 0). wait_ready() then takes
+        its already-running branch and waits on modem_ready instead, which
+        *is* observable (an ordinary mirrored ESP_LOGI line).
+      * no true raw byte stream for --gui's serial pane: this transport only
+        ever produces discrete, already-line-assembled, already-ANSI-free
+        JSON strings. If raw_sink is set, it is fed synthesised
+        `line + "\\n"` bytes rather than genuine raw bytes.
+      * the firmware's log-mirror ring buffer holds only the last
+        LOGCAPTURE_CAPACITY lines and wraps any single console line longer
+        than LOGCAPTURE_LINE_MAX characters across two or more ring rows
+        with no marker tying them back together; see LOG_LINE_PREFIX_RE and
+        _feed_line() for the (heuristic) handling of that, and gap_count for
+        the count of "the mirror had stopped" gaps encountered.
+    """
+
+    def __init__(self, host: str, username: Optional[str] = None,
+                 password: Optional[str] = None,
+                 poll_interval: float = DEFAULT_WEB_POLL_INTERVAL) -> None:
+        super().__init__(daemon=True)
+        try:
+            import requests  # optional dependency: only needed for --transport web
+        except ImportError:
+            raise WebCollectorError(
+                T("the 'requests' package is required for --transport web:  "
+                  "pip install requests"))
+        self._requests = requests
+        host = (host or "").strip()
+        if "://" not in host:
+            host = "http://" + host
+        self.base_url = host.rstrip("/")
+        self.poll_interval = max(0.05, poll_interval)
+        self._session = requests.Session()
+        if username:
+            self._session.auth = (username, password or "")
+        # web_check_csrf_origin() compares this against the request's own
+        # Host header, not any fixed value, so it must reproduce whatever
+        # host[:port] this client itself is connecting to.
+        self._session.headers["Origin"] = self.base_url
+        self._init_state()
+
+    def _init_state(self) -> None:
+        self.lock = threading.Lock()
+        self.packets: List[Tuple[float, Packet]] = []
+        self.lines_seen = 0
+        self.alive = threading.Event()
+        self._halt = threading.Event()
+        self.last_rx_time = 0.0
+        self.file_t0 = time.monotonic()   # set per file by run_one_wav()
+        self.overrange_count = 0
+        self.last_overrange_time = 0.0
+        # No ROM boot banner is ever visible over this transport (see the
+        # class docstring); these stay at their "nothing seen yet" values so
+        # wait_ready()'s "already running" branch is always the one taken.
+        self.boot_count = 0
+        self.last_boot_cause = ""
+        self.last_boot_time = 0.0
+        self.modem_ready = threading.Event()
+        self.raw_sink = _RAW_SERIAL_SINK
+        self._cursor = 0
+        self._pending_line = None  # type: Optional[str]
+        # Times /logs/read came back with run:false (mirror idle-timed-out
+        # or the station restarted); each one is a lost-lines gap.
+        self.gap_count = 0
+        # Station health, from the log text alone (see StationWatch).
+        self.last_log_ts = None  # type: Optional[int]
+        self.restart_count = 0
+        self.self_bias_off_count = 0
+        self.config_defaults_count = 0
+
+    # -- HTTP helpers -------------------------------------------------
+
+    def _post(self, path: str, params: Optional[dict] = None) -> dict:
+        url = self.base_url + path
+        try:
+            resp = self._session.post(url, params=params, timeout=10)
+        except self._requests.RequestException as exc:
+            raise WebCollectorError("%s: %s" % (url, exc))
+        if resp.status_code == 429:
+            raise WebCollectorError(
+                T("%s: 429 Too Many Requests (locked out - wrong --web_user/"
+                  "--web_password? Retry-After=%s)") %
+                (url, resp.headers.get("Retry-After", "?")))
+        if resp.status_code == 403:
+            raise WebCollectorError(
+                T("%s: 403 Forbidden (bad credentials, or the Origin/Host "
+                  "check failed)") % url)
+        if resp.status_code != 200:
+            raise WebCollectorError("%s: HTTP %d" % (url, resp.status_code))
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise WebCollectorError(T("%s: invalid JSON reply: %s") % (url, exc))
+
+    def _http_start(self) -> int:
+        data = self._post("/logs/start")
+        if not data.get("ok"):
+            raise WebCollectorError(T("/logs/start did not report ok: %r") % (data,))
+        return int(data.get("seq", 0))
+
+    # -- Public surface (matches SerialCollector) ----------------------
+
+    def start(self) -> None:
+        """POST /logs/start (synchronously, so a bad host/credentials fail
+        here, before the thread and the rest of the run start), then launch
+        the polling thread."""
+        self._cursor = self._http_start()
+        super().start()
+
+    def run(self) -> None:
+        while not self._halt.is_set():
+            try:
+                data = self._post("/logs/read", {"since": self._cursor})
+            except WebCollectorError as exc:
+                if not self._halt.is_set():
+                    sys.stderr.write(T("\n[web] read error: %s\n") % exc)
+                self._halt.wait(self.poll_interval)
+                continue
+            # A successful /logs/read - not merely a successful /logs/start -
+            # is what "the port is producing bytes" maps to over this
+            # transport.
+            self.alive.set()
+            self._cursor = int(data.get("seq", self._cursor))
+            for line in data.get("lines") or []:
+                self._feed_line(line)
+            if data.get("run") is False:
+                self.gap_count += 1
+                sys.stderr.write(
+                    T("\n[web] the log mirror on %s stopped (idle timeout or "
+                      "restart) - re-arming (gap #%d; anything logged in "
+                      "between is lost)\n") % (self.base_url, self.gap_count))
+                # A line held back across the gap (a possibly-wrapped 255-char
+                # row, see _feed_line) belongs to the mirror instance that just
+                # went away. Concatenating it with a line from the freshly
+                # re-armed mirror would splice two unrelated points in the log
+                # together into one bogus line - garbage that can spuriously
+                # match ESP_OVERRANGE_RE or corrupt an "RX:" line into a false
+                # content mismatch. Drop it: a lost partial line is exactly
+                # what a gap already means (see "anything logged in between is
+                # lost" above), so this is not new data loss.
+                self._pending_line = None
+                try:
+                    self._cursor = self._http_start()
+                except WebCollectorError as exc:
+                    sys.stderr.write(T("\n[web] could not re-arm: %s\n") % exc)
+            self._halt.wait(self.poll_interval)
+
+    def _feed_line(self, raw: str) -> None:
+        """One JSON string from /logs/read. Applies the 255-char wrap
+        heuristic (see LOG_LINE_PREFIX_RE, module level) before handing the
+        (possibly reassembled) line to the same per-line handling
+        SerialCollector uses."""
+        if self._pending_line is not None:
+            if LOG_LINE_PREFIX_RE.match(raw):
+                # Not a continuation after all: flush what was held back.
+                self._handle_web_line(self._pending_line)
+                self._pending_line = None
+            else:
+                raw = self._pending_line + raw
+                self._pending_line = None
+        if len(raw) == LOGCAPTURE_LINE_MAX:
+            # Might continue in the next line; hold it until we know.
+            self._pending_line = raw
+            return
+        self._handle_web_line(raw)
+
+    def _handle_web_line(self, line: str) -> None:
+        sink = self.raw_sink
+        if sink is not None:
+            try:
+                sink((line + "\n").encode("utf-8", "replace"))
+            except Exception:
+                pass          # a broken viewer must never kill the reader
+        self._handle_line(line.encode("utf-8", "replace"))
+
+    def _handle_line(self, line: bytes) -> None:
+        """Same logic as SerialCollector._handle_line(), minus boot-banner
+        detection (never visible here - see the class docstring). Lines are
+        already ANSI-stripped by the firmware; ANSI_RE.sub() here is a
+        no-op safety net, not a required step."""
+        self.lines_seen += 1
+        clean = ANSI_RE.sub(b"", line)
+        if MODEM_READY_RE.search(clean):
+            self.modem_ready.set()
+        if ESP_OVERRANGE_RE.search(clean):
+            now = time.monotonic()
+            with self.lock:
+                self.overrange_count += 1
+                self.last_overrange_time = now
+        tm = ESP_LOG_TS_RE.match(clean.lstrip())
+        if tm:
+            ts = int(tm.group(1))
+            with self.lock:
+                # More than 2 s backwards cannot be reordering: it is a reboot.
+                if self.last_log_ts is not None and ts + 2000 < self.last_log_ts:
+                    self.restart_count += 1
+                self.last_log_ts = ts
+        if ESP_SELF_BIAS_OFF_RE.search(clean):
+            with self.lock:
+                self.self_bias_off_count += 1
+        if ESP_CONFIG_DEFAULTS_RE.search(clean):
+            with self.lock:
+                self.config_defaults_count += 1
+        pkt = parse_esp_line(line)
+        if pkt is not None:
+            now = time.monotonic()
+            with self.lock:
+                self.packets.append((now, pkt))
+                self.last_rx_time = now
+
+    def snapshot_boot(self) -> Tuple[int, str, float]:
+        """Always (0, "", 0.0): the ROM boot banner is never visible over
+        this transport (see the class docstring)."""
+        return (0, "", 0.0)
+
+    def snapshot_overrange(self) -> Tuple[int, float]:
+        with self.lock:
+            return self.overrange_count, self.last_overrange_time
+
+    def overrange_since(self, count_before: int) -> int:
+        with self.lock:
+            return self.overrange_count - count_before
+
+    def snapshot_index(self) -> int:
+        with self.lock:
+            return len(self.packets)
+
+    def since(self, index: int) -> List[Packet]:
+        with self.lock:
+            return [p for _, p in self.packets[index:]]
+
+    def items_between(self, t_start: float, t_end: float) -> List[Tuple[float, Packet]]:
+        with self.lock:
+            return [(t, p) for t, p in self.packets if t_start <= t < t_end]
+
+    def items_from(self, index: int, t_start: float) -> Tuple[List[Tuple[float, Packet]], int]:
+        with self.lock:
+            tail = self.packets[index:]
+            return [(t, p) for t, p in tail if t >= t_start], len(self.packets)
+
+    def between(self, t_start: float, t_end: float) -> List[Packet]:
+        with self.lock:
+            return [p for t, p in self.packets if t_start <= t < t_end]
+
+    def stop(self) -> None:
+        self._halt.set()
+        if self.is_alive():
+            self.join(timeout=self.poll_interval + 2)
+        if self._pending_line is not None:
+            # Best-effort flush of a held-back line that never got resolved
+            # (no further line arrived before shutdown).
+            self._handle_web_line(self._pending_line)
+            self._pending_line = None
+        try:
+            self._post("/logs/stop")
+        except WebCollectorError:
+            pass              # shutdown must not throw, same as SerialCollector.stop()
+        try:
+            self._session.close()
+        except Exception:
+            pass
+
+
+# --------------------------------------------------------------------------
+# --transport web: Radiomodem calibration (POST /radio) before the real test
+# --------------------------------------------------------------------------
+#
+# Over --transport web the station's web admin exposes the same "Radiomodem"
+# page (components/webconfig/pages/page_radio.c) an operator would use in a
+# browser: GET /radio renders the form with the values currently in
+# g_config, and POST /radio (same field names, form-urlencoded) applies them
+# live - modem_set_modem() rebuilds the demodulators without a reboot - and
+# saves them to flash. This lets the bench put the receive chain into a
+# known-good state for decoding BEFORE the auto-volume calibration and the
+# real test run, instead of testing against whatever the station happened to
+# be configured for (a transmit-oriented setup, an experimental EQ preset
+# left over from a previous session, and so on).
+#
+# Only receive-side, content-safe fields are touched. fix_bits (bit repair)
+# is deliberately left alone: a repaired frame can deliver the WRONG payload,
+# which this bench counts as a failure (mismatch), not a success - the same
+# reasoning VolumeSearch's docstring gives for scoring mismatch/corrupt as
+# failures. Nothing here can key the transmitter (no /radio/looptest or
+# /radio/txtest call is ever made).
+_RADIO_GET_INT_RE_CACHE = {}    # type: dict
+
+
+def _radio_field_int_re(name: str):
+    """Compiled regex matching page_radio_get()'s web_field_int() output for
+    one field name: <input type='number' name='NAME' value='N' ...>."""
+    rx = _RADIO_GET_INT_RE_CACHE.get(name)
+    if rx is None:
+        rx = re.compile(
+            r"name=['\"]%s['\"][^>]*\bvalue=['\"](-?\d+)['\"]" % re.escape(name))
+        _RADIO_GET_INT_RE_CACHE[name] = rx
+    return rx
+
+
+def _radio_field_checkbox_re(name: str):
+    """Matches web_field_checkbox()/web_field_checkbox_plain()'s <input
+    type='checkbox' name='NAME' checked?> - capturing whether 'checked' is
+    present before the closing '>'."""
+    return re.compile(
+        r"type=['\"]checkbox['\"]\s+name=['\"]%s['\"]\s*(checked)?\s*>" % re.escape(name))
+
+
+def _radio_field_select_re(name: str):
+    """Matches the <select name='NAME'>...</select> block so the selected
+    <option value='V'> inside it can be found next."""
+    return re.compile(
+        r"<select name=['\"]%s['\"]>(.*?)</select>" % re.escape(name), re.DOTALL)
+
+
+_RADIO_SELECTED_OPTION_RE = re.compile(
+    r"<option value=['\"](-?\d+)['\"][^>]*\bselected\b")
+
+
+# Whole-form snapshot of the Radiomodem page. page_radio_post() treats a
+# checkbox that is absent from the POST as "off" (web_form_get_bool) - and
+# that includes checkboxes in OTHER fieldsets, such as dutyCycleEn - so a POST
+# that only carries the fields it means to change silently clears every other
+# box on the page. The only safe way to change some fields is therefore the
+# browser's own: take every control the form currently renders, with its
+# current value, replace just the ones being changed, and submit all of it.
+_RADIO_FORM_RE = re.compile(
+    r"<form\b[^>]*\bid=['\"]radioForm['\"][^>]*>(.*?)</form>", re.DOTALL | re.IGNORECASE)
+_FORM_INPUT_RE = re.compile(r"<input\b([^>]*)>", re.IGNORECASE)
+_FORM_SELECT_RE = re.compile(r"<select\b([^>]*)>(.*?)</select>", re.DOTALL | re.IGNORECASE)
+_FORM_OPTION_RE = re.compile(r"<option\b([^>]*)>", re.IGNORECASE)
+_SCRIPT_RE = re.compile(r"<script\b.*?</script>", re.DOTALL | re.IGNORECASE)
+_FORM_NAME_RE = re.compile(r"<(?:input|select|textarea)\b[^>]*\bname=['\"]([^'\"]+)['\"]",
+                           re.IGNORECASE)
+_HTML_ATTR_RE = re.compile(
+    r"""([A-Za-z_:][-A-Za-z0-9_:.]*)(?:\s*=\s*(?:'([^']*)'|"([^"]*)"|([^\s'">]+)))?""")
+
+
+# Every checkbox page_radio_post() reads. A checkbox absent from a POST is
+# stored as OFF by the firmware, so the bench refuses to write the page unless
+# it has read every one of these, with its current state, from the page.
+RADIO_POST_CHECKBOXES = ("audioModemEn", "audioLPF", "dutyCycleEn", "rxBlank",
+                         "adcSelfBias", "rxClipWarn")
+
+# --transport web: file that records every /radio page read and write of the
+# run (set by main(); None = off). Evidence for anything that changes on the
+# station during a run.
+_WEB_JOURNAL_PATH = None  # type: Optional[str]
+_WEB_POST_COUNT = [0]
+
+
+def web_journal(title: str, text: str = "") -> None:
+    if not _WEB_JOURNAL_PATH:
+        return
+    try:
+        with open(_WEB_JOURNAL_PATH, "a", encoding="utf-8") as f:
+            f.write("\n===== %s  %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), title))
+            if text:
+                f.write(text if text.endswith("\n") else text + "\n")
+    except OSError:
+        pass
+
+
+def _onoff(v) -> str:
+    return "?" if v is None else ("on" if v else "off")
+
+
+def _html_attrs(text: str) -> dict:
+    """Attributes of one start tag, lower-cased names; a bare attribute
+    (checked, selected, disabled) maps to an empty string."""
+    import html as _html
+    attrs = {}
+    for m in _HTML_ATTR_RE.finditer(text):
+        val = next((g for g in m.group(2, 3, 4) if g is not None), "")
+        attrs[m.group(1).lower()] = _html.unescape(val)
+    return attrs
+
+
+def scrape_radio_form(page: str) -> dict:
+    """Every successful control of the Radiomodem form (id='radioForm'), as a
+    browser would submit it: name -> bool for a checkbox (checked or not),
+    name -> str for everything else (number/text inputs, the selected option
+    of a <select>). Disabled controls and buttons are skipped, exactly like a
+    browser skips them. Insertion order follows the page. Raises
+    ModemOptimizeError when the page carries no such form."""
+    web_journal("GET /radio (page as received)", page)
+    m = _RADIO_FORM_RE.search(page)
+    if m is None:
+        raise ModemOptimizeError("GET /radio: no <form id='radioForm'> in the page")
+    # Script text is not markup: drop it so nothing inside it can ever be
+    # mistaken for (or hide) a control.
+    body = _SCRIPT_RE.sub("", m.group(1))
+    state = {}
+    skipped = set()   # named controls a browser would not submit
+    # Selects first (their <option> tags are not inputs), then inputs.
+    for sm in _FORM_SELECT_RE.finditer(body):
+        attrs = _html_attrs(sm.group(1))
+        name = attrs.get("name")
+        if not name or "disabled" in attrs:
+            if name:
+                skipped.add(name)
+            continue
+        chosen = None
+        first = None
+        for om in _FORM_OPTION_RE.finditer(sm.group(2)):
+            oa = _html_attrs(om.group(1))
+            if "disabled" in oa or "value" not in oa:
+                continue
+            if first is None:
+                first = oa["value"]
+            if "selected" in oa:
+                chosen = oa["value"]
+        if chosen is None:
+            chosen = first          # a browser submits the first option then
+        if chosen is not None:
+            state[name] = chosen
+    for im in _FORM_INPUT_RE.finditer(body):
+        attrs = _html_attrs(im.group(1))
+        name = attrs.get("name")
+        kind = attrs.get("type", "text").lower()
+        if not name or "disabled" in attrs:
+            if name:
+                skipped.add(name)
+            continue
+        if kind in ("submit", "button", "reset", "image", "file"):
+            skipped.add(name)
+            continue
+        if kind == "checkbox":
+            state[name] = "checked" in attrs
+        elif kind == "radio":
+            if "checked" in attrs:
+                state[name] = attrs.get("value", "on")
+            else:
+                skipped.add(name)
+        else:
+            state[name] = attrs.get("value", "")
+    # Independent cross-check: every name='...' in the form must have been
+    # understood above. A control this parser failed to read would otherwise
+    # be left out of the POST - and a checkbox left out of the POST is
+    # switched OFF by the firmware. Refuse rather than risk that.
+    unread = sorted(set(_FORM_NAME_RE.findall(body)) - set(state) - skipped)
+    if unread:
+        raise ModemOptimizeError("GET /radio: could not read control(s) %s - refusing "
+                                 "to POST anything" % ", ".join(unread))
+    # Two more readings of the same page, by different means. A value that is
+    # read wrongly would be POSTed wrongly - an "on" box read as off is
+    # switched OFF on the station - so all readings must agree exactly.
+    other = _scrape_radio_form_htmlparser(m.group(1))
+    if other != state:
+        diff = sorted(n for n in set(other) | set(state) if other.get(n) != state.get(n))
+        raise ModemOptimizeError("GET /radio: two independent readings of the page "
+                                 "disagree on %s - refusing to POST anything" %
+                                 ", ".join(diff))
+    for name, value in state.items():
+        if isinstance(value, bool) and _raw_checkbox_checked(m.group(1), name) is not value:
+            raise ModemOptimizeError("GET /radio: checkbox %s read inconsistently - "
+                                     "refusing to POST anything" % name)
+    return state
+
+
+def _scrape_radio_form_htmlparser(form_html: str) -> dict:
+    """Second, independent reading of the same form with the standard
+    library's HTML parser (no regular expressions), with the same browser
+    rules as scrape_radio_form(). Used only to cross-check it."""
+    from html.parser import HTMLParser
+
+    class _P(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__(convert_charrefs=True)
+            self.state = {}
+            self._sel = None       # [name, first, chosen] while inside <select>
+            self._script = False
+
+        def handle_starttag(self, tag, attrs):
+            a = {k.lower(): (v if v is not None else "") for k, v in attrs}
+            if tag == "script":
+                self._script = True
+                return
+            if self._script:
+                return
+            if tag == "select":
+                name = a.get("name")
+                self._sel = [name, None, None] if name and "disabled" not in a else None
+            elif tag == "option" and self._sel is not None:
+                if "disabled" in a or "value" not in a:
+                    return
+                if self._sel[1] is None:
+                    self._sel[1] = a["value"]
+                if "selected" in a:
+                    self._sel[2] = a["value"]
+            elif tag == "input":
+                name = a.get("name")
+                kind = a.get("type", "text").lower()
+                if not name or "disabled" in a:
+                    return
+                if kind in ("submit", "button", "reset", "image", "file"):
+                    return
+                if kind == "checkbox":
+                    self.state[name] = "checked" in a
+                elif kind == "radio":
+                    if "checked" in a:
+                        self.state[name] = a.get("value", "on")
+                else:
+                    self.state[name] = a.get("value", "")
+
+        def handle_endtag(self, tag):
+            if tag == "script":
+                self._script = False
+            elif tag == "select" and self._sel is not None:
+                name, first, chosen = self._sel
+                val = chosen if chosen is not None else first
+                if val is not None:
+                    self.state[name] = val
+                self._sel = None
+
+    p = _P()
+    p.feed(form_html)
+    p.close()
+    return p.state
+
+
+def _raw_checkbox_checked(form_html: str, name: str) -> Optional[bool]:
+    """Third reading, of one checkbox only: find its own <input> tag by name
+    and look for the word 'checked' inside that tag. None if not found."""
+    body = _SCRIPT_RE.sub("", form_html)
+    m = re.search(r"<input\b[^>]*\bname=['\"]%s['\"][^>]*>" % re.escape(name), body,
+                  re.IGNORECASE)
+    if m is None:
+        return None
+    return re.search(r"\bchecked\b", m.group(0), re.IGNORECASE) is not None
+
+
+def radio_fields_changed_outside(before: dict, after: dict, allowed) -> List[str]:
+    """Names of every Radiomodem form control whose value differs between two
+    scrape_radio_form() snapshots and is NOT in `allowed`."""
+    return sorted(n for n in set(before) | set(after)
+                  if n not in allowed and before.get(n) != after.get(n))
+
+
+def post_radio_rx_only(session, base_url: str, before: dict, changes: dict,
+                       allowed=None) -> dict:
+    """THE only way this bench writes to the station. Submits the Radiomodem
+    form exactly as `before` (a fresh scrape_radio_form() of the page) with
+    only `changes` applied, and returns the page as read back afterwards.
+
+    Guards, each of which refuses (ModemOptimizeError) instead of writing:
+      * every key of `changes` must be a Receive demodulator field (and in
+        `allowed`, when given);
+      * before sending, the encoded body is checked field by field: every
+        control outside the Receive demodulator section goes out with the
+        exact value `before` holds (a checked box as 'on', an unchecked one
+        absent), and nothing is sent that the page did not render;
+      * after sending, the page is read back; if anything outside the
+        section differs, `before` is posted back verbatim and the call
+        fails."""
+    allowed = RX_DEMOD_KIND if allowed is None else allowed
+    missing = [c for c in RADIO_POST_CHECKBOXES if c not in before]
+    if missing:
+        raise ModemOptimizeError("refusing to POST: the page read did not contain the "
+                                 "checkbox(es) %s - posting without them would switch "
+                                 "them OFF on the station" % ", ".join(missing))
+    for name in changes:
+        if name not in RX_DEMOD_KIND or name not in allowed:
+            raise ModemOptimizeError("refusing to change %s: not an allowed Receive "
+                                     "demodulator field" % name)
+    state = dict(before)
+    for name, value in changes.items():
+        if name not in state:
+            continue            # firmware too old to render this field
+        state[name] = bool(value) if RX_DEMOD_KIND[name] == "bool" else str(int(value))
+    body = radio_post_data(state)
+    for name, value in before.items():
+        if name in allowed:
+            continue
+        expect = ("on" if value else None) if isinstance(value, bool) else str(value)
+        if body.get(name) != expect:
+            raise ModemOptimizeError("refusing to POST: %s would not be sent unchanged"
+                                     % name)
+    extra = sorted(set(body) - set(before))
+    if extra:
+        raise ModemOptimizeError("refusing to POST unknown field(s): %s" % ", ".join(extra))
+
+    url = base_url + "/radio"
+
+    def _post(data: dict) -> None:
+        try:
+            resp = session.post(url, data=data, timeout=10)
+        except Exception as exc:
+            raise ModemOptimizeError("%s: %s" % (url, exc))
+        if resp.status_code != 200:
+            raise ModemOptimizeError("%s: HTTP %d" % (url, resp.status_code))
+
+    def _get() -> dict:
+        try:
+            resp = session.get(url, timeout=10)
+        except Exception as exc:
+            raise ModemOptimizeError("%s: %s" % (url, exc))
+        if resp.status_code != 200:
+            raise ModemOptimizeError("%s: HTTP %d" % (url, resp.status_code))
+        return scrape_radio_form(resp.text)
+
+    _WEB_POST_COUNT[0] += 1
+    n_post = _WEB_POST_COUNT[0]
+    web_journal("POST /radio #%d body" % n_post,
+                "\n".join("%s=%s" % kv for kv in body.items()) +
+                "\n(absent checkboxes are stored OFF by the firmware: %s)" %
+                ", ".join(c for c in RADIO_POST_CHECKBOXES if c not in body))
+    _post(body)
+    after = _get()
+    say(T("  [radio] POST #%d: ADC self-bias read %s, sent %s, read back %s") %
+        (n_post, _onoff(before.get("adcSelfBias")),
+         "on" if body.get("adcSelfBias") == "on" else "off",
+         _onoff(after.get("adcSelfBias"))))
+    # Checkboxes are where a mistake would silently switch something off:
+    # compare every one outside the allowed fields explicitly as well.
+    for name, value in before.items():
+        if isinstance(value, bool) and name not in allowed and after.get(name) is not value:
+            try:
+                _post(radio_post_data(before))
+            except ModemOptimizeError:
+                pass
+            raise ModemOptimizeError("%s changed from %s to %s on the station - the page "
+                                     "was posted back as it was" %
+                                     (name, "on" if value else "off",
+                                      "on" if after.get(name) else "off"))
+    drift = radio_fields_changed_outside(before, after, allowed)
+    if drift:
+        try:
+            _post(radio_post_data(before))
+        except ModemOptimizeError:
+            pass
+        raise ModemOptimizeError("fields outside the allowed Receive demodulator ones "
+                                 "changed on the station: %s - the page was posted back "
+                                 "as it was" % ", ".join(drift))
+    return after
+
+
+class StationStateError(Exception):
+    """The station is no longer in the state the run started from (it
+    restarted, reset its configuration, or a field outside the Receive
+    demodulator section changed). The run stops at once and writes nothing
+    more to the station."""
+
+
+class StationWatch:
+    """Checked after every calibration probe and every real-test file: the
+    station must not have restarted, not have logged its ADC self-bias going
+    off or a configuration reset, and every Radiomodem field outside the
+    Receive demodulator section must still equal the start-of-run snapshot."""
+
+    def __init__(self, collector, guard: "RadioPageGuard") -> None:
+        self.collector = collector
+        self.guard = guard
+        with collector.lock:
+            self.base = (collector.restart_count, collector.self_bias_off_count,
+                         collector.config_defaults_count)
+        self.tripped = None  # type: Optional[str]
+
+    def check(self, where: str) -> None:
+        with self.collector.lock:
+            now = (self.collector.restart_count, self.collector.self_bias_off_count,
+                   self.collector.config_defaults_count)
+        reasons = []
+        if now[0] > self.base[0]:
+            reasons.append(T("the station RESTARTED (its log clock went back to zero)"))
+        if now[2] > self.base[2]:
+            reasons.append(T("the station logged a configuration load failure / factory "
+                             "defaults"))
+        if now[1] > self.base[1]:
+            reasons.append(T("the station logged 'ADC input self-bias disabled'"))
+        try:
+            drift = self.guard.verify()
+        except ModemOptimizeError as exc:
+            drift = []
+            reasons.append(T("the Radiomodem page could not be read back (%s)") % exc)
+        if drift:
+            reasons.append(T("changed outside the Receive demodulator section: %s") %
+                           ", ".join(self.guard.describe(drift)))
+        if self.guard.last is not None:
+            web_journal("check after %s" % where, "adcSelfBias=%s outside-drift=%s" %
+                        (_onoff(self.guard.last.get("adcSelfBias")), drift))
+            say(T("  [radio] check after %s: ADC self-bias %s") %
+                (where, _onoff(self.guard.last.get("adcSelfBias"))))
+        if reasons:
+            self.tripped = T("after %s: %s") % (where, "; ".join(reasons))
+            raise StationStateError(self.tripped)
+
+
+class RadioPageGuard:
+    """Snapshot of the whole Radiomodem page taken before the bench changes
+    anything. verify() compares everything OUTSIDE the Receive demodulator
+    section against it; if something differs, restore_outside() puts exactly
+    those fields back to their snapshot values (and only them)."""
+
+    def __init__(self, session, base_url: str) -> None:
+        self._session = session
+        self.base_url = base_url
+        self.snapshot = self._read()
+        missing = [c for c in RADIO_POST_CHECKBOXES if c not in self.snapshot]
+        if missing:
+            raise ModemOptimizeError("the Radiomodem page read did not contain %s" %
+                                     ", ".join(missing))
+        self.last = None         # type: Optional[dict]
+        self.drift = []          # type: List[str]
+        self.restored = False
+
+    def _read(self) -> dict:
+        url = self.base_url + "/radio"
+        try:
+            resp = self._session.get(url, timeout=10)
+        except Exception as exc:
+            raise ModemOptimizeError("%s: %s" % (url, exc))
+        if resp.status_code != 200:
+            raise ModemOptimizeError("%s: HTTP %d" % (url, resp.status_code))
+        return scrape_radio_form(resp.text)
+
+    def describe(self, names: List[str]) -> List[str]:
+        """'name start -> now' for each name, from the last verify()."""
+        out = []
+        for n in names:
+            b = self.snapshot.get(n)
+            a = self.last.get(n) if self.last is not None else None
+            fmt = lambda v: (T("on") if v else T("off")) if isinstance(v, bool) else str(v)
+            out.append("%s %s -> %s" % (n, fmt(b), fmt(a)))
+        return out
+
+    def outside_names(self) -> List[str]:
+        return [n for n in self.snapshot if n not in RX_DEMOD_KIND]
+
+    def verify(self) -> List[str]:
+        now = self._read()
+        self.last = now
+        self.drift = radio_fields_changed_outside(self.snapshot, now, RX_DEMOD_KIND)
+        return self.drift
+
+    def restore_outside(self) -> None:
+        """Post the current page with every field outside the section set
+        back to its snapshot value. The Receive demodulator values stay as
+        they are now."""
+        now = self._read()
+        state = dict(now)
+        for name, value in self.snapshot.items():
+            if name not in RX_DEMOD_KIND:
+                state[name] = value
+        url = self.base_url + "/radio"
+        try:
+            resp = self._session.post(url, data=radio_post_data(state), timeout=10)
+        except Exception as exc:
+            raise ModemOptimizeError("%s: %s" % (url, exc))
+        if resp.status_code != 200:
+            raise ModemOptimizeError("%s: HTTP %d" % (url, resp.status_code))
+        self.restored = True
+        left = self.verify()
+        if left:
+            raise ModemOptimizeError("could not restore: %s" % ", ".join(left))
+
+
+def radio_post_data(state: dict) -> dict:
+    """Form-urlencoded body for POST /radio from a scrape_radio_form() state:
+    a checked box is sent as 'on', an unchecked one is left out (that is what
+    web_form_get_bool() reads as off), every other control is sent as is."""
+    data = {}
+    for name, value in state.items():
+        if isinstance(value, bool):
+            if value:
+                data[name] = "on"
+        else:
+            data[name] = str(value)
+    return data
+
+
+# Every Radiomodem field this bench may adjust, in the same order
+# page_radio_get() renders them, so the report reads like the web page.
+# HARD RULE: only fields of the page's "Receive demodulator" fieldset may
+# ever appear here (see RX_DEMOD_FIELDS). Everything else on the Radiomodem
+# page - modulation, audio modem enable, flat audio, preamble/tail, CSMA,
+# duty cycle, the whole Audio interface fieldset (ADC self-bias, RX clip
+# warning, DAC level/rate, TX time-out) - describes the station's hardware
+# and on-air behaviour, and the bench never changes it.
+# kind: "int" (web_field_int), "bool" (web_field_checkbox[_plain]) or
+# "select" (web_select_open/option). label: what print_modem_optimisation()
+# shows; matches the web admin's own field label so a report reader can find
+# the same control in the browser.
+RADIO_FIELDS = [
+    ("rxEqPreset", "select", "RX EQ preset"),
+    ("rxBpfLoHz", "int", "RX band-pass low edge (Hz)"),
+    ("rxBpfHiHz", "int", "RX band-pass high edge (Hz)"),
+    ("rxBpfTaps", "int", "RX band-pass taps"),
+    ("rxGateMv", "int", "RX gate (mV RMS)"),
+    ("rxHpfHz", "select", "RX high-pass corner (Hz)"),
+    ("rxAgcMode", "select", "RX AGC mode"),
+    ("rxAgcGainDb", "int", "RX fixed gain (dB)"),
+    ("rxBlank", "bool", "RX impulse blanker"),
+]
+
+# Target values applied for --transport web calibration: the receive chain
+# esp32idf_APRS's own defaults (MODEM_RX_TUNING_DEFAULT() in
+# esp32idf_radioamateur_modem.h) and page_radio.c recommend for clean
+# AFSK1200/Bell202 decoding, which is what this bench's reference decoder
+# (multimon-ng AFSK1200) and Direwolf's MODEM 1200 both assume. Receive
+# demodulator fields only (see the hard rule above RADIO_FIELDS):
+#   * rxEqPreset=MULTISLICE (5), the firmware's own default and the widest
+#     twist-compensation range of the presets (see modem_rx_eq_preset_t).
+#   * bpf 900-2600 Hz / 31 taps: the widest, most accurate prefilter design
+#     the demodulator supports (MODEM_RX_BPF_*_MAX / MODEM_RX_BPF_TAPS_MAX),
+#     so filter shape is never the limiting factor during the test.
+#   * rxGateMv=0: the WAV set is played directly into the ADC with no radio
+#     squelch tail or hiss between transmissions, so the gate has nothing
+#     useful to reject and only risks clipping the start of a frame.
+#   * rxHpfHz=0: bench audio carries no CTCSS/hum for it to remove, and a
+#     WAV that happens to start at 0 Hz is not blocked by it.
+#   * rxAgcMode=AUTO: VolumeSearch (see its class docstring) already finds
+#     the correct input LEVEL; automatic gain adapts within that, whereas a
+#     fixed dB value would fight the calibrated level.
+#   * rxBlank=on: rejects the short ADC glitches every Wi-Fi beacon interval
+#     produces, which the on-air path this bench emulates would not add.
+# fix_bits/the CUSTOM tilts are not in this table - see the module comment
+# above for why fix_bits is left untouched, and RADIO_FIELDS only lists
+# fields whose value on its own cannot change a frame's content.
+RADIO_OPTIMIZE_TARGET = {
+    "rxEqPreset": 5,          # MODEM_RX_EQ_MULTISLICE
+    "rxBpfLoHz": 900,
+    "rxBpfHiHz": 2600,
+    "rxBpfTaps": 31,
+    "rxGateMv": 0,
+    "rxHpfHz": 0,
+    "rxAgcMode": 0,           # MODEM_RX_AGC_AUTO
+    "rxBlank": True,
+}
+
+
+class ModemOptimizeError(Exception):
+    """Anything wrong with reading or applying the Radiomodem calibration
+    over --transport web: unreachable host, bad credentials, unexpected page
+    shape. Raised out of ModemOptimizer.run(); never fatal to the caller,
+    which may choose to continue the test with whatever was on the station."""
+
+
+class ModemOptimizer:
+    """Reads the station's current Radiomodem (receive-chain) settings over
+    the web admin, applies RADIO_OPTIMIZE_TARGET on top of them, and remembers
+    every field it actually changed so the final report can list them (see
+    print_modem_optimisation()).
+
+    Shares its HTTP session with the WebLogCollector already open for this
+    run (same credentials, same Origin header for the CSRF/same-origin check
+    page_radio_post() applies) rather than opening a second one.
+    """
+
+    def __init__(self, session, base_url: str) -> None:
+        self._session = session
+        self.base_url = base_url
+        # (field, label, before, after) for every field whose value actually
+        # changed; empty until run() completes. Read by
+        # print_modem_optimisation() at the end of the whole test.
+        self.changes = []  # type: List[Tuple[str, str, str, str]]
+        self.applied = False
+        self.error = None  # type: Optional[str]
+
+    def _get_page(self) -> str:
+        url = self.base_url + "/radio"
+        try:
+            resp = self._session.get(url, timeout=10)
+        except Exception as exc:
+            raise ModemOptimizeError("%s: %s" % (url, exc))
+        if resp.status_code != 200:
+            raise ModemOptimizeError("%s: HTTP %d" % (url, resp.status_code))
+        return resp.text
+
+    def _post_form(self, data: dict) -> None:
+        url = self.base_url + "/radio"
+        try:
+            resp = self._session.post(url, data=data, timeout=10)
+        except Exception as exc:
+            raise ModemOptimizeError("%s: %s" % (url, exc))
+        if resp.status_code != 200:
+            raise ModemOptimizeError("%s: HTTP %d" % (url, resp.status_code))
+
+    def _read_current(self, html: str) -> dict:
+        """Parses the current value of every RADIO_FIELDS entry out of the
+        rendered form. A field the regex does not find (a firmware build old
+        enough to lack it) is simply left out of the result and out of the
+        POST below, exactly like leaving the browser's own field untouched."""
+        current = {}
+        for name, kind, _label in RADIO_FIELDS:
+            if kind == "int":
+                m = _radio_field_int_re(name).search(html)
+                if m:
+                    current[name] = int(m.group(1))
+            elif kind == "bool":
+                m = _radio_field_checkbox_re(name).search(html)
+                if m:
+                    current[name] = bool(m.group(1))
+            elif kind == "select":
+                block = _radio_field_select_re(name).search(html)
+                if block:
+                    sel = _RADIO_SELECTED_OPTION_RE.search(block.group(1))
+                    if sel:
+                        current[name] = int(sel.group(1))
+        return current
+
+    @staticmethod
+    def _fmt(kind: str, name: str, value) -> str:
+        if kind == "bool":
+            return T("on") if value else T("off")
+        if name == "afskModem":
+            return {0: "300 Bd", 1: "1200 Bd (Bell202)", 2: "1200 Bd (V.23)",
+                    3: "9600 Bd (G3RUH)"}.get(value, str(value))
+        if name == "rxEqPreset":
+            return {0: "legacy", 1: "single", 2: "diversity2", 3: "diversity3",
+                    4: "custom", 5: "multislice", 6: "multislice2"}.get(value, str(value))
+        if name == "rxAgcMode":
+            return {0: "auto", 1: "fixed"}.get(value, str(value))
+        if name == "rxHpfHz":
+            return T("off") if value == 0 else ("%d Hz" % value)
+        return str(value)
+
+    @staticmethod
+    def _warn_outside_section(state: dict) -> None:
+        """Read-only check of the two settings outside the Receive
+        demodulator section the test depends on. They are reported, never
+        changed: the bench does not touch anything outside that section."""
+        if state.get("audioModemEn") is False:
+            sys.stderr.write(T("  WARNING: the station's audio modem is disabled (Radiomodem "
+                               "page) - the ESP32 will decode nothing. Not changed by the "
+                               "bench.\n"))
+        if state.get("rxClipWarn") is False:
+            sys.stderr.write(T("  WARNING: 'RX clip warning' is off on the station (Radiomodem "
+                               "page, Audio interface) - the auto-volume search cannot see "
+                               "over-range and may pick a clipping level. Not changed by the "
+                               "bench.\n"))
+        if "afskModem" in state and str(state["afskModem"]) != "1":
+            sys.stderr.write(T("  WARNING: the station's AFSK modulation is not 1200 Bd "
+                               "(Bell202) - the WAV set is 1200 Bd APRS. Not changed by the "
+                               "bench.\n"))
+
+    def run(self) -> None:
+        """GETs the current settings, POSTs RADIO_OPTIMIZE_TARGET on top of
+        them (missing fields keep their current value, same as the web form
+        submitting only what it has), then re-reads the page to confirm what
+        actually took - modem_rx_tuning_sanitize() and the POST handler's own
+        clamps mean the stored value is not always exactly what was asked
+        for. Raises ModemOptimizeError on any transport failure; leaves
+        self.changes empty (not partially filled) in that case."""
+        before_html = self._get_page()
+        before = self._read_current(before_html)
+
+        # Submit the whole form the page rendered, with only the target
+        # fields replaced: every other control on the page (FX.25, preamble,
+        # CSMA, duty cycle, DAC, ...) goes back with the value it already has.
+        # A field missing from the POST is not "unchanged" for a checkbox -
+        # web_form_get_bool() reads its absence as off - so a partial POST
+        # would clear boxes this bench has no business touching.
+        page_before = scrape_radio_form(before_html)
+        self._warn_outside_section(page_before)
+        post_radio_rx_only(self._session, self.base_url, page_before,
+                           dict(RADIO_OPTIMIZE_TARGET))
+        after = self._read_current(self._get_page())
+
+        changes = []
+        for name, kind, label in RADIO_FIELDS:
+            if name not in before or name not in after:
+                continue
+            b, a = before[name], after[name]
+            if b != a:
+                changes.append((name, label,
+                                self._fmt(kind, name, b), self._fmt(kind, name, a)))
+        self.changes = changes
+        self.applied = True
+
+
+def print_modem_optimisation(opt: Optional["ModemOptimizer"]) -> None:
+    """Part of the final report (see print_summary()): lists every
+    Radiomodem field the --transport web calibration changed before the real
+    test ran. Silent when there is nothing to show - no --transport web, the
+    calibration was skipped, or it ran and changed nothing."""
+    if opt is None:
+        return
+    if not opt.applied:
+        if opt.error:
+            print(T("  Radiomodem calibration (--transport web) FAILED: %s") % opt.error)
+        return
+    print(T("  -- Radiomodem calibration (--transport web) --------------------"))
+    if not opt.changes:
+        print(T("  Every value was already at the recommended setting - nothing changed."))
+        return
+    for _name, label, before, after in opt.changes:
+        print("    %-28s %s -> %s" % (T(label), before, after))
+
+# --------------------------------------------------------------------------
+# --transport web: Receive demodulator search, after the volume is chosen
+# --------------------------------------------------------------------------
+#
+# ModemOptimizer applies one fixed, known-good receive chain before anything
+# is measured. Which demodulator settings decode THIS station's audio best,
+# though, depends on things no fixed table knows: the twist of the sound card
+# plus interface plus ADC path, its noise floor, the level the volume search
+# settled on. So once VolumeSearch has chosen the playback level, DemodSearch
+# measures the decode rate of the Receive demodulator settings themselves, at
+# that fixed level, and keeps whichever decodes best.
+#
+# Scope - only the "Receive demodulator" fieldset of the Radiomodem page:
+#   * every POST is the whole form as currently rendered with only fields of
+#     that fieldset replaced (scrape_radio_form()/radio_post_data()), and
+#     after every POST the page is read back and ANY change outside the
+#     fieldset aborts the search (ModemOptimizeError) instead of carrying on;
+#   * rxFixBits is never changed: a repaired frame can carry the wrong
+#     payload, which this bench scores as a failure, and a search that turned
+#     bit repair on would be optimising for exactly that;
+#   * the Custom preset and its count/tilts are not searched (they are a
+#     manual design tool), but a station already on Custom is measured as is.
+#
+# Search: coordinate descent over DEMOD_SEARCH_DIMENSIONS, one dimension at a
+# time, most influential first. Every probe plays the SAME audio (the wav
+# list restarts from its first file, see VolumeSearch._probe()), so two
+# settings are compared on identical packets. A candidate replaces the
+# current best only when it decodes at least one packet more AND at least
+# DEMOD_MIN_GAIN_PCT points more; a tie keeps the current setting. If the
+# winner differs from what the station started with, it is measured once
+# more and kept only if its pooled score still beats the starting one - one
+# lucky batch is not enough to rewrite the station's configuration.
+#
+# The best settings found are applied and saved on the station (POST /radio
+# saves to flash) and the real test then runs with them; every value changed
+# is listed in the final report.
+DEMOD_SEARCH_MAX_ROUNDS = 24   # probe budget, in --auto_volume_batch batches
+DEMOD_MIN_GAIN_PCT = 2.0       # smallest score gain that counts as better
+DEMOD_SETTLE_SECONDS = 1.0     # modem_set_modem() rebuild before probing
+
+# Every field of page_radio_get()'s "Receive demodulator" fieldset, in page
+# order. Only these may ever be changed by DemodSearch.
+RX_DEMOD_FIELDS = [
+    ("rxEqPreset", "select", "RX EQ preset"),
+    ("rxEqCount", "int", "RX custom demodulator count"),
+    ("rxTilt0", "int", "RX custom tilt 1 (dB)"),
+    ("rxTilt1", "int", "RX custom tilt 2 (dB)"),
+    ("rxTilt2", "int", "RX custom tilt 3 (dB)"),
+    ("rxBpfLoHz", "int", "RX band-pass low edge (Hz)"),
+    ("rxBpfHiHz", "int", "RX band-pass high edge (Hz)"),
+    ("rxBpfTaps", "int", "RX band-pass taps"),
+    ("rxGateMv", "int", "RX gate (mV RMS)"),
+    ("rxHpfHz", "select", "RX high-pass corner (Hz)"),
+    ("rxAgcMode", "select", "RX AGC mode"),
+    ("rxAgcGainDb", "int", "RX fixed gain (dB)"),
+    ("rxFixBits", "select", "RX bit repair"),
+    ("rxBlank", "bool", "RX impulse blanker"),
+]
+RX_DEMOD_KIND = {name: kind for name, kind, _label in RX_DEMOD_FIELDS}
+RX_DEMOD_LABEL = {name: label for name, _kind, label in RX_DEMOD_FIELDS}
+# The subset the search varies (see the section comment for what is left
+# alone and why).
+RX_DEMOD_SEARCHED = ("rxEqPreset", "rxBpfLoHz", "rxBpfHiHz", "rxBpfTaps", "rxGateMv",
+                     "rxHpfHz", "rxAgcMode", "rxAgcGainDb", "rxBlank")
+
+# (title, candidates): each candidate is a partial setting merged over the
+# current best. Values stay inside the modem's MODEM_RX_* limits
+# (esp32idf_radioamateur_modem.h) and the page's own <select> options.
+DEMOD_SEARCH_DIMENSIONS = [
+    ("RX EQ preset", [{"rxEqPreset": v} for v in (5, 6, 3, 2, 1, 0)]),
+    ("RX AGC mode", [{"rxAgcMode": 0},
+                     {"rxAgcMode": 1, "rxAgcGainDb": 0},
+                     {"rxAgcMode": 1, "rxAgcGainDb": 6},
+                     {"rxAgcMode": 1, "rxAgcGainDb": -6}]),
+    ("RX band-pass edges", [{"rxBpfLoHz": lo, "rxBpfHiHz": hi}
+                            for lo, hi in ((900, 2600), (1000, 2500), (1100, 2400),
+                                           (800, 2800), (600, 3000))]),
+    ("RX band-pass taps", [{"rxBpfTaps": t} for t in (31, 23, 15)]),
+    ("RX high-pass corner (Hz)", [{"rxHpfHz": h} for h in (0, 150, 300, 400)]),
+    ("RX gate (mV RMS)", [{"rxGateMv": g} for g in (0, 10, 25)]),
+    ("RX impulse blanker", [{"rxBlank": True}, {"rxBlank": False}]),
+]
+# MODEM_RX_EQ_LEGACY runs the fixed 8-tap tables and ignores the band-pass
+# settings, so those dimensions are skipped while it is the best preset.
+_DEMOD_BPF_DIMENSIONS = ("RX band-pass edges", "RX band-pass taps")
+
+
+def _fmt_rx_value(name: str, value) -> str:
+    """One Receive demodulator value, as the web page would show it."""
+    kind = RX_DEMOD_KIND.get(name, "int")
+    if name == "rxFixBits":
+        return {0: T("off"), 1: "symbol", 2: "symbol+bit"}.get(value, str(value))
+    return ModemOptimizer._fmt(kind, name, value)
+
+
+def _fmt_rx_setting(setting: dict) -> str:
+    return ", ".join("%s=%s" % (T(RX_DEMOD_LABEL.get(k, k)), _fmt_rx_value(k, v))
+                     for k, v in setting.items())
+
+
+class DemodSearch:
+    """Searches the Radiomodem page's Receive demodulator settings for the
+    best decode rate at an already-chosen playback volume (see the section
+    comment above for the rules). Uses a VolumeSearch instance only as the
+    probe engine: its _probe() plays one scoring batch at a given volume and
+    returns the same measurement dict the volume search scores with."""
+
+    def __init__(self, session, base_url: str, prober: "VolumeSearch",
+                 volume: float, batch_size: int = AUTO_VOLUME_BATCH,
+                 max_rounds: int = DEMOD_SEARCH_MAX_ROUNDS,
+                 settle: float = DEMOD_SETTLE_SECONDS, quiet: bool = False) -> None:
+        self._session = session
+        self.base_url = base_url
+        self.prober = prober
+        self.volume = volume
+        self.batch_size = batch_size
+        self.max_rounds = max_rounds
+        self.settle = settle
+        self.quiet = quiet
+        self.probes_used = 0
+        self.cache = {}          # type: dict   # setting key -> measurement
+        self.original = {}       # type: dict   # searched fields, before
+        self.best = {}           # type: dict   # searched fields, winner
+        self.baseline = None     # type: Optional[dict]
+        self.best_m = None       # type: Optional[dict]
+        # (name, label, before, after) for every field whose value changed.
+        self.changes = []        # type: List[Tuple[str, str, str, str]]
+        self.applied = False
+        self.interrupted = False
+        self.error = None        # type: Optional[str]
+        # Every POST body sent, for the self-test's scope check.
+        self.posts = []          # type: List[dict]
+
+    # ------------------------------------------------------------ transport
+    def _say(self, msg: str) -> None:
+        if not self.quiet:
+            say(msg)
+
+    def _get_page(self) -> str:
+        url = self.base_url + "/radio"
+        try:
+            resp = self._session.get(url, timeout=10)
+        except Exception as exc:
+            raise ModemOptimizeError("%s: %s" % (url, exc))
+        if resp.status_code != 200:
+            raise ModemOptimizeError("%s: HTTP %d" % (url, resp.status_code))
+        return resp.text
+
+    def _post(self, data: dict) -> None:
+        url = self.base_url + "/radio"
+        self.posts.append(dict(data))
+        try:
+            resp = self._session.post(url, data=data, timeout=10)
+        except Exception as exc:
+            raise ModemOptimizeError("%s: %s" % (url, exc))
+        if resp.status_code != 200:
+            raise ModemOptimizeError("%s: HTTP %d" % (url, resp.status_code))
+
+    @staticmethod
+    def _searched_values(state: dict) -> dict:
+        out = {}
+        for name in RX_DEMOD_SEARCHED:
+            if name not in state:
+                continue
+            v = state[name]
+            if RX_DEMOD_KIND[name] == "bool":
+                out[name] = bool(v)
+            else:
+                try:
+                    out[name] = int(v)
+                except (TypeError, ValueError):
+                    pass
+        return out
+
+    def read(self) -> dict:
+        """Current values of the searched fields on the station."""
+        return self._searched_values(scrape_radio_form(self._get_page()))
+
+    def apply(self, setting: dict) -> dict:
+        """Put `setting` (searched fields only) on the station and return what
+        the station actually stored - modem_rx_tuning_sanitize() may have
+        clamped it. Raises ModemOptimizeError if anything outside the Receive
+        demodulator fieldset differs afterwards."""
+        before = scrape_radio_form(self._get_page())
+        # Nothing but the searched fields may move: not the rest of the page,
+        # and not rxFixBits or the Custom count/tilts in the same fieldset.
+        after = post_radio_rx_only(self._session, self.base_url, before, dict(setting),
+                                   allowed=RX_DEMOD_SEARCHED)
+        self.posts.append(radio_post_data(
+            {**before, **{k: (bool(v) if RX_DEMOD_KIND[k] == "bool" else str(int(v)))
+                          for k, v in setting.items() if k in before}}))
+        if self.settle > 0:
+            sleep_or_stop(self.settle)
+        return self._searched_values(after)
+
+    # --------------------------------------------------------------- scoring
+    @staticmethod
+    def _key(setting: dict) -> tuple:
+        return tuple(sorted(setting.items()))
+
+    def _budget_left(self) -> bool:
+        return self.probes_used < self.max_rounds
+
+    def _measure(self, setting: dict, desc: str, fresh: bool = False) -> Tuple[dict, dict]:
+        """Apply `setting`, play one scoring batch, return (stored setting,
+        measurement). Answers from the cache when that exact stored setting
+        has already been measured, unless `fresh`."""
+        actual = self.apply(setting)
+        key = self._key(actual)
+        if not fresh and key in self.cache:
+            return actual, self.cache[key]
+        m = self.prober._probe(self.volume, to_db(self.volume), self.batch_size)
+        m["score"] = 100.0 * m["success"] / max(1, m["trials"])
+        self.probes_used += 1
+        if not fresh:
+            self.cache[key] = m
+        self._say(T("  [demod %2d/%d] %-44s mm=%d ok=%d diff=%d hdr=%d miss=%d extra=%d  "
+                    "score=%.1f%%") %
+                  (self.probes_used, self.max_rounds, desc, m["mm"], m["ok"], m["mismatch"],
+                   m["corrupt"], m["missing"], m["extra"], m["score"]) +
+                  (T("  (over-range reported)") if m.get("warns", 0) > 0 else ""))
+        return actual, m
+
+    @staticmethod
+    def _better(cand: dict, inc: dict) -> bool:
+        return (cand["trials"] > 0 and cand["success"] > inc["success"]
+                and cand["score"] >= inc["score"] + DEMOD_MIN_GAIN_PCT)
+
+    # ------------------------------------------------------------------ run
+    def run(self) -> dict:
+        self._say("\n" + "=" * 72)
+        self._say(T("RECEIVE DEMODULATOR SEARCH (Radiomodem page, Receive demodulator "
+                    "section only)"))
+        self._say("=" * 72)
+        self._say(T("  Gain %.3f (%+.1f dB), budget %d probe(s) of %d packet(s); bit repair "
+                    "and the Custom tilts are left as they are") %
+                  (self.volume, to_db(self.volume), self.max_rounds, self.batch_size))
+        self.original = self.read()
+        if not self.original:
+            raise ModemOptimizeError("GET /radio: no Receive demodulator fields in the page")
+        self.best = dict(self.original)
+        try:
+            self._search()
+        except KeyboardInterrupt:
+            self.interrupted = True
+            self._say(T("\nReceive demodulator search interrupted - keeping the best "
+                        "settings measured so far."))
+        except ModemOptimizeError:
+            # Put back what the station had rather than leave a half-tried
+            # candidate saved in flash; the caller reports the error.
+            try:
+                self.apply(self.original)
+            except Exception:
+                pass
+            raise
+        # Whatever was measured last, the station must end on the winner.
+        final = self.apply(self.best)
+        self.best = final
+        self.changes = [(n, RX_DEMOD_LABEL[n], _fmt_rx_value(n, self.original[n]),
+                         _fmt_rx_value(n, final[n]))
+                        for n in RX_DEMOD_SEARCHED
+                        if n in self.original and n in final and self.original[n] != final[n]]
+        self.applied = True
+        if self.baseline is not None and self.best_m is not None:
+            self._say(T("  Decode rate: %.1f%% with the starting settings, %.1f%% with the "
+                        "chosen ones") % (self.baseline["score"], self.best_m["score"]))
+        if self.changes:
+            for _n, label, b, a in self.changes:
+                self._say("    %-28s %s -> %s" % (T(label), b, a))
+        else:
+            self._say(T("  The starting Receive demodulator settings were already the best "
+                        "measured - nothing changed."))
+        self._say("=" * 72)
+        return self.best
+
+    def _search(self) -> None:
+        if not self._budget_left():
+            return
+        self.best, self.baseline = self._measure(self.best, T("starting settings"))
+        self.best_m = self.baseline
+        if self.baseline["trials"] <= 0:
+            self._say(T("  Nothing decoded with the starting settings - no basis to compare "
+                        "demodulator settings; leaving them unchanged."))
+            return
+        for title, candidates in DEMOD_SEARCH_DIMENSIONS:
+            if self.best.get("rxEqPreset") == 0 and title in _DEMOD_BPF_DIMENSIONS:
+                continue
+            for cand in candidates:
+                cand = {k: v for k, v in cand.items() if k in self.best}
+                if not cand:
+                    continue
+                trial = dict(self.best)
+                trial.update(cand)
+                if trial == self.best:
+                    continue
+                # Keep one probe for the confirmation below.
+                if self.probes_used >= self.max_rounds - 1:
+                    self._say(T("  Probe budget spent; stopping the search (raise it with "
+                                "--demod_max_rounds)."))
+                    self._confirm()
+                    return
+                actual, m = self._measure(trial, _fmt_rx_setting(cand))
+                if self._better(m, self.best_m):
+                    self._say(T("      better than the current best (%.1f%% -> %.1f%%): kept") %
+                              (self.best_m["score"], m["score"]))
+                    self.best, self.best_m = actual, m
+        self._confirm()
+
+    def _confirm(self) -> None:
+        """A winner that differs from the starting settings is measured once
+        more; pooled over both batches it must still beat the start."""
+        if self.best == self.original or self.baseline is None or not self._budget_left():
+            return
+        _actual, m2 = self._measure(self.best, T("confirmation of the best settings"),
+                                    fresh=True)
+        m1 = self.best_m
+        pooled = {"success": m1["success"] + m2["success"],
+                  "trials": m1["trials"] + m2["trials"]}
+        pooled["score"] = 100.0 * pooled["success"] / max(1, pooled["trials"])
+        if pooled["score"] <= self.baseline["score"]:
+            self._say(T("  Confirmation did not hold (pooled %.1f%% vs %.1f%% at the start): "
+                        "back to the starting settings.") %
+                      (pooled["score"], self.baseline["score"]))
+            self.best, self.best_m = dict(self.original), self.baseline
+        else:
+            for k in ("ok", "mismatch", "corrupt", "missing", "extra", "mm"):
+                pooled[k] = m1.get(k, 0) + m2.get(k, 0)
+            self.best_m = pooled
+
+
+def read_rx_demod_section(session, base_url: str) -> dict:
+    """Read-only snapshot of every field of the Radiomodem page's Receive
+    demodulator section (all of RX_DEMOD_FIELDS, searched or not), typed:
+    bool for a checkbox, int otherwise. Raises ModemOptimizeError."""
+    url = base_url + "/radio"
+    try:
+        resp = session.get(url, timeout=10)
+    except Exception as exc:
+        raise ModemOptimizeError("%s: %s" % (url, exc))
+    if resp.status_code != 200:
+        raise ModemOptimizeError("%s: HTTP %d" % (url, resp.status_code))
+    state = scrape_radio_form(resp.text)
+    out = {}
+    for name, kind, _label in RX_DEMOD_FIELDS:
+        if name not in state:
+            continue
+        if kind == "bool":
+            out[name] = bool(state[name])
+        else:
+            try:
+                out[name] = int(state[name])
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
+def _check_radio_page(guard: "RadioPageGuard", final: bool = False) -> None:
+    """Verify nothing outside the Receive demodulator section differs from
+    the start-of-run snapshot; if something does, say so loudly and put
+    exactly those fields back."""
+    try:
+        drift = guard.verify()
+    except ModemOptimizeError as exc:
+        sys.stderr.write(T("  WARNING: could not re-read the Radiomodem page to verify it "
+                           "(%s).\n") % exc)
+        return
+    if not drift:
+        if final:
+            say(T("Radiomodem page verified at the end of the run: nothing outside the "
+                  "Receive demodulator section differs from the start."))
+        return
+    sys.stderr.write(T("  ERROR: field(s) outside the Receive demodulator section differ "
+                       "from the start of the run: %s - restoring them now.\n") %
+                     ", ".join(drift))
+    try:
+        guard.restore_outside()
+        sys.stderr.write(T("  Restored: %s\n") % ", ".join(drift))
+    except ModemOptimizeError as exc:
+        sys.stderr.write(T("  ERROR: restoring failed (%s) - check the Radiomodem page by "
+                           "hand.\n") % exc)
+
+
+def print_calibration_summary(start_volume: float, final_volume: float,
+                              volume_mode: str,
+                              rx_start: Optional[dict], rx_final: Optional[dict],
+                              rx_note: Optional[str] = None,
+                              guard: Optional["RadioPageGuard"] = None) -> None:
+    """Printed once, after every calibration step and before the real test:
+    the playback volume and every Receive demodulator value the test will
+    run with, each marked as modified (with its value before calibration) or
+    unchanged. volume_mode is a short, already translated note on how the
+    volume was chosen. rx_start/rx_final are read_rx_demod_section()
+    snapshots taken before the first and after the last calibration step;
+    both None when the section could not be read (serial transport)."""
+    print("")
+    print("=" * 72)
+    print(T("SETTINGS FOR THE REAL TEST (selected by calibration)"))
+    print("=" * 72)
+    vol_changed = abs(final_volume - start_volume) > 1e-9
+    print(T("  Volume (ESP32 playback gain) - %s") % volume_mode)
+    if vol_changed:
+        print("    %-34s %.3f (%+.1f dB) -> %.3f (%+.1f dB)   %s" %
+              (T("gain"), start_volume, to_db(start_volume), final_volume,
+               to_db(final_volume), T("[MODIFIED]")))
+    else:
+        print("    %-34s %.3f (%+.1f dB)   %s" %
+              (T("gain"), final_volume, to_db(final_volume), T("[unchanged]")))
+    print(T("  Radiomodem - Receive demodulator section"))
+    if rx_final is None:
+        print("    " + (rx_note or T("not available (--transport serial)")))
+    else:
+        n_mod = 0
+        for name, _kind, label in RX_DEMOD_FIELDS:
+            if name not in rx_final:
+                continue
+            after = rx_final[name]
+            before = (rx_start or {}).get(name, after)
+            if before != after:
+                n_mod += 1
+                print("    %-34s %s -> %s   %s" %
+                      (T(label), _fmt_rx_value(name, before), _fmt_rx_value(name, after),
+                       T("[MODIFIED]")))
+            else:
+                print("    %-34s %s   %s" %
+                      (T(label), _fmt_rx_value(name, after), T("[unchanged]")))
+        print(T("    %d value(s) modified in this section; nothing outside it was "
+                "touched.") % n_mod)
+        if rx_note:
+            print("    " + rx_note)
+    if guard is not None:
+        names = guard.outside_names()
+        print(T("  Radiomodem - outside the Receive demodulator section (never changed)"))
+        if guard.drift and not guard.restored:
+            print("    " + T("DIFFERS from the start of the run: %s") % ", ".join(guard.drift))
+        elif guard.restored:
+            print("    " + T("had changed and was RESTORED: %s") % ", ".join(guard.drift))
+        else:
+            print("    " + T("%d field(s) verified identical to the start of the run") %
+                  len(names))
+        if "adcSelfBias" in guard.snapshot:
+            print("    %-34s %s   %s" % (T("ADC self-bias"),
+                                         T("on") if guard.snapshot["adcSelfBias"] else T("off"),
+                                         T("[unchanged]")))
+    print("=" * 72)
+    sys.stdout.flush()
+
+
+def print_demod_search(ds: Optional[DemodSearch]) -> None:
+    """Part of the final report: the Receive demodulator values the search
+    changed on the station. Silent when the search did not run."""
+    if ds is None:
+        return
+    if not ds.applied:
+        if ds.error:
+            print(T("  Receive demodulator search (--transport web) FAILED: %s") % ds.error)
+        return
+    print(T("  -- Receive demodulator search (--transport web) ----------------"))
+    if ds.baseline is not None and ds.best_m is not None:
+        print(T("    decode rate %.1f%% at the start, %.1f%% with the chosen settings "
+                "(%d probe(s))") % (ds.baseline["score"], ds.best_m["score"], ds.probes_used))
+    if not ds.changes:
+        print(T("    The starting settings were kept - nothing changed."))
+        return
+    for _name, label, before, after in ds.changes:
+        print("    %-28s %s -> %s" % (T(label), before, after))
+
 
 
 # --------------------------------------------------------------------------
@@ -3313,13 +5490,13 @@ def run_one_wav(res: FileResult, wav: str, route: Optional[AudioRoute],
                     last_progress = now
                     if cluster is None:
                         say(T("       [progress %s / %s] multimon=%d  ok=%d  "
-                              "not-decoded=%d  different=%d  (serial lines seen: %d)") %
+                              "not-decoded=%d  different=%d  (console lines seen: %d)") %
                             (mmss(now - t0), mmss(duration), len(res.mm_packets),
                              res.ok, len(res.missing), len(res.mismatch),
                              collector.lines_seen))
                     else:
                         say(T("       [progress %s / %s] multimon=%d  direwolf=%d  ok=%d  "
-                              "not-decoded=%d  different=%d  (serial lines seen: %d)") %
+                              "not-decoded=%d  different=%d  (console lines seen: %d)") %
                             (mmss(now - t0), mmss(duration), len(res.mm_packets),
                              len(res.dw_packets), res.ok, len(res.missing),
                              len(res.mismatch), collector.lines_seen))
@@ -4425,6 +6602,9 @@ class VolumeSearch:
                 # level clips. Playing on would only keep the ADC over-driven.
                 break
 
+        watch = getattr(self, "watch", None)
+        if watch is not None:
+            watch.check(T("the probe at %+.1f dB") % key)
         n_mm = len(batch.mm_packets)
         n_extra = len(batch.extra)
         warns = self.collector.overrange_since(overrange_before)
@@ -4684,7 +6864,14 @@ def wait_ready(col: SerialCollector, settle: float,
     already running and the run starts at once. If a ROM boot banner arrives
     within BOOT_BANNER_WAIT seconds, or `reset` says a reset was requested,
     the modem is still coming up: wait for its "started" line (at most
-    `ready_timeout` seconds), then `settle` more seconds."""
+    `ready_timeout` seconds), then `settle` more seconds.
+
+    With --transport web there is no serial line and no boot banner to look
+    for (the web server starts after the ROM has printed it): only the web
+    log API is checked, see _wait_ready_web()."""
+    if isinstance(col, WebLogCollector):
+        _wait_ready_web(col)
+        return
     say(T("Checking whether the ESP32 is booting ..."))
     end = time.monotonic() + BOOT_BANNER_WAIT
     while time.monotonic() < end and col.snapshot_boot()[0] == 0:
@@ -4718,6 +6905,22 @@ def wait_ready(col: SerialCollector, settle: float,
               "may be quiet until it hears/sends something; continuing."))
     else:
         say(T("  serial is alive (%d console line(s) so far).") % col.lines_seen)
+
+
+def _wait_ready_web(col: "WebLogCollector") -> None:
+    """--transport web: the station is already running (its web admin
+    answered), so there is nothing to wait for; report what the web log
+    API has delivered so far, using web information only."""
+    say(T("Checking the station's web log API ..."))
+    end = time.monotonic() + BOOT_BANNER_WAIT
+    while time.monotonic() < end and not col.alive.is_set():
+        sleep_or_stop(0.1)
+    if col.alive.is_set():
+        say(T("  web log API is alive (%d console line(s) so far); starting now.") %
+            col.lines_seen)
+    else:
+        say(T("  WARNING: no console line received through the web log API yet. The "
+              "firmware may be quiet until it hears/sends something; continuing."))
 
 
 class _SimulatedVolumeSearch(VolumeSearch):
@@ -5272,6 +7475,312 @@ def selftest() -> int:
           total_any_decoder(FileResult(name="y", mm_packets=[p_mm], extra=[p_esp])) == 2,
           T("got %r") % (total_any_decoder(fr),))
 
+    print(T("Radiomodem page: whole-form POST and Receive demodulator search"))
+
+    class _FakeRadioStation:
+        """Model of page_radio_get()/page_radio_post(): renders the form with
+        the firmware's own markup and applies a POST the way the firmware
+        does - a missing number keeps its value, a missing checkbox is off."""
+
+        CHECKBOXES = ("audioModemEn", "audioLPF", "dutyCycleEn", "rxBlank",
+                      "adcSelfBias", "rxClipWarn")
+        SELECTS = {"fx25Mode": (0, 1, 2), "afskModem": (0, 1, 2, 3),
+                   "rfTxBuffers": (1, 2, 3, 4), "rxEqPreset": (0, 1, 2, 3, 5, 6, 4),
+                   "rxHpfHz": (0, 150, 300, 400), "rxAgcMode": (0, 1),
+                   "rxFixBits": (0, 1, 2), "dacRate": (38400, 76800)}
+
+        def __init__(self) -> None:
+            self.cfg = collections.OrderedDict([
+                ("fx25Mode", 1), ("audioModemEn", True), ("afskModem", 1),
+                ("audioLPF", False), ("rfPreamble", 350), ("rfTxTail", 50),
+                ("txTimeSlot", 2000), ("rfTxBuffers", 2), ("dutyCycleEn", True),
+                ("dutyCyclePct", 30), ("pttMinUnkeyMs", 100), ("csmaPersist", 63),
+                ("csmaSlotTime", 100), ("csmaBusyMax", 10),
+                ("rxEqPreset", 5), ("rxEqCount", 3), ("rxTilt0", 4), ("rxTilt1", 0),
+                ("rxTilt2", -5), ("rxBpfLoHz", 900), ("rxBpfHiHz", 2600),
+                ("rxBpfTaps", 31), ("rxGateMv", 10), ("rxHpfHz", 300),
+                ("rxAgcMode", 0), ("rxAgcGainDb", 0), ("rxFixBits", 0),
+                ("rxBlank", True), ("adcSelfBias", True), ("rxClipWarn", False),
+                ("dacAmplPct", 80), ("dacRate", 38400), ("txMaxKeyedMs", 30000)])
+
+        HLP = ("<span class='hlp' tabindex='0' role='note' onclick='event.preventDefault();"
+               "event.stopPropagation();'><span class='hlp-mark' aria-hidden='true'>?</span>"
+               "<span class='hlp-box'>Help &amp; notes: a &lt; b, &#39;quoted&#39;</span></span>")
+
+        def html(self) -> str:
+            """Same markup page_radio_get() emits: web_field_checkbox()
+            switch rows with their help balloon, the composite audioModemEn
+            label with its three buttons, web_field_int(), web_select_*,
+            the read-only hardware <p>, and the page script."""
+            h = self.HLP
+            out = ["<html><head><script>var x='<input name=\"fake\" checked>';</script>"
+                   "</head><body><form method='POST' action='/logs/start'>"
+                   "<input type='checkbox' name='other' checked></form>",
+                   "<form method='POST' action='/radio' id='radioForm'>",
+                   "<fieldset><legend>Protocol</legend>"]
+            for name, v in self.cfg.items():
+                if name == "audioModemEn":
+                    out.append("<label style='display:flex;align-items:center;gap:10px;"
+                               "flex-wrap:wrap;'><span><input type='checkbox' "
+                               "name='audioModemEn' %s> Enable audio modem%s</span>"
+                               "<button type='button' class='secondary' id='loopTestBtn' "
+                               "onclick='loopTest()'>Loop test</button><button "
+                               "type='button' class='secondary' id='rxLevelBtn' "
+                               "onclick='rxLevel()'>RX level</button><span "
+                               "id='loopTestStatus'></span></label>" %
+                               ("checked" if v else "", h))
+                    out.append("<p style='opacity:.75'><b>Audio hardware</b>: <br>DAC out: "
+                               "GPIO25<br>ADC in: GPIO33<br>PTT pin: GPIO26</p>")
+                elif name in self.CHECKBOXES:
+                    out.append("<label class='switch-row'><span class='switch'><input "
+                               "type='checkbox' name='%s' %s><span class='slider'></span>"
+                               "</span><span class='switch-label'>%s%s</span></label>" %
+                               (name, "checked" if v else "", name, h))
+                elif name in self.SELECTS:
+                    out.append("<label>%s%s</label><select name='%s'>" % (name, h, name))
+                    for o in self.SELECTS[name]:
+                        out.append("<option value='%d' %s %s>o</option>" %
+                                   (o, "selected" if o == v else "", ""))
+                    out.append("</select>")
+                else:
+                    out.append("<label>%s%s</label><input type='number' name='%s' "
+                               "value='%d' min='-99999' max='99999'>" % (name, h, name, v))
+                if name in ("fx25Mode", "csmaBusyMax", "rxBlank"):
+                    out.append("</fieldset><fieldset><legend>x</legend>")
+            out.append("</fieldset><script>function loopTest(){var form=document."
+                       "getElementById('radioForm');var params=new URLSearchParams(new "
+                       "FormData(form));}</script>")
+            out.append("<button type='submit'>Save</button></form></body></html>")
+            return "".join(out)
+
+        def post(self, data: dict) -> None:
+            for name in list(self.cfg):
+                if name in self.CHECKBOXES:
+                    self.cfg[name] = name in data
+                elif name in data:
+                    self.cfg[name] = int(data[name])
+            # modem_rx_tuning_sanitize(): taps are always odd
+            if self.cfg["rxBpfTaps"] % 2 == 0:
+                self.cfg["rxBpfTaps"] -= 1
+            # Test hook: a station that switches self-bias off on one save.
+            if getattr(self, "flip_bias_once", False):
+                self.flip_bias_once = False
+                self.cfg["adcSelfBias"] = False
+
+    class _FakeResp:
+        def __init__(self, text: str) -> None:
+            self.status_code = 200
+            self.text = text
+
+    class _FakeSession:
+        def __init__(self, station) -> None:
+            self.station = station
+
+        def get(self, url, timeout=None):
+            return _FakeResp(self.station.html())
+
+        def post(self, url, data=None, timeout=None):
+            self.station.post(data or {})
+            return _FakeResp("saved")
+
+    class _FakeProber:
+        """Decode rate as a function of the station's receive settings:
+        MULTISLICE2 and a 150 Hz high-pass are genuinely better, everything
+        else is flat, so a correct search ends on exactly those two."""
+
+        def __init__(self, station) -> None:
+            self.station = station
+            self.calls = 0
+
+        def _probe(self, volume, key, target):
+            self.calls += 1
+            c = self.station.cfg
+            ok = 40 + (5 if c["rxEqPreset"] == 6 else 0) + (3 if c["rxHpfHz"] == 150 else 0)
+            ok = min(ok, target)
+            return {"volume": volume, "db": key, "ok": ok, "mismatch": 0, "corrupt": 0,
+                    "missing": target - ok, "extra": 0, "mm": target,
+                    "success": ok, "trials": target, "warns": 0, "clip_rate": 0.0}
+
+    st = _FakeRadioStation()
+    scraped = scrape_radio_form(st.html())
+    check(T("the Radiomodem form is scraped whole, and only that form"),
+          len(scraped) == len(st.cfg) and "other" not in scraped and
+          scraped["dutyCycleEn"] is True and scraped["rxEqPreset"] == "5",
+          T("got %r") % (scraped,))
+
+    st = _FakeRadioStation()
+    before = dict(st.cfg)
+    mo = ModemOptimizer(_FakeSession(st), "http://x")
+    mo.run()
+    untouched = [n for n in before if n not in RADIO_OPTIMIZE_TARGET and st.cfg[n] != before[n]]
+    check(T("Radiomodem calibration leaves every other field of the page as it was "
+            "(duty cycle included)"),
+          not untouched and st.cfg["dutyCycleEn"] is True and st.cfg["rxGateMv"] == 0,
+          T("changed: %r") % (untouched,))
+    outside = [n for n in before if n not in RX_DEMOD_KIND and st.cfg[n] != before[n]]
+    check(T("Radiomodem calibration changes nothing outside the Receive demodulator "
+            "section (ADC self-bias included)"),
+          not outside and st.cfg["adcSelfBias"] is True and st.cfg["rxClipWarn"] is False
+          and all(n in RX_DEMOD_KIND for n in RADIO_OPTIMIZE_TARGET)
+          and all(n in RX_DEMOD_KIND for n, _k, _l in RADIO_FIELDS),
+          T("changed: %r") % (outside,))
+
+    st = _FakeRadioStation()
+    before = dict(st.cfg)
+    prober = _FakeProber(st)
+    ds = DemodSearch(_FakeSession(st), "http://x", prober, 1.0, batch_size=50,
+                     max_rounds=DEMOD_SEARCH_MAX_ROUNDS, settle=0.0, quiet=True)
+    ds.run()
+    outside = [n for n in before if n not in RX_DEMOD_SEARCHED and st.cfg[n] != before[n]]
+    check(T("demodulator search changes nothing outside the Receive demodulator section "
+            "(bit repair and Custom tilts included)"),
+          not outside, T("changed: %r") % (outside,))
+    check(T("demodulator search keeps the settings that decode better"),
+          st.cfg["rxEqPreset"] == 6 and st.cfg["rxHpfHz"] == 150 and ds.applied,
+          T("got preset=%r hpf=%r") % (st.cfg["rxEqPreset"], st.cfg["rxHpfHz"]))
+    check(T("demodulator search keeps a setting when the alternatives only tie"),
+          st.cfg["rxBpfLoHz"] == 900 and st.cfg["rxAgcMode"] == 0 and st.cfg["rxBlank"] is True,
+          T("got %r") % (dict(st.cfg),))
+    check(T("demodulator search stays within its probe budget"),
+          prober.calls <= DEMOD_SEARCH_MAX_ROUNDS and ds.probes_used == prober.calls,
+          T("%d probe(s) for a budget of %d") % (prober.calls, DEMOD_SEARCH_MAX_ROUNDS))
+    numeric = [n for n, v in before.items() if not isinstance(v, bool)]
+    check(T("every demodulator-search POST carries the whole form"),
+          bool(ds.posts) and all(all(n in p for n in numeric) and "dutyCycleEn" in p
+                                 for p in ds.posts),
+          T("%d POST(s)") % len(ds.posts))
+
+    st = _FakeRadioStation()
+    sess = _FakeSession(st)
+    before_all = dict(st.cfg)
+    guard = RadioPageGuard(sess, "http://x")
+    ModemOptimizer(sess, "http://x").run()
+    DemodSearch(sess, "http://x", _FakeProber(st), 1.0, batch_size=50,
+                max_rounds=DEMOD_SEARCH_MAX_ROUNDS, settle=0.0, quiet=True).run()
+    outside = [n for n in before_all if n not in RX_DEMOD_KIND and st.cfg[n] != before_all[n]]
+    check(T("full web calibration keeps ADC self-bias ON and every field outside the "
+            "Receive demodulator section as it was"),
+          st.cfg["adcSelfBias"] is True and not outside and not guard.verify(),
+          T("changed: %r") % (outside,))
+    bad = st.html().replace("name='adcSelfBias' checked>", "name='adcSelfBias' checked >"
+                            "<input type='checkbox' name='adcSelfBias'>")
+    try:
+        scrape_radio_form(bad)
+        refused = False
+    except ModemOptimizeError:
+        refused = True
+    check(T("an ambiguous page is refused before anything is POSTed"), refused)
+    st = _FakeRadioStation()
+    st.flip_bias_once = True
+    try:
+        ModemOptimizer(_FakeSession(st), "http://x").run()
+        raised = False
+    except ModemOptimizeError:
+        raised = True
+    check(T("if a save switches ADC self-bias off anyway, the bench stops and puts it "
+            "back on"), raised and st.cfg["adcSelfBias"] is True)
+
+    wl = WebLogCollector.__new__(WebLogCollector)
+    wl._init_state()
+    wl._handle_line(b"I (905123) aprs_service: RX: LU1ABC>APRS:test")
+    st = _FakeRadioStation()
+    sess = _FakeSession(st)
+    sw = StationWatch(wl, RadioPageGuard(sess, "http://x"))
+    try:
+        sw.check("x")
+        quiet_ok = True
+    except StationStateError:
+        quiet_ok = False
+    wl._handle_line(b"I (1234) main: Configuration loaded")
+    try:
+        sw.check("probe")
+        caught_restart = False
+    except StationStateError:
+        caught_restart = True
+    check(T("a station restart during the run is detected from the web log alone"),
+          quiet_ok and caught_restart)
+    wl2 = WebLogCollector.__new__(WebLogCollector)
+    wl2._init_state()
+    st = _FakeRadioStation()
+    sess = _FakeSession(st)
+    sw = StationWatch(wl2, RadioPageGuard(sess, "http://x"))
+    st.cfg["adcSelfBias"] = False           # the station changed it by itself
+    try:
+        sw.check("probe")
+        msg = ""
+    except StationStateError as exc:
+        msg = str(exc)
+    check(T("ADC self-bias going off on the station stops the run and names it"),
+          "adcSelfBias" in msg and st.cfg["adcSelfBias"] is False, msg)
+
+    st = _FakeRadioStation()
+    page = st.html()
+    cut = page.index("<label class='switch-row'><span class='switch'><input type='checkbox' "
+                     "name='adcSelfBias'")
+    page_wo = page[:cut] + page[page.index("</label>", cut) + len("</label>"):]
+    try:
+        post_radio_rx_only(_FakeSession(st), "http://x", scrape_radio_form(page_wo),
+                           {"rxGateMv": 0})
+        refused2 = False
+    except ModemOptimizeError:
+        refused2 = True
+    check(T("a page read without the ADC self-bias checkbox is never POSTed back"),
+          refused2 and st.cfg["adcSelfBias"] is True)
+
+    print(T("--transport web uses web information only"))
+    wc = WebLogCollector.__new__(WebLogCollector)
+    wc.alive = threading.Event()
+    wc.alive.set()
+    wc.lines_seen = 7
+
+    def _no_boot():
+        raise AssertionError("snapshot_boot() called")
+    wc.snapshot_boot = _no_boot
+    import io as _io0
+    import contextlib as _ctx0
+    buf0 = _io0.StringIO()
+    try:
+        with _ctx0.redirect_stdout(buf0):
+            wait_ready(wc, 5.0, 60.0, False)
+        ok_wait = "serial" not in buf0.getvalue().lower()
+    except AssertionError:
+        ok_wait = False
+    check(T("wait_ready() over the web reads only the web log API (no boot banner, "
+            "no serial)"), ok_wait, buf0.getvalue())
+    check(T("the web transport does not need pyserial"),
+          "serial" not in {c.__name__ for c in WebLogCollector.__mro__} and
+          not issubclass(WebLogCollector, SerialCollector))
+
+    st = _FakeRadioStation()
+    sess = _FakeSession(st)
+    rx0 = read_rx_demod_section(sess, "http://x")
+    ModemOptimizer(sess, "http://x").run()
+    DemodSearch(sess, "http://x", _FakeProber(st), 1.0, batch_size=50,
+                max_rounds=DEMOD_SEARCH_MAX_ROUNDS, settle=0.0, quiet=True).run()
+    rx1 = read_rx_demod_section(sess, "http://x")
+    import io as _io
+    import contextlib as _ctx
+    buf = _io.StringIO()
+    with _ctx.redirect_stdout(buf):
+        print_calibration_summary(1.0, 0.5, "auto", rx0, rx1)
+    txt = buf.getvalue()
+    n_changed = sum(1 for n in rx1 if rx0.get(n) != rx1[n])
+    check(T("the pre-test summary lists the volume and every Receive demodulator "
+            "value, marking the modified ones"),
+          txt.count(T("[MODIFIED]")) == n_changed + 1 and n_changed > 0 and
+          txt.count(T("[unchanged]")) == len(rx1) - n_changed and
+          "adcSelfBias" not in txt and T("ADC self-bias") not in txt,
+          txt)
+
+    st = _FakeRadioStation()
+    prober = _FakeProber(st)
+    ds = DemodSearch(_FakeSession(st), "http://x", prober, 1.0, batch_size=50,
+                     max_rounds=3, settle=0.0, quiet=True)
+    ds.run()
+    check(T("a tight budget still ends on a measured, applied setting"),
+          prober.calls <= 3 and ds.applied and st.cfg["dutyCycleEn"] is True,
+          T("%d probe(s)") % prober.calls)
+
     print("")
     if failures:
         print(T("SELFTEST FAILED: %d of the checks above did not pass") % len(failures))
@@ -5747,7 +8256,7 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
         return txt
 
     console = make_pane(T("Console  (program output)"))
-    serial_txt = make_pane(T("Serial  (raw data from the ESP32, unfiltered)"))
+    serial_txt = make_pane(T("ESP32 console  (raw serial data, or the web log API with --transport web)"))
 
     MAX_LINES = 20000       # keep the widgets bounded on very long runs
 
@@ -5891,6 +8400,12 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
         except ValueError as exc:
             messagebox.showerror(T("Invalid option"), str(exc))
             return
+        if getattr(ns, "transport", "serial") == "web":
+            # The web transport uses web information only: whatever the
+            # serial fields of the form hold is ignored, not passed on.
+            ns.serial_port = DEFAULT_SERIAL
+            ns.baud = SERIAL_BAUD
+            ns.reset = False
         _STOP.clear()
         with _LIVE_LOCK:
             _LIVE_PROCS[:] = []
@@ -6057,6 +8572,53 @@ def build_parser() -> argparse.ArgumentParser:
                     help=T("ESP32 console serial port (default: %s)") % DEFAULT_SERIAL)
     ap.add_argument("--baud", type=int, default=SERIAL_BAUD,
                     help=T("serial speed, 8N1 (default: %d)") % SERIAL_BAUD)
+    ap.add_argument("--transport", choices=("serial", "web"), default="serial",
+                    help=T("how the bench reads the ESP32 console: 'serial' (default, a "
+                           "USB cable via pyserial) or 'web' (the station's web admin "
+                           "/logs/* HTTP API over Wi-Fi/Ethernet, no cable needed - see "
+                           "--web_host, --web_user, --web_password). Gaps versus serial: "
+                           "no --reset, no ROM boot banner visibility, no raw serial pane "
+                           "in --gui."))
+    ap.add_argument("--web_host", default=None,
+                    help=T("web admin host[:port] of the ESP32 station, e.g. "
+                           "192.168.1.50 or 192.168.1.50:8080 (required with "
+                           "--transport web)"))
+    ap.add_argument("--web_user", default=None,
+                    help=T("web admin username (HTTP Basic Auth), same account as the "
+                           "station's /wireless or /system page; omit only if the "
+                           "station has no admin username configured"))
+    ap.add_argument("--web_password", default=None,
+                    help=T("web admin password (HTTP Basic Auth)"))
+    ap.add_argument("--web_poll_interval", type=float, default=DEFAULT_WEB_POLL_INTERVAL,
+                    help=T("how often /logs/read is polled, in seconds (default %.2f). "
+                           "Must stay comfortably under the firmware's %d s idle timeout "
+                           "and short enough not to miss bursts against its %d-line ring "
+                           "buffer; lower it further if the station also logs heavily.") %
+                    (DEFAULT_WEB_POLL_INTERVAL, LOGCAPTURE_IDLE_TIMEOUT_S, LOGCAPTURE_CAPACITY))
+    ap.add_argument("--no_modem_optimize", action="store_true",
+                    help=T("with --transport web: do not touch the station's Radiomodem "
+                           "settings before the test (by default the bench reads the "
+                           "receive-chain settings over the web admin's Radiomodem page "
+                           "and applies the ones known to give the cleanest AFSK1200 "
+                           "decoding - RX EQ preset, band-pass edges/taps, RX gate, "
+                           "high-pass, AGC mode and impulse blanker, all of the Receive "
+                           "demodulator section; nothing else on the page is ever changed "
+                           "- before the auto-volume "
+                           "calibration and the real test, and once the volume is chosen "
+                           "searches the Receive demodulator section - and only that section "
+                           "- for the settings that decode best at that volume; every value "
+                           "it changes is listed at the end of the run). Has no effect with "
+                           "--transport serial."))
+    ap.add_argument("--web_journal", default="test_aprs_wavs_web.log",
+                    help=T("with --transport web: file recording every read and write of "
+                           "the station's Radiomodem page during the run (page HTML, POST "
+                           "bodies, the ADC self-bias state at every check); empty string "
+                           "disables it (default: test_aprs_wavs_web.log)"))
+    ap.add_argument("--demod_max_rounds", type=int, default=DEMOD_SEARCH_MAX_ROUNDS,
+                    help=T("with --transport web and without --no_modem_optimize: budget of "
+                           "the Receive demodulator search that runs after the volume is "
+                           "chosen, in probes of --auto_volume_batch packets (default %d; "
+                           "0 skips the search)") % DEMOD_SEARCH_MAX_ROUNDS)
     ap.add_argument("--audio_device", default=None,
                     help=T("PipeWire output (sink) wired to the ESP32 audio input: its "
                            "node name, serial, or a unique part of its description "
@@ -6182,18 +8744,32 @@ def main() -> int:
     args = ap.parse_args()
     set_language(args.lang)        # None here means "use the system language"
     if args.gui:
-        return run_gui_loop()
+        # Any other flag actually given alongside --gui on the shell line
+        # (e.g. `--gui --wav_dir ./captures --direwolf on`) pre-fills the
+        # form instead of being discarded. Only flags that differ from the
+        # parser's own default are carried over - a dest left at its
+        # argparse default (e.g. --audio_device/--monitor_device, whose
+        # default is None) must reach the GUI as "unset" so the form shows
+        # its normal blank/pick-a-sink state, not the literal text "None".
+        parser_defaults = {act.dest: act.default for act in ap._actions
+                            if act.option_strings}
+        initial_values = {k: v for k, v in vars(args).items()
+                           if k not in ("gui", "lang", "help")
+                           and v != parser_defaults.get(k)}
+        return run_gui_loop(initial_values)
     return run_with_args(args)
 
 
-def run_gui_loop() -> int:
+def run_gui_loop(initial_values: Optional[dict] = None) -> int:
     """Open the GUI and, whenever the Language selector changes, rebuild it in
     the new language while keeping whatever is typed in the form.
 
     Tk has no way to re-translate widgets that already exist, so the window is
     recreated: run_gui() returns ("restart", values) instead of an exit code,
-    and the form values are handed back to the new window."""
-    values, logs = None, None
+    and the form values are handed back to the new window. initial_values, when
+    given, seeds the very first window from flags already parsed on the shell
+    line alongside --gui."""
+    values, logs = initial_values, None
     while True:
         ap = build_parser()        # help texts in the current language
         rc = run_gui(ap, values, logs)
@@ -6227,6 +8803,9 @@ def run_with_args(args: argparse.Namespace) -> int:
         return 2
     if args.max_passes < 1:
         sys.stderr.write(T("--max_passes must be >= 1 (got %d)\n") % args.max_passes)
+        return 2
+    if args.demod_max_rounds < 0:
+        sys.stderr.write(T("--demod_max_rounds must be >= 0 (got %d)\n") % args.demod_max_rounds)
         return 2
     if not (0.0 < args.volume_min < args.volume_max):
         sys.stderr.write(T("--volume_min must be > 0 and < --volume_max (got %g and %g)\n") %
@@ -6269,6 +8848,24 @@ def run_with_args(args: argparse.Namespace) -> int:
         sys.stderr.write(T("--reference %s needs Direwolf, but --direwolf is off\n") %
                          args.reference)
         return 2
+    if args.transport == "web":
+        if not (args.web_host and args.web_host.strip()):
+            sys.stderr.write(T("--transport web requires --web_host (e.g. 192.168.1.50)\n"))
+            return 2
+        if args.serial_port != DEFAULT_SERIAL:
+            sys.stderr.write(T("--serial_port cannot be combined with --transport web "
+                               "(the web transport does not use a serial port)\n"))
+            return 2
+        if args.reset:
+            sys.stderr.write(T("--reset is not supported with --transport web: there is "
+                               "no hardware reset over the web admin API; drop --reset or "
+                               "use --transport serial\n"))
+            return 2
+        if not (0 < args.web_poll_interval < LOGCAPTURE_IDLE_TIMEOUT_S):
+            sys.stderr.write(T("--web_poll_interval must be > 0 and well below %g s (the "
+                               "firmware's idle timeout) (got %g)\n") %
+                             (LOGCAPTURE_IDLE_TIMEOUT_S, args.web_poll_interval))
+            return 2
 
     check_tools(need_play=not args.no_play)
 
@@ -6344,8 +8941,14 @@ def run_with_args(args: argparse.Namespace) -> int:
                     "%.0fx real time.") % DRY_RUN_SPEED)
     else:
         assert route is not None
-        print(T("Serial: %s @ %d 8N1   Audio: %s") %
-              (args.serial_port, args.baud, route.test.label()))
+        if args.transport == "web":
+            print(T("Web: %s (poll every %.2f s)   Audio: %s") %
+                  (args.web_host, args.web_poll_interval, route.test.label()))
+            print(T("  WARNING: web transport - no hardware reset and no ROM boot "
+                    "banner visibility (see --transport in --help)."))
+        else:
+            print(T("Serial: %s @ %d 8N1   Audio: %s") %
+                  (args.serial_port, args.baud, route.test.label()))
         if route.monitor is not None:
             print(T("Monitor: %s   (stream volume %.2f)") %
                   (route.monitor.label(), route.monitor_volume))
@@ -6363,11 +8966,22 @@ def run_with_args(args: argparse.Namespace) -> int:
 
     col = None  # type: Optional[SerialCollector]
     if not args.no_play:
-        try:
-            col = SerialCollector(args.serial_port, args.baud, reset=args.reset)
-        except (serial.SerialException, OSError) as exc:
-            sys.stderr.write(T("Cannot open serial port %s: %s\n") % (args.serial_port, exc))
-            return 2
+        if args.transport == "web":
+            try:
+                col = WebLogCollector(args.web_host, args.web_user, args.web_password,
+                                      poll_interval=args.web_poll_interval)
+            except WebCollectorError as exc:
+                sys.stderr.write(T("Cannot set up the web transport: %s\n") % exc)
+                return 2
+        else:
+            if serial is None:
+                sys.stderr.write(T("pyserial is required:  pip install pyserial") + "\n")
+                return 2
+            try:
+                col = SerialCollector(args.serial_port, args.baud, reset=args.reset)
+            except OSError as exc:      # serial.SerialException is an OSError
+                sys.stderr.write(T("Cannot open serial port %s: %s\n") % (args.serial_port, exc))
+                return 2
     else:
         # dry-run: a dummy collector object that never sees any ESP32 output
         class _Dummy:
@@ -6384,11 +8998,87 @@ def run_with_args(args: argparse.Namespace) -> int:
             def start(self): pass
             def stop(self): pass
         col = _Dummy()  # type: ignore
-    col.start()
+    try:
+        col.start()
+    except WebCollectorError as exc:
+        sys.stderr.write(T("Cannot start the web log collector at %s: %s\n") %
+                         (args.web_host, exc))
+        return 2
     if not args.no_play:
         wait_ready(col, args.settle, args.ready_timeout, args.reset)
 
     mm_extra = args.mm_args.split() if args.mm_args else []
+
+    # -- Radiomodem calibration (--transport web only) ------------------
+    # Puts the receive chain into a known-good state for AFSK1200 decoding
+    # BEFORE anything is measured: both the auto-volume search just below
+    # and the real test run afterwards then see the same, deliberately-tuned
+    # modem rather than whatever the station happened to have saved. See the
+    # ModemOptimizer class (module level) for exactly what is changed and
+    # why; print_modem_optimisation() lists the changes in the final report.
+    modem_opt = None  # type: Optional[ModemOptimizer]
+    # Receive demodulator section before any calibration step touched it,
+    # for the settings summary printed before the real test.
+    rx_start = None  # type: Optional[dict]
+    # Snapshot of the whole Radiomodem page before the bench writes anything.
+    # Everything outside the Receive demodulator section is verified against
+    # it after calibration and at the end of the run, and put back if it ever
+    # differs. Without this snapshot the bench writes nothing at all.
+    page_guard = None  # type: Optional[RadioPageGuard]
+    global _WEB_JOURNAL_PATH
+    if not args.no_play and isinstance(col, WebLogCollector) and args.web_journal:
+        _WEB_JOURNAL_PATH = os.path.abspath(args.web_journal)
+        web_journal("run start", "host %s, argv %s" % (args.web_host, " ".join(sys.argv[1:])))
+        print(T("Web journal (every Radiomodem page read/write): %s") % _WEB_JOURNAL_PATH)
+    if not args.no_play and isinstance(col, WebLogCollector):
+        try:
+            page_guard = RadioPageGuard(col._session, col.base_url)
+            if "adcSelfBias" in page_guard.snapshot:
+                say(T("Radiomodem page read before any change: ADC input self-bias is %s "
+                      "on the station (the bench never changes it).") %
+                    (T("on") if page_guard.snapshot["adcSelfBias"] else T("off")))
+        except ModemOptimizeError as exc:
+            sys.stderr.write(T("  WARNING: cannot read the station's Radiomodem page (%s) - "
+                               "the bench will not change anything on the station.\n") % exc)
+    watch = None  # type: Optional[StationWatch]
+    if page_guard is not None:
+        watch = StationWatch(col, page_guard)
+
+    def _station_abort(exc: "StationStateError") -> int:
+        sys.stderr.write("\n" + "!" * 72 + "\n")
+        sys.stderr.write(T("STATION STATE CHANGED - RUN STOPPED: %s\n") % exc)
+        sys.stderr.write(T("The bench wrote nothing more to the station after this. Check the "
+                           "station's configuration by hand (Radiomodem page, and the other "
+                           "pages if it restarted with factory defaults) before running "
+                           "again.\n"))
+        sys.stderr.write("!" * 72 + "\n")
+        col.stop()
+        return 2
+
+    if (not args.no_play and args.transport == "web" and not args.no_modem_optimize
+            and isinstance(col, WebLogCollector) and page_guard is not None):
+        _LIVE_STATS.reset(T("Calibration"))
+        print(T("\nRadiomodem calibration (--transport web): reading and optimising "
+                "the receive chain at %s ...") % args.web_host)
+        sys.stdout.flush()
+        try:
+            rx_start = read_rx_demod_section(col._session, col.base_url)
+        except ModemOptimizeError:
+            rx_start = None
+        modem_opt = ModemOptimizer(col._session, col.base_url)
+        try:
+            modem_opt.run()
+            if modem_opt.changes:
+                print(T("  %d value(s) changed - see the end-of-run report for details.") %
+                      len(modem_opt.changes))
+            else:
+                print(T("  Every value was already at the recommended setting - "
+                        "nothing changed."))
+        except ModemOptimizeError as exc:
+            modem_opt.error = str(exc)
+            sys.stderr.write(T("  WARNING: Radiomodem calibration failed (%s) - "
+                               "continuing with the station's current settings.\n") % exc)
+        sys.stdout.flush()
 
     # -- Auto-volume calibration --------------------------------------
     # Searches for the optimal playback volume BEFORE the real, reported
@@ -6420,10 +9110,13 @@ def run_with_args(args: argparse.Namespace) -> int:
             offset_auto=offset_auto,
             clip_step_db=args.clip_step_db,
             dw=dw_setup, reference=args.reference)
+        calibrator.watch = watch
         try:
             final_volume = calibrator.run()
             offset_seed = calibrator.offset
             dw_offset_seed = calibrator.dw_offset
+        except StationStateError as exc:
+            return _station_abort(exc)
         except KeyboardInterrupt:
             final_volume = calibrator.safe_volume()
             print(T("\nAuto-volume calibration interrupted - proceeding with the best "
@@ -6436,8 +9129,84 @@ def run_with_args(args: argparse.Namespace) -> int:
             col.stop()
             return 2
 
+    # -- Receive demodulator search (--transport web only) --------------
+    # With the playback level now fixed, measures which Receive demodulator
+    # settings of the Radiomodem page decode this station's audio best and
+    # leaves the winner applied for the real test. Only that fieldset of the
+    # page is ever changed (see DemodSearch); it runs only when the
+    # Radiomodem calibration above ran and succeeded, i.e. never with
+    # --no_modem_optimize.
+    demod = None  # type: Optional[DemodSearch]
+    if (modem_opt is not None and modem_opt.applied and args.demod_max_rounds > 0
+            and isinstance(col, WebLogCollector)):
+        _LIVE_STATS.reset(T("Calibration"))
+        prober = VolumeSearch(
+            wavs, route, args.tail, args.match_window, col,
+            mm_extra, final_volume,
+            batch_size=args.auto_volume_batch,
+            clip_rate=args.clip_rate,
+            max_passes=args.max_passes,
+            normalise=args.normalise,
+            offset_auto=offset_auto,
+            dw=dw_setup, reference=args.reference)
+        prober.offset = offset_seed
+        prober.dw_offset = dw_offset_seed
+        prober.watch = watch
+        demod = DemodSearch(col._session, col.base_url, prober, final_volume,
+                            batch_size=args.auto_volume_batch,
+                            max_rounds=args.demod_max_rounds)
+        try:
+            demod.run()
+        except StationStateError as exc:
+            return _station_abort(exc)
+        except ModemOptimizeError as exc:
+            demod.error = str(exc)
+            sys.stderr.write(T("  WARNING: Receive demodulator search failed (%s) - "
+                               "continuing with the station's settings from before "
+                               "the search.\n") % exc)
+        except KeyboardInterrupt:
+            # Interrupted while applying the final settings: whatever the
+            # station holds now is what the test runs with.
+            demod.interrupted = True
+        except DirewolfError as exc:
+            sys.stderr.write("\n[dw] %s\n" % exc)
+            col.stop()
+            return 2
+        offset_seed = prober.offset or offset_seed
+        dw_offset_seed = prober.dw_offset or dw_offset_seed
+        sys.stdout.flush()
+
+    # -- Settings the real test runs with ------------------------------
+    # One block, after every calibration step and before the first real
+    # file: the volume and every Receive demodulator value, each marked as
+    # modified (with its value before calibration) or unchanged.
+    if not args.no_play:
+        if args.no_auto_volume:
+            vol_mode = T("fixed by --volume (--no_auto_volume)")
+        else:
+            vol_mode = T("selected by the auto-volume calibration")
+        rx_final = None  # type: Optional[dict]
+        rx_note = None   # type: Optional[str]
+        if isinstance(col, WebLogCollector):
+            try:
+                rx_final = read_rx_demod_section(col._session, col.base_url)
+            except ModemOptimizeError as exc:
+                rx_note = T("could not be read: %s") % exc
+            if args.no_modem_optimize:
+                rx_note = T("read only: --no_modem_optimize, calibration did not change it")
+                rx_start = rx_final
+            elif rx_start is None and rx_final is not None:
+                rx_note = T("the values before calibration could not be read; "
+                            "modified values cannot be marked")
+                rx_start = rx_final
+        if page_guard is not None:
+            _check_radio_page(page_guard)
+        print_calibration_summary(args.volume, final_volume, vol_mode,
+                                  rx_start, rx_final, rx_note, guard=page_guard)
+
     results = []  # type: List[FileResult]
     dw_failed = False
+    station_failed = False
     _LIVE_STATS.reset(T("Test"))
     try:
         for n, wav in enumerate(wavs, 1):
@@ -6458,7 +9227,14 @@ def run_with_args(args: argparse.Namespace) -> int:
                 print_dw_file_report(res, dw_setup, dry_run=args.no_play)
             if not args.no_play:
                 print_loss_resume(res, results)
+            if watch is not None:
+                watch.check(T("test file %d/%d") % (n, len(wavs)))
             sleep_or_stop(args.pause)
+    except StationStateError as exc:
+        station_failed = True
+        sys.stderr.write("\n" + "!" * 72 + "\n")
+        sys.stderr.write(T("STATION STATE CHANGED - RUN STOPPED: %s\n") % exc)
+        sys.stderr.write("!" * 72 + "\n")
     except KeyboardInterrupt:
         print(T("\nInterrupted - reporting what has been tested so far."))
     except DirewolfError as exc:
@@ -6466,6 +9242,11 @@ def run_with_args(args: argparse.Namespace) -> int:
         sys.stderr.write("\n[dw] %s\n" % exc)
         print(T("\nDirewolf failed - reporting what has been tested so far."))
     finally:
+        if page_guard is not None and not station_failed:
+            try:
+                _check_radio_page(page_guard, final=True)
+            except BaseException:
+                pass
         col.stop()
 
     if args.report_csv and dw_setup is not None and results:
@@ -6489,11 +9270,13 @@ def run_with_args(args: argparse.Namespace) -> int:
     if not results:
         return 2
     rc = print_summary(results, final_volume)
+    print_modem_optimisation(modem_opt)
+    print_demod_search(demod)
     if dw_setup is not None:
         dw_rc = print_dw_summary(results, dw_setup, args.reference)
         if args.reference != "multimon":
             rc = dw_rc
-    return 2 if dw_failed else rc
+    return 2 if (dw_failed or station_failed) else rc
 
 
 if __name__ == "__main__":
