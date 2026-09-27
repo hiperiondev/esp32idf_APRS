@@ -352,7 +352,10 @@ The pages
        that is closed, put to sleep or cut off mid-session says nothing at
        all, which is why the mirror also stops itself once nothing has read it
        for ten seconds. Nothing is written to flash and nothing is recorded -
-       only what arrives while the window is open is shown. Live lines via
+       only what arrives while the window is open is shown. Each line keeps
+       every byte the console printed except the carriage return, so an
+       ``RX:`` line shows a received frame's information field exactly as it
+       arrived, Mic-E control bytes included. Live lines via
        ``/logs/read``, polled every second. The button is disabled for the
        length of a *Start* request and a status line beside it reports
        whether the station could not start capturing - the allocation for

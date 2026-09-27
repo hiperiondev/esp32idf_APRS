@@ -939,6 +939,27 @@ descartan en silencio: no se imprimen ni se cuentan de ninguna forma.
 | `--settle S` | `1` | Segundos extra de espera una vez que el módem informó que está listo tras un arranque. No se usa si el firmware ya estaba en marcha. |
 | `--pause S` | `1` | Pausa entre archivos. |
 
+### Transporte web
+
+Con `--transport web` el banco lee la consola del ESP32 a través de la
+administración web de la estación (`/logs/start`, `/logs/read`, `/logs/stop`) en
+lugar del cable serie. Cada línea `RX:` llega byte a byte: el firmware envía los
+caracteres de control, `0x7F` y los bytes desde `0x80` como escapes `\u00XX` y el
+banco los vuelve a convertir en los mismos bytes, así que las cargas útiles Mic-E
+se comparan exactamente igual que por el cable serie.
+
+| Opción | Valor predeterminado | Significado |
+|---|---|---|
+| `--transport serial\|web` | `serial` | Cómo se lee la consola del ESP32. `web` no necesita cable, pero no puede reiniciar el ESP32 (`--reset` se rechaza) ni ver el banner de arranque de la ROM. |
+| `--web_host HOST[:PUERTO]` | — | Dirección de la administración web de la estación. Obligatoria con `--transport web`. |
+| `--web_user USUARIO` | — | Usuario de la administración web (HTTP Basic Auth). Omitir solo si la estación no tiene usuario de administración. |
+| `--web_password CLAVE` | — | Contraseña de la administración web. Se escribe como `***` en todo lugar donde el banco registra su línea de comandos (el diario web y la consola de `--gui`). |
+| `--web_poll_interval S` | `0.4` | Cada cuánto se consulta `/logs/read`. Debe quedar bien por debajo del tiempo de inactividad de 10 s del firmware y ser lo bastante corto para su anillo de 50 líneas. |
+| `--web_journal ARCHIVO` | `test_aprs_wavs_web.log` | Registra cada lectura y escritura de la página Radiomodem durante la ejecución. Una cadena vacía lo desactiva. |
+| `--no_modem_optimize` | desactivado | Deja intacta la página Radiomodem de la estación. Por defecto el banco aplica una cadena de recepción conocida y, una vez elegido el volumen, busca en la sección *Demodulador de recepción* (y solo en ella) los mejores ajustes. |
+| `--demod_max_rounds N` | `24` | Presupuesto de esa búsqueda, en sondeos de `--auto_volume_batch` paquetes. `0` la omite. |
+| `--flat_audio keep\|auto\|on\|off` | `keep` | La casilla *Entrada de audio plana*: `keep` nunca la toca, `auto` mide ambos valores y conserva el mejor, `on`/`off` la fuerzan. |
+
 ### Interfaz y mantenimiento
 
 | Opción | Valor predeterminado | Significado |
@@ -1091,7 +1112,10 @@ serie y sin esperas** (alrededor de un segundo). Comprueba
   un descenso que agota el presupuesto igual termina por debajo del techo; y una
   búsqueda interrumpida vuelve por debajo del techo, no a la ganancia inicial;
 * que un sondeo sobre un conjunto de WAV que no decodifica nada termine en vez de
-  quedarse en bucle para siempre, y que nunca suba la ganancia.
+  quedarse en bucle para siempre, y que nunca suba la ganancia;
+* que con `--transport web` una carga útil Mic-E con bytes de control y de 8 bits
+  llega byte a byte y coincide con multimon-ng, y que `--web_password` queda
+  oculta en una línea de comandos registrada.
 
 Cada comprobación imprime `PASS` o `FAIL`; el código de salida es 0 cuando todo
 pasó y 1 en caso contrario. Vale la pena ejecutarla tras editar el script, y es lo
@@ -1285,7 +1309,7 @@ firmware, y todas están contempladas:
 |---|---|---|---|
 | SSID 0 | imprime `LU1ABC-0` | imprime `LU1ABC` | se elimina un `-0` final |
 | Marca de digirepetición | nunca imprime `*` | imprime `WIDE1-1*` después de que un digi lo repitió | se ignora el `*` |
-| Bytes no imprimibles (los paquetes Mic-E contienen bytes de control y de 8 bits) | los muestra como `.` | escribe los bytes en crudo | el contenido del ESP32 se convierte de la misma manera antes de comparar |
+| Bytes no imprimibles (los paquetes Mic-E contienen bytes de control y de 8 bits) | los muestra como `.` | escribe los bytes en crudo (con `--transport web` llegan como escapes `\u00XX` y se restauran a los mismos bytes) | el contenido del ESP32 se convierte de la misma manera antes de comparar |
 | Retorno de carro final | lo descarta | lo escribe en crudo | se ignora un CR/LF/NUL final |
 | Mayúsculas/minúsculas de las direcciones | tal como se oyeron | tal como se oyeron | el origen, el destino y la ruta se pasan a mayúsculas antes de comparar, así que la caja por sí sola nunca produce un DIFFERENT |
 

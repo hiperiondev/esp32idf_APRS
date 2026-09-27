@@ -395,8 +395,11 @@ Le pagine
        non dice nulla, ed è per questo che la copia si ferma anche da sola
        quando nessuno la legge per dieci secondi. Non viene scritto nulla nella
        flash e non viene registrato nulla: viene mostrato solo ciò che arriva
-       mentre la finestra è aperta. Righe live tramite ``/logs/read``,
-       interrogato ogni secondo. Il pulsante resta disabilitato per la durata
+       mentre la finestra è aperta. Ogni riga conserva tutti i byte stampati
+       dalla console tranne il ritorno a capo (CR), quindi una riga ``RX:``
+       mostra il campo informativo della trama ricevuta così come è arrivato,
+       compresi i byte di controllo di Mic-E. Righe live tramite
+       ``/logs/read``, interrogato ogni secondo. Il pulsante resta disabilitato per la durata
        di una richiesta *Avvia* e una riga di stato accanto ad esso segnala se
        la stazione non è riuscita ad avviare la cattura - l'allocazione della
        finestra può perdere contro la pressione di memoria altrove nella

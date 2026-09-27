@@ -74,7 +74,10 @@ station reachable only over Wi-Fi/Ethernet, with no cable attached. It needs
 and cannot see the ROM boot banner, and its 50-line/255-char-per-line ring
 buffer on the firmware side means a very long "RX:" line, or a burst of many
 packets between two polls, needs care - see --help for --web_poll_interval
-and the WebLogCollector class docstring for the details.
+and the WebLogCollector class docstring for the details. The payload itself
+arrives byte for byte: the firmware sends control characters and bytes from
+0x80 upwards as \\u00xx escapes, so Mic-E frames compare exactly as they do
+over the serial cable.
 
 With --transport web (and unless --no_modem_optimize is given) the bench also
 tunes the station's Radiomodem page before the real test: it first applies a
@@ -2220,6 +2223,20 @@ _CATALOG["it"].update({
             "con --transport web e senza --no_modem_optimize: la casella 'Ingresso audio piatto' della pagina Radiomodem (audio piatto / da discriminatore contro audio da altoparlante con de-enfasi), l'unico campo fuori dalla sezione Demodulatore di ricezione che si può chiedere al banco di cambiare. keep (predefinito): mai toccato. auto: durante la calibrazione, dopo la scelta del volume e prima della ricerca del demodulatore, si misurano entrambi i valori sullo stesso audio e si mantiene il migliore (confermato da un secondo lotto) per la prova reale. on / off: forzato a piatto / con de-enfasi prima della calibrazione automatica del volume. Il valore scelto è riportato prima della prova reale e nel rapporto finale.",
 })
 
+# --transport web: byte-exact payloads and secret redaction
+_CATALOG["es"].update({
+        "a Mic-E payload with control and 8-bit bytes arrives over the web byte for byte and matches multimon-ng":
+            "un payload Mic-E con bytes de control y de 8 bits llega por web byte a byte y coincide con multimon-ng",
+        "--web_password is masked in a logged command line":
+            "--web_password queda oculta en una línea de comandos registrada",
+})
+_CATALOG["it"].update({
+        "a Mic-E payload with control and 8-bit bytes arrives over the web byte for byte and matches multimon-ng":
+            "un payload Mic-E con byte di controllo e a 8 bit arriva via web byte per byte e coincide con multimon-ng",
+        "--web_password is masked in a logged command line":
+            "--web_password è mascherata in una riga di comando registrata",
+})
+
 # pyserial is only needed by --transport serial. --transport web reads the
 # console through the station's web admin alone and must not depend on,
 # import-fail on, or open anything serial.
@@ -3327,6 +3344,12 @@ class WebLogCollector(threading.Thread):
         ever produces discrete, already-line-assembled, already-ANSI-free
         JSON strings. If raw_sink is set, it is fed synthesised
         `line + "\\n"` bytes rather than genuine raw bytes.
+      * the content of each line is byte-exact apart from carriage returns.
+        The firmware escapes every control character, 0x7F and every byte
+        from 0x80 upwards as \\u00xx (the code point of the same value), so
+        encoding the decoded JSON string as ISO 8859-1 gives back exactly
+        the bytes the console printed - which is what keeps a Mic-E payload
+        equal to the one multimon-ng and Direwolf report.
       * the firmware's log-mirror ring buffer holds only the last
         LOGCAPTURE_CAPACITY lines and wraps any single console line longer
         than LOGCAPTURE_LINE_MAX characters across two or more ring rows
@@ -3486,13 +3509,18 @@ class WebLogCollector(threading.Thread):
         self._handle_web_line(raw)
 
     def _handle_web_line(self, line: str) -> None:
+        # Every character of a /logs/read line is U+0000..U+00FF, one per
+        # console byte (see the class docstring), so ISO 8859-1 restores the
+        # exact bytes. "replace" only guards against a station that does not
+        # follow that contract.
+        data = line.encode("latin-1", "replace")
         sink = self.raw_sink
         if sink is not None:
             try:
-                sink((line + "\n").encode("utf-8", "replace"))
+                sink(data + b"\n")
             except Exception:
                 pass          # a broken viewer must never kill the reader
-        self._handle_line(line.encode("utf-8", "replace"))
+        self._handle_line(data)
 
     def _handle_line(self, line: bytes) -> None:
         """Same logic as SerialCollector._handle_line(), minus boot-banner
@@ -3664,6 +3692,36 @@ RADIO_POST_CHECKBOXES = ("audioModemEn", "audioLPF", "dutyCycleEn", "rxBlank",
 # --transport web: file that records every /radio page read and write of the
 # run (set by main(); None = off). Evidence for anything that changes on the
 # station during a run.
+# Options whose value is a secret: redact_argv() never lets it reach a log
+# file or the GUI console.
+SECRET_OPTIONS = ("--web_password",)
+REDACTED = "***"
+
+
+def redact_argv(argv: List[str]) -> List[str]:
+    """Copy of a command line with the value of every SECRET_OPTIONS option
+    replaced by REDACTED, in both the "--opt value" and the "--opt=value"
+    spellings. Everything else is returned unchanged, so the line still
+    reproduces the run once the secret is supplied again."""
+    out = []  # type: List[str]
+    hide_next = False
+    for arg in argv:
+        if hide_next:
+            out.append(REDACTED)
+            hide_next = False
+            continue
+        name, sep, _value = arg.partition("=")
+        if name in SECRET_OPTIONS:
+            if sep:
+                out.append(name + "=" + REDACTED)
+            else:
+                out.append(arg)
+                hide_next = True
+            continue
+        out.append(arg)
+    return out
+
+
 _WEB_JOURNAL_PATH = None  # type: Optional[str]
 _WEB_POST_COUNT = [0]
 
@@ -8163,6 +8221,30 @@ def selftest() -> int:
           "serial" not in {c.__name__ for c in WebLogCollector.__mro__} and
           not issubclass(WebLogCollector, SerialCollector))
 
+    # A /logs/read line exactly as the firmware's json_escape_bytes() writes
+    # it: a Mic-E information field whose speed/course bytes are 0x1C, plus a
+    # DEL and an 8-bit byte, all as \u00xx escapes.
+    mice_info = b"`(_fl\x1c\x1c[/>\"4]}\x7f\xff"
+    mice_json = ('"I (4242) aprs_service: RX: LU1ABC-9>SV2RYT,WIDE2-2:'
+                 '`(_fl\\u001c\\u001c[/>\\"4]}\\u007f\\u00ff"')
+    wm = WebLogCollector.__new__(WebLogCollector)
+    wm._init_state()
+    wm.raw_sink = None
+    wm._feed_line(json.loads(mice_json))
+    got = wm.since(0)
+    want = make_packet("LU1ABC-9", "SV2RYT", ["WIDE2-2"], mice_info, "")
+    mm_view = make_packet("LU1ABC-9", "SV2RYT", ["WIDE2-2"],
+                          b"`(_fl..[/>\"4]}..", "")
+    check(T("a Mic-E payload with control and 8-bit bytes arrives over the web "
+            "byte for byte and matches multimon-ng"),
+          len(got) == 1 and got[0].same_content(want) and got[0].same_content(mm_view),
+          repr(got[0].info if got else None))
+    check(T("--web_password is masked in a logged command line"),
+          redact_argv(["--web_host", "h", "--web_password", "s3cret", "--gui"]) ==
+          ["--web_host", "h", "--web_password", REDACTED, "--gui"] and
+          redact_argv(["--web_password=s3cret"]) == ["--web_password=" + REDACTED] and
+          "s3cret" not in " ".join(redact_argv(["--web_password", "s3cret"])))
+
     st = _FakeRadioStation()
     sess = _FakeSession(st)
     rx0 = read_rx_demod_section(sess, "http://x")
@@ -8908,7 +8990,7 @@ def run_gui(ap: argparse.ArgumentParser, initial_values: Optional[dict] = None,
         sys.stdout = _QueueWriter(q, "stdout")
         sys.stderr = _QueueWriter(q, "stderr")
         _RAW_SERIAL_SINK = lambda chunk: q.put(("serial", chunk))
-        argv = " ".join(shlex.quote(a) for a in _namespace_to_argv(ap, ns))
+        argv = " ".join(shlex.quote(a) for a in redact_argv(_namespace_to_argv(ap, ns)))
         q.put(("console", "stdout", "$ test_aprs_wavs.py %s\n" % argv))
         t = threading.Thread(target=worker, args=(ns,), daemon=True)
         state["thread"] = t
@@ -9548,7 +9630,7 @@ def run_with_args(args: argparse.Namespace) -> int:
     global _WEB_JOURNAL_PATH
     if not args.no_play and isinstance(col, WebLogCollector) and args.web_journal:
         _WEB_JOURNAL_PATH = os.path.abspath(args.web_journal)
-        web_journal("run start", "host %s, argv %s" % (args.web_host, " ".join(sys.argv[1:])))
+        web_journal("run start", "host %s, argv %s" % (args.web_host, " ".join(redact_argv(sys.argv[1:]))))
         print(T("Web journal (every Radiomodem page read/write): %s") % _WEB_JOURNAL_PATH)
     if not args.no_play and isinstance(col, WebLogCollector):
         try:

@@ -14,20 +14,21 @@
  *
  *     please contact their authors for more information.
  *
- * @brief JSON string escaping, in the two shapes the firmware needs.
+ * @brief JSON string escaping, in the three shapes the firmware needs.
  *
- * The device emits JSON in two situations and neither one uses cJSON to print
- * it: the web pages fetch small JSON documents assembled in fixed-size RAM
- * buffers (last heard, traffic log, message history), and the persisted
+ * The device emits JSON in three situations and none of them uses cJSON to
+ * print it: the web pages fetch small JSON documents assembled in fixed-size
+ * RAM buffers (last heard, traffic log, message history), the persisted
  * configuration files are streamed token-by-token straight to a FILE so no
- * whole-document copy ever exists in RAM. Both need the same guarantee - any
- * text an operator or an off-air packet can put into a field must come back out
- * of cJSON_Parse() unchanged, and must never be able to terminate the string
- * literal it sits in.
+ * whole-document copy ever exists in RAM, and the web admin's console mirror
+ * serves raw console lines that can carry any byte an off-air packet holds.
+ * All of them need the same guarantee - any text an operator or an off-air
+ * packet can put into a field must come back out of a JSON parser unchanged,
+ * and must never be able to terminate the string literal it sits in.
  *
- * json_escape() serves the buffer case and json_write_escaped() the streaming
- * case; they are the single implementation of that guarantee for every producer
- * in the firmware.
+ * json_escape() serves the buffer case, json_write_escaped() the streaming
+ * case and json_escape_bytes() the byte-transparent case; they are the single
+ * implementation of that guarantee for every producer in the firmware.
  *
  * This header is deliberately implementation-only (static inline, no .c file)
  * so it can be included from `main/` and from every component that has
@@ -80,6 +81,89 @@ static inline size_t json_escape(const char *src, char *dst, size_t dst_size) {
                 dst[di++] = 'n';
             } else if (c < 0x20) {
                 continue;
+            } else {
+                dst[di++] = (char)c;
+            }
+        }
+    }
+
+    dst[di] = 0;
+    return di;
+}
+
+/**
+ * @brief Largest number of output characters json_escape_bytes() produces for
+ * one input byte.
+ *
+ * @details A byte that has to be written as a Unicode escape takes the six
+ * characters of "\\u00xx". A caller sizing a buffer for a string of @c n
+ * bytes reserves @c n * ::JSON_ESCAPE_BYTES_MAX_EXPANSION characters plus the
+ * terminating NUL and can then never see the output cut short.
+ */
+#define JSON_ESCAPE_BYTES_MAX_EXPANSION 6
+
+/**
+ * @brief Escape @p src into @p dst as the body of a JSON string literal
+ * (without the surrounding quotes), keeping every byte of the input.
+ *
+ * @details This is the escaper for text whose bytes carry information of their
+ * own, such as a console line that renders a received AX.25 frame: a Mic-E
+ * information field, for one, encodes its longitude and its speed and course in
+ * bytes from 0x1C upwards, so a control character there is payload rather than
+ * formatting.
+ *
+ * Every byte of @p src is therefore represented in the output:
+ *   - a quote or a backslash becomes a two-character escape;
+ *   - a byte below 0x20, the byte 0x7F, and every byte from 0x80 upwards
+ *     become "\\u00xx", where xx is the byte value in lower-case hex;
+ *   - every other byte is copied as it is.
+ *
+ * A byte from 0x80 upwards thus turns into the Unicode code point of the same
+ * value (its ISO 8859-1 reading), which keeps the document valid UTF-8 whatever
+ * the input holds, and lets a client recover the exact byte string by encoding
+ * the decoded text as ISO 8859-1.
+ *
+ * The output never runs past @p dst: an escape that does not fit, together with
+ * the terminating NUL, ends the output at the byte before it, so a value that
+ * does not fit is cut short at a byte boundary and never leaves a partial
+ * escape. A buffer of strlen(@p src) * ::JSON_ESCAPE_BYTES_MAX_EXPANSION + 1
+ * bytes always holds the complete result.
+ *
+ * @param src      Source text (NUL-terminated).
+ * @param dst      Destination buffer, always left NUL-terminated.
+ * @param dst_size Size of @p dst in bytes, including room for the NUL.
+ * @return Number of characters written to @p dst, excluding the NUL.
+ */
+static inline size_t json_escape_bytes(const char *src, char *dst, size_t dst_size) {
+    static const char hex[] = "0123456789abcdef";
+    size_t di = 0;
+
+    if (dst == NULL || dst_size == 0)
+        return 0;
+
+    if (src != NULL) {
+        for (const char *p = src; *p; p++) {
+            unsigned char c = (unsigned char)*p;
+            size_t need = 1;
+
+            if (c == '"' || c == '\\')
+                need = 2;
+            else if (c < 0x20 || c >= 0x7F)
+                need = JSON_ESCAPE_BYTES_MAX_EXPANSION;
+
+            if (di + need + 1 > dst_size)
+                break;
+
+            if (need == 2) {
+                dst[di++] = '\\';
+                dst[di++] = (char)c;
+            } else if (need == JSON_ESCAPE_BYTES_MAX_EXPANSION) {
+                dst[di++] = '\\';
+                dst[di++] = 'u';
+                dst[di++] = '0';
+                dst[di++] = '0';
+                dst[di++] = hex[c >> 4];
+                dst[di++] = hex[c & 0x0F];
             } else {
                 dst[di++] = (char)c;
             }

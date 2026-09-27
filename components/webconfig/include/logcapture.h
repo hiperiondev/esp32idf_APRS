@@ -26,7 +26,14 @@
  * forwards to the console writer it replaced, so the serial output is
  * unchanged whether the mirror is capturing or not; when it is capturing it
  * additionally formats the same text, strips the ANSI colour sequences
- * ESP-IDF adds, splits it into lines and stores those lines in the ring.
+ * ESP-IDF adds and the carriage returns of its CRLF line endings, splits it
+ * into lines and stores those lines in the ring. Every other byte is stored as
+ * the console printed it, control characters and bytes from 0x80 upwards
+ * included: a line that renders a received frame ("RX: SRC>DST:...") carries
+ * the frame's information field verbatim, and some APRS formats - Mic-E above
+ * all - put payload in bytes from 0x1C upwards. logcapture_next_json() escapes
+ * those bytes instead of dropping them, so a web client sees the same bytes a
+ * serial cable delivers.
  *
  * Capture is off by default and costs nothing while off: the ring is
  * allocated by logcapture_start() and released by logcapture_stop(), so the
@@ -97,11 +104,12 @@ extern "C" {
  * @details A caller streaming the feed sizes its per-line buffer with this
  * constant and is then guaranteed that no line is ever cut short or dropped
  * for want of room, however many of its characters need escaping. The value
- * covers the two enclosing quotes plus a worst case of two output characters
- * per stored character, and is checked against ::LOGCAPTURE_LINE_MAX by a
- * static assertion in logcapture.c.
+ * covers the two enclosing quotes, a worst case of six output characters per
+ * stored byte (the "\\u00xx" form json_escape_bytes() writes for a control
+ * character or a byte from 0x80 upwards) and the terminating NUL, and is
+ * checked against ::LOGCAPTURE_LINE_MAX by a static assertion in logcapture.c.
  */
-#define LOGCAPTURE_JSON_LINE_MAX 520
+#define LOGCAPTURE_JSON_LINE_MAX 1533
 
 /**
  * @brief Begin mirroring the console log into the ring.
@@ -162,7 +170,12 @@ uint32_t logcapture_latest_seq(void);
  *
  * @details The result is a complete, quoted and escaped JSON string with no
  * leading or trailing separator - the caller supplies the commas and the
- * enclosing array - and is NUL-terminated.
+ * enclosing array - and is NUL-terminated. The line is escaped with
+ * json_escape_bytes(): quotes and backslashes get their two-character escape,
+ * and every control character, the byte 0x7F and every byte from 0x80 upwards
+ * become "\\u00xx". The document is therefore valid UTF-8 whatever the line
+ * holds, and a client that encodes the decoded string as ISO 8859-1 gets back
+ * exactly the bytes the console printed.
  *
  * Call it in a loop, seeding @p after_seq with the sequence number the client
  * last saw and feeding the value returned through @p out_seq back in as

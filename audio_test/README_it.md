@@ -943,6 +943,27 @@ alcun modo.
 | `--settle S` | `1` | Secondi di attesa aggiuntivi dopo che il modem si è dichiarato pronto a seguito di un avvio. Non usato se il firmware era già in esecuzione. |
 | `--pause S` | `1` | Pausa tra i file. |
 
+### Trasporto web
+
+Con `--transport web` il banco legge la console dell'ESP32 attraverso
+l'amministrazione web della stazione (`/logs/start`, `/logs/read`, `/logs/stop`)
+invece del cavo seriale. Ogni riga `RX:` arriva byte per byte: il firmware invia i
+caratteri di controllo, `0x7F` e i byte da `0x80` in su come escape `\u00XX` e il
+banco li riconverte negli stessi byte, quindi i payload Mic-E si confrontano
+esattamente come tramite il cavo seriale.
+
+| Opzione | Predefinito | Significato |
+|---|---|---|
+| `--transport serial\|web` | `serial` | Come viene letta la console dell'ESP32. `web` non richiede cavo, ma non può resettare l'ESP32 (`--reset` viene rifiutato) né vedere il banner di avvio della ROM. |
+| `--web_host HOST[:PORTA]` | — | Indirizzo dell'amministrazione web della stazione. Obbligatorio con `--transport web`. |
+| `--web_user UTENTE` | — | Utente dell'amministrazione web (HTTP Basic Auth). Omettere solo se la stazione non ha un utente amministratore. |
+| `--web_password PASSWORD` | — | Password dell'amministrazione web. Viene scritta come `***` ovunque il banco registri la sua riga di comando (il diario web e la console di `--gui`). |
+| `--web_poll_interval S` | `0.4` | Ogni quanto viene interrogato `/logs/read`. Deve restare ben sotto il timeout di inattività di 10 s del firmware ed essere abbastanza breve per il suo anello di 50 righe. |
+| `--web_journal FILE` | `test_aprs_wavs_web.log` | Registra ogni lettura e scrittura della pagina Radiomodem durante l'esecuzione. Una stringa vuota lo disattiva. |
+| `--no_modem_optimize` | disattivato | Lascia intatta la pagina Radiomodem della stazione. Per impostazione predefinita il banco applica una catena di ricezione collaudata e, scelto il volume, cerca nella sezione *Demodulatore di ricezione* (e solo in quella) le impostazioni migliori. |
+| `--demod_max_rounds N` | `24` | Budget di quella ricerca, in sondaggi di `--auto_volume_batch` pacchetti. `0` la salta. |
+| `--flat_audio keep\|auto\|on\|off` | `keep` | La casella *Ingresso audio piatto*: `keep` non la tocca mai, `auto` misura entrambi i valori e mantiene il migliore, `on`/`off` la forzano. |
+
 ### Interfaccia e manutenzione
 
 | Opzione | Predefinito | Significato |
@@ -1094,7 +1115,10 @@ senza attese** (circa un secondo). Verifica
   quel livello; una discesa che esaurisce il budget finisce comunque sotto il tetto;
   e una ricerca interrotta ripiega sotto il tetto, non sul guadagno iniziale;
 * che un sondaggio su un insieme di WAV che non decodifica nulla termini invece di
-  restare in ciclo per sempre, e non alzi mai il guadagno.
+  restare in ciclo per sempre, e non alzi mai il guadagno;
+* che con `--transport web` un payload Mic-E con byte di controllo e a 8 bit
+  arrivi byte per byte e coincida con multimon-ng, e che `--web_password` sia
+  mascherata in una riga di comando registrata.
 
 Ogni verifica stampa `PASS` o `FAIL`; il codice di uscita è 0 quando tutto è passato e
 1 altrimenti. Vale la pena eseguirlo dopo aver modificato lo script, ed è la prima
@@ -1290,7 +1314,7 @@ firmware, e tutte sono gestite:
 |---|---|---|---|
 | SSID 0 | stampa `LU1ABC-0` | stampa `LU1ABC` | un `-0` finale viene rimosso |
 | Marcatore di digipeating | non stampa mai `*` | stampa `WIDE1-1*` dopo che un digi lo ha ripetuto | l'`*` viene ignorato |
-| Byte non stampabili (i pacchetti Mic-E contengono byte di controllo e a 8 bit) | li mostra come `.` | scrive i byte grezzi | il contenuto dell'ESP32 viene convertito allo stesso modo prima del confronto |
+| Byte non stampabili (i pacchetti Mic-E contengono byte di controllo e a 8 bit) | li mostra come `.` | scrive i byte grezzi (con `--transport web` arrivano come escape `\u00XX` e vengono riportati agli stessi byte) | il contenuto dell'ESP32 viene convertito allo stesso modo prima del confronto |
 | Ritorno a capo finale | lo scarta | lo scrive grezzo | un CR/LF/NUL finale viene ignorato |
 | Maiuscole/minuscole degli indirizzi | come uditi | come uditi | origine, destinazione e percorso vengono portati in maiuscolo prima del confronto, quindi il solo caso delle lettere non produce mai un DIFFERENT |
 

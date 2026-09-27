@@ -891,6 +891,27 @@ not printed, not counted either way.
 | `--settle S` | `1` | Extra seconds to wait once the modem has reported ready after a boot. Not used when the firmware was already running. |
 | `--pause S` | `1` | Pause between files. |
 
+### Web transport
+
+With `--transport web` the bench reads the ESP32 console through the station's
+web admin (`/logs/start`, `/logs/read`, `/logs/stop`) instead of the serial
+cable. Every `RX:` line arrives byte for byte: the firmware sends control
+characters, `0x7F` and bytes from `0x80` up as `\u00XX` escapes and the bench
+turns them back into the same bytes, so Mic-E payloads compare exactly as they do
+over the serial cable.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--transport serial\|web` | `serial` | How the ESP32 console is read. `web` needs no cable, but cannot reset the ESP32 (`--reset` is rejected) and cannot see the ROM boot banner. |
+| `--web_host HOST[:PORT]` | — | Web admin address of the station. Required with `--transport web`. |
+| `--web_user USER` | — | Web admin user (HTTP Basic Auth). Omit only if the station has no admin user. |
+| `--web_password PASS` | — | Web admin password. It is written as `***` wherever the bench records its command line (the web journal and the `--gui` console). |
+| `--web_poll_interval S` | `0.4` | How often `/logs/read` is polled. Keep it well under the firmware's 10 s idle timeout and short enough for its 50-line ring. |
+| `--web_journal FILE` | `test_aprs_wavs_web.log` | Records every read and write of the Radiomodem page during the run. An empty string disables it. |
+| `--no_modem_optimize` | off | Leave the station's Radiomodem page untouched. By default the bench applies a known-good receive chain and, once the volume is chosen, searches the *Receive demodulator* section (and only that section) for the best settings. |
+| `--demod_max_rounds N` | `24` | Budget of that search, in probes of `--auto_volume_batch` packets. `0` skips it. |
+| `--flat_audio keep\|auto\|on\|off` | `keep` | The *Flat audio input* checkbox: `keep` never touches it, `auto` measures both settings and keeps the better one, `on`/`off` force it. |
+
 ### Interface and maintenance
 
 | Option | Default | Meaning |
@@ -1039,7 +1060,10 @@ waiting** (about a second). It checks
   that runs out of budget still ends below the ceiling; and an interrupted search
   falls back below the ceiling rather than to the starting gain;
 * that a probe over a WAV set that decodes nothing terminates instead of looping
-  for ever, and never raises the gain.
+  for ever, and never raises the gain;
+* that over `--transport web` a Mic-E payload with control and 8-bit bytes
+  arrives byte for byte and matches multimon-ng, and that `--web_password` is
+  masked in a logged command line.
 
 Each check prints `PASS` or `FAIL`; the exit code is 0 when everything passed and
 1 otherwise. Worth running after editing the script, and the first thing to run
@@ -1230,7 +1254,7 @@ handled:
 |---|---|---|---|
 | SSID 0 | prints `LU1ABC-0` | prints `LU1ABC` | a trailing `-0` is removed |
 | Digipeated marker | never prints `*` | prints `WIDE1-1*` after a digi repeated it | the `*` is ignored |
-| Non-printable bytes (Mic-E packets contain control and 8-bit bytes) | shows them as `.` | writes the raw bytes | the ESP32 payload is converted the same way before comparing |
+| Non-printable bytes (Mic-E packets contain control and 8-bit bytes) | shows them as `.` | writes the raw bytes (over `--transport web` they arrive as `\u00XX` escapes and are restored to the same bytes) | the ESP32 payload is converted the same way before comparing |
 | Trailing carriage return | dropped | written raw | a trailing CR/LF/NUL is ignored |
 | Letter case of the addresses | as heard | as heard | source, destination and path are upper-cased before comparing, so case alone never makes a DIFFERENT |
 

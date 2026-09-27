@@ -115,7 +115,10 @@ the station changes with it.
    * - POST
      - ``/logs/read?since=<seq>``
      - captured console lines since ``seq`` (JSON), polled every 1 s; the poll
-       is also what rearms the mirror's idle timeout, which is why it is POST
+       is also what rearms the mirror's idle timeout, which is why it is POST.
+       Lines are byte-exact apart from CR: control characters, ``0x7F`` and
+       bytes from ``0x80`` up are sent as ``\u00XX``, so the document is
+       valid UTF-8 and encoding each string as ISO 8859-1 restores the bytes
    * - GET/POST
      - ``/bulletins``
      - APRS bulletins BLN1..BLN5

@@ -122,7 +122,10 @@ stazione cambia con esso.
      - ``/logs/read?since=<seq>``
      - righe di console catturate da ``seq`` (JSON), interrogato ogni 1 s;
        l'interrogazione riarma anche il tempo di inattività della copia, ed è
-       per questo che è POST
+       per questo che è POST. Le righe sono esatte byte per byte tranne il CR:
+       i caratteri di controllo, ``0x7F`` e i byte da ``0x80`` in su sono
+       inviati come ``\u00XX``, quindi il documento è UTF-8 valido e
+       codificare ogni stringa come ISO 8859-1 restituisce i byte originali
    * - GET/POST
      - ``/bulletins``
      - bollettini APRS BLN1..BLN5

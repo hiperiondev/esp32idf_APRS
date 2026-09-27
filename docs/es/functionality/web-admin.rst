@@ -386,7 +386,10 @@ Las páginas
        dormida o cortada a media sesión no dice nada, y por eso la copia
        también se detiene sola cuando nadie la lee durante diez segundos. No
        se escribe nada en la flash ni se graba nada: solo se muestra lo que
-       llega mientras la ventana está abierta. Líneas en vivo por
+       llega mientras la ventana está abierta. Cada línea conserva todos los
+       bytes que imprimió la consola salvo el retorno de carro, así que una
+       línea ``RX:`` muestra el campo de información de la trama recibida tal
+       como llegó, incluidos los bytes de control de Mic-E. Líneas en vivo por
        ``/logs/read``, consultado cada segundo. El botón queda deshabilitado
        mientras dura una solicitud de *Iniciar* y una línea de estado junto a
        él informa si la estación no pudo empezar a capturar - la reserva de

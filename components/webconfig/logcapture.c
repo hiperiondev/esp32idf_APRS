@@ -31,7 +31,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "heap_monitor.h" // HEAP_MONITOR_BRACKET() - the ring below is a single multi-kilobyte block
-#include "json_escape.h"  // json_escape()
+#include "json_escape.h"  // json_escape_bytes()
 
 // Working buffer the hook formats one console write into before the line
 // assembler walks it. Two full rows wide, so the common case - one log
@@ -43,9 +43,10 @@
 // only ever touched under s_lock.
 #define LOGCAPTURE_SCRATCH_LEN ((LOGCAPTURE_LINE_MAX + 1) * 2)
 
-// The two enclosing quotes, plus a worst case of two output characters for
-// every stored character, plus the terminating NUL.
-_Static_assert(LOGCAPTURE_JSON_LINE_MAX >= (LOGCAPTURE_LINE_MAX * 2) + 3, "LOGCAPTURE_JSON_LINE_MAX is too small for LOGCAPTURE_LINE_MAX");
+// The two enclosing quotes, plus a worst case of JSON_ESCAPE_BYTES_MAX_EXPANSION
+// output characters for every stored byte, plus the terminating NUL.
+_Static_assert(LOGCAPTURE_JSON_LINE_MAX >= (LOGCAPTURE_LINE_MAX * JSON_ESCAPE_BYTES_MAX_EXPANSION) + 3,
+               "LOGCAPTURE_JSON_LINE_MAX is too small for LOGCAPTURE_LINE_MAX");
 
 typedef struct {
     uint32_t seq;                       // ever-increasing line number, 0 = unused slot
@@ -102,12 +103,15 @@ static void logcapture_flush_line(void) {
 
 // Walks one formatted console write and turns it into rows.
 //
-// Three things are dropped on the way in. The ANSI colour sequences ESP-IDF
+// Two things are dropped on the way in. The ANSI colour sequences ESP-IDF
 // wraps each line in are meaningless in a browser and would otherwise be
 // shown as literal bracket noise. Carriage returns are dropped because the
-// console emits CRLF and the row is stored without any terminator. Remaining
-// control characters carry no text either, and dropping them here is what
-// lets json_escape() stay a byte-for-byte copy of everything that survives.
+// console emits CRLF and the row is stored without any terminator. A newline
+// ends the row. Every other byte is stored exactly as the console printed it,
+// control characters included: an "RX:" line carries a received frame's
+// information field verbatim, and formats such as Mic-E put payload in bytes
+// from 0x1C upwards, so a mirror that dropped them would hand a web client a
+// different frame from the one the serial console shows.
 //
 // A row that reaches LOGCAPTURE_LINE_MAX characters is closed and the rest of
 // the text continues on the next one, so a long line is wrapped rather than
@@ -142,7 +146,7 @@ static void logcapture_consume(const char *text) {
             logcapture_flush_line();
             continue;
         }
-        if (c < 0x20 && c != '\t')
+        if (c == '\r')
             continue;
 
         s_acc[s_acc_len++] = (char)c;
@@ -350,8 +354,9 @@ size_t logcapture_next_json(uint32_t after_seq, uint32_t max_seq, char *out, siz
         return 0;
     }
 
-    char esc[(LOGCAPTURE_LINE_MAX * 2) + 1];
-    json_escape(text, esc, sizeof(esc));
+    // Sized for the worst case, so the escaped line is never cut short.
+    char esc[(LOGCAPTURE_LINE_MAX * JSON_ESCAPE_BYTES_MAX_EXPANSION) + 1];
+    json_escape_bytes(text, esc, sizeof(esc));
 
     int n = snprintf(out, out_size, "\"%s\"", esc);
     if (n < 0 || (size_t)n >= out_size) {
