@@ -73,6 +73,7 @@
 #include "esp32idf_radioamateur_modem_config.h"
 #include "impulse_blanker.h"
 #include "modem.h"
+#include "rx_agc.h"
 
 #ifdef ENABLE_FX25
 #include "fx25.h"
@@ -323,27 +324,8 @@ static inline uint8_t IRAM_ATTR dac_scale(uint8_t s) {
 // Receive front end: gate, gain control, high-pass, resampler
 // ------------------------------------------------------------------
 
-#define AGC_TARGET_RMS 0.2f // target RMS level (-10 dBFS)
-
-// Attack = gain coming DOWN because the signal is too loud. It must be fast:
-// an overdriven demodulator input is clamped to +-2047 and hard-limited.
-// With AGC_MAX_STEP bounding the error to 0.5 per block, 0.25 lowers the gain
-// by an eighth per 20 ms block, halving it in about 100 ms. Release = gain
-// going UP on a quiet signal, and must be slow so noise between frames does
-// not pump the gain.
-#define AGC_ATTACK   0.25f
-#define AGC_RELEASE  0.002f
-#define AGC_MAX_GAIN 8.0f
-#define AGC_MIN_GAIN 0.1f
-
-// Below this in-band RMS there is nothing but converter noise, so there is no
-// meaningful level to track.
-#define AGC_SQUELCH_RMS 0.01f
-
-// Most the gain may change in a single 20 ms block. Without this a single
-// near-silent block drives error towards infinity and slams the gain to the
-// rail in one step.
-#define AGC_MAX_STEP 2.0f
+// Gain control: the law and its constants are in rx_agc.h, shared with the
+// PC replay.
 
 // Receive gate. s_gateOnMv is the opening threshold (0 = no gate), compared
 // with the tone-band level of each block; the gate closes below half of it,
@@ -390,28 +372,10 @@ static uint8_t s_holdCount = 0; // valid slots
 // Measures the in-band (decimated, for the AFSK profiles) signal rather than
 // the raw ADC stream, so out-of-band noise - the bulk of a discriminator
 // output's energy above 5 kHz - does not set the gain. Only called while the
-// gate is open. A near-silent block holds the gain where it is: adapting on
-// it would compute AGC_TARGET_RMS/~0, peg the gain at AGC_MAX_GAIN and hand
-// the next transmission to the demodulators overdriven.
+// gate is open. See rx_agc.h for the law and for why a block below
+// AGC_SQUELCH_RMS holds the gain.
 static void update_agc(const float *buf, size_t len) {
-    float sum_sq = 0;
-    for (size_t i = 0; i < len; i++)
-        sum_sq += buf[i] * buf[i];
-
-    float level = sqrtf(sum_sq / (float)len) * s_agcGain;
-    if (level < AGC_SQUELCH_RMS)
-        return;
-
-    float error = AGC_TARGET_RMS / level;
-    if (error > AGC_MAX_STEP)
-        error = AGC_MAX_STEP;
-    else if (error < 1.0f / AGC_MAX_STEP)
-        error = 1.0f / AGC_MAX_STEP;
-
-    float rate = (error < 1.0f) ? AGC_ATTACK : AGC_RELEASE;
-
-    s_agcGain += (s_agcGain * error - s_agcGain) * rate;
-    s_agcGain = fmaxf(fminf(s_agcGain, AGC_MAX_GAIN), AGC_MIN_GAIN);
+    s_agcGain = rx_agc_update(s_agcGain, buf, len);
 }
 
 // @brief Build the high-pass coefficients for a corner at hz, or disable it.

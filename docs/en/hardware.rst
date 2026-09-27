@@ -93,7 +93,7 @@ compile-time constants, not from a datasheet ideal.
      - ``DAC_MID=128``, ``AMPLITUDE_PCT=60``, ``DAC_SAMPLERATE=38400``
    * - **GPIO33 (ADC)**
      - Window 0–3.1 V; AGC targets 310 mVrms at the pin, reaches it from as
-       little as ≈39 mVrms, holds below ≈16 mVrms, clips above ≈1.1 Vrms
+       little as ≈39 mVrms, holds below ≈3.3 mVrms, clips above ≈1.1 Vrms
      - ``ADC_ATTEN_DB_12``, ``AGC_TARGET_RMS=0.2``
    * - Rig **MIC IN**
      - 5–20 mVrms, often pre-emphasised, DC bias for the electret
@@ -203,9 +203,28 @@ Ahead of it the trimmer's lower leg would tie the ADC pin to ground, which
 defeats the self-bias, and on the transmit side it would collapse the
 microphone input's own bias.
 
-Both capacitors should be 1 µF or larger. At 100 nF the high-pass corner lands
-near 700 Hz, which attenuates the 1200 Hz mark tone relative to the 2200 Hz
-space. Use 10 kΩ trimmers: on the transmit side that keeps the load on the DAC
+The transmit capacitor should be 1 µF or larger. The receive capacitor forms
+a first-order high-pass with the self-bias resistors (about 22 kΩ between the
+pad's pull-up and pull-down, which vary from part to part), and its value
+depends on the audio the transceiver delivers:
+
+* **Flat (discriminator / data) audio: 1 µF or larger**, corner about 7 Hz.
+  The input is left as it is.
+* **De-emphasized (speaker) audio: 10 nF**, corner about 700 Hz (roughly
+  500–900 Hz with the spread of the internal resistors). De-emphasis lifts
+  everything below the tones by 6 dB per octave, so a speaker output carries
+  bass well above the tones; through a large capacitor that bass fills the
+  converter's range and leaves the tones only a few counts above the ADC's own
+  noise, which the high-pass on the Radiomodem page cannot recover because it
+  runs after the converter. Ahead of the ADC the 10 nF capacitor removes it,
+  and at the same time it takes 1.3 dB off the 1200 Hz mark tone and 0.4 dB off
+  the 2200 Hz space tone, a little of the space-tone lift de-emphasized audio
+  needs. Use a ceramic or film part: it has no polarity.
+
+A 100 nF capacitor puts the corner at about 70 Hz, which keeps the bass and so
+behaves like the 1 µF one.
+
+Use 10 kΩ trimmers: on the transmit side that keeps the load on the DAC
 output light, and the attenuation needed there puts the wiper at roughly 1.4 %
 of travel, so a multiturn trimmer is what makes it settable at all.
 

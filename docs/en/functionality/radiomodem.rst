@@ -816,7 +816,15 @@ Receive gain and Fixed receive gain (dB)
 
 **Automatic** (default) tracks the level of each transmission on the in-band
 signal, lowering the gain quickly on a loud one and raising it slowly on a
-quiet one. **Fixed** applies **Fixed receive gain** (−12 to +18 dB) instead.
+quiet one, between −20 and +18 dB. It measures the whole decimated band, bass
+included, so a bass-heavy speaker output keeps the gain low enough not to
+drive the demodulator input into its clamp. Only an input below about
+3.3 mV RMS at the pin — the converter's own noise — holds the gain where it
+is; anything above it is brought up to the working level whatever the gain
+was, since the demodulators lose precision on an input only a few counts
+high. With **Receive gate** at 0 the gain therefore rises slowly on an idle
+channel and comes back down within a few blocks when a transmission starts.
+**Fixed** applies **Fixed receive gain** (−12 to +18 dB) instead.
 
 A data or discriminator port delivers a level set by the transmitter's
 deviation, not by the received signal strength, so a fixed gain suits it: set

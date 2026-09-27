@@ -852,7 +852,16 @@ Ganancia de recepción y Ganancia fija de recepción (dB)
 
 **Automática** (por omisión) sigue el nivel de cada transmisión sobre la señal
 dentro de banda: baja la ganancia rápido ante una fuerte y la sube despacio
-ante una débil. **Fija** aplica en su lugar la **Ganancia fija de recepción**
+ante una débil, entre −20 y +18 dB. Mide toda la banda diezmada, graves
+incluidos, así que una salida de parlante con muchos graves mantiene la
+ganancia lo bastante baja como para no llevar la entrada del demodulador a su
+recorte. Solo una entrada por debajo de unos 3,3 mV RMS en el pin — el propio
+ruido del conversor — deja la ganancia donde está; cualquier cosa por encima
+se lleva al nivel de trabajo sea cual sea la ganancia, porque los
+demoduladores pierden precisión con una entrada de apenas unas cuentas. Con
+**Umbral de recepción** en 0 la ganancia sube despacio en un canal libre y
+vuelve a bajar en pocos bloques cuando empieza una transmisión.
+**Fija** aplica en su lugar la **Ganancia fija de recepción**
 (−12 a +18 dB).
 
 Un puerto de datos o de discriminador entrega un nivel fijado por la desviación

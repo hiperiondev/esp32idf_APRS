@@ -219,8 +219,17 @@ procesa con una cadena a medio construir.
    El AGC mide el bloque diezmado y no el flujo de 76,8 kHz, así que el ruido de
    discriminador por encima de 5 kHz no fija la ganancia, y la nueva ganancia se
    aplica al mismo bloque sobre el que se midió. Ataque 0,25 y liberación 0,002
-   por bloque de 20 ms, con el paso por bloque acotado a ×2 / ÷2. Una ganancia
-   fija lo reemplaza cuando ``rx.agc_mode`` lo pide.
+   por bloque de 20 ms, con el paso por bloque acotado a ×2 / ÷2 y la ganancia
+   entre 0,1 y 8. El nivel se toma sobre toda la banda diezmada, graves
+   incluidos, así que una entrada con muchos graves mantiene la ganancia por
+   debajo del recorte de la entrada del demodulador. Un bloque cuya entrada,
+   medida antes de la ganancia, está por debajo de 0,002 del semirrango del
+   ADC (unos 3,3 mV RMS en el pin, el propio ruido del conversor) deja la
+   ganancia quieta; la prueba se hace sobre la entrada misma, así que toda
+   señal real se lleva al nivel de trabajo sea cual sea la ganancia. La ley
+   está en el encabezado ``rx_agc.h``, solo de cabecera, que el replay en PC de
+   ``audio_test/rx_replay`` compila sin cambios. Una ganancia fija lo reemplaza
+   cuando ``rx.agc_mode`` lo pide.
 
 **Reparación de bits por síndrome del CRC.**
    CRC-16/X.25 es afín sobre GF(2): el registro tras una trama y su FCS es
@@ -430,3 +439,7 @@ Los archivos fuente del módem
      - FEC Reed–Solomon FX.25
    * - ``src/crc_ccit.c``
      - FCS (secuencia de comprobación de trama)
+   * - ``include/impulse_blanker.h``, ``include/rx_agc.h``
+     - etapas del frente de recepción solo de cabecera (supresor de impulsos,
+       control de ganancia), compartidas con el replay en PC de
+       ``audio_test/rx_replay``

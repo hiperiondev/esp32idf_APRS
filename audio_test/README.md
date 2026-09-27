@@ -28,6 +28,7 @@ ESP32 decodes compared with a reference decoder (**multimon-ng**).
 16. [Limitations](#16-limitations)
 17. [Cheat sheet](#17-cheat-sheet)
 18. [Glossary](#18-glossary)
+19. [PC replay of the receiver (`rx_replay`, `rx_diag.py`)](#19-pc-replay-of-the-receiver-rx_replay-rx_diagpy)
 
 ---
 
@@ -84,7 +85,7 @@ connected from the ESP32 back to the PC.
 | PC with a sound card output | Headphone or line-out. A cheap dedicated USB sound card is a good idea (see section 5). |
 | Audio cable, 3.5 mm plug | Tip = left channel, sleeve = ground. Either channel works: the program sends the same audio to both. |
 | RV1: 2 kΩ multi-turn trimmer | Sets the level. Multi-turn allows fine adjustment. **Optional** — section 3.1 gives a fixed-resistor alternative if you don't have a trimmer. |
-| C1: capacitor, 1 µF or larger | Electrolytic is fine (mind the polarity!), rated 10 V or more. |
+| C1: capacitor, 10 nF ceramic or film (or 1 µF for flat recordings only) | Section 3, *Component rules*, explains the choice. A 1 µF electrolytic is fine (mind the polarity!), rated 10 V or more. |
 | Jumper wires | |
 
 ### Software (Linux)
@@ -157,9 +158,18 @@ add noise. A ceramic or film 1 µF has no polarity, if you have one.
 
 ### Component rules
 
-* **C1 must be 1 µF or larger.** With a small capacitor (for example 100 nF) the
-  circuit becomes a high-pass filter that starts cutting around 700 Hz and
-  weakens the 1200 Hz tone, which hurts decoding. Larger is fine (1 µF – 10 µF).
+* **C1 is 10 nF for de-emphasized recordings, and works for flat ones too.** C1
+  and the ESP32's self-bias resistors (about 22 kΩ, varying from part to part)
+  form a high-pass filter. With **10 nF** its corner is about 700 Hz (roughly
+  500–900 Hz): a de-emphasized recording such as WA8LMF track 2 carries bass
+  well above the tones, and without this filter that bass fills the ADC's
+  range and leaves the tones only a few counts above the converter's noise.
+  The high-pass on the Radiomodem page cannot recover that, because it runs
+  after the converter. The filter also takes 1.3 dB off the 1200 Hz tone and
+  0.4 dB off the 2200 Hz tone, which de-emphasized audio welcomes; on a flat
+  recording it makes no measurable difference. A ceramic or film 10 nF has no
+  polarity. **1 µF** (corner about 7 Hz) suits flat recordings only; 100 nF
+  (about 70 Hz) behaves like 1 µF.
 * **The trimmer must be *before* the capacitor**, as drawn. If RV1 were placed
   between the capacitor and the pin, its lower leg would tie GPIO33 to ground and
   destroy the bias.
@@ -1232,11 +1242,47 @@ Typical patterns:
 | What you see | Likely cause |
 |---|---|
 | `ok=0` from the start, everything NOT DECODED | The audio is not reaching the ESP32 (cable, sound card, level, modem disabled). |
-| A whole file mostly NOT DECODED, but the synthetic file was OK | Level too low/high for that recording, or a de-emphasized recording (track 2) needing a different level. Try `--normalise` (section 7.2). |
+| A whole file mostly NOT DECODED, but the synthetic file was OK | Level too low/high for that recording, or a de-emphasized recording (track 2) needing a different level. Try `--normalise` (section 7.2), read the file's receive health (section 11.6) and, for a de-emphasized recording, check that C1 is 10 nF (section 3). |
 | Misses only in dense stretches | Normal on saturated traffic (collisions, back-to-back packets). |
 | Sudden burst of NOT DECODED in the middle of a file | Something disturbed the audio (a system sound, a volume change) or the sound card glitched. |
 | Many EXTRA | The ESP32 is more sensitive than multimon-ng on this material. |
 | A few HDR-CORRUPT among weak or colliding packets | One damaged byte in an address field. Expected in small numbers on tracks 1 and 4. |
+
+### 11.6 Receive health (`--transport web`)
+
+With `--transport web` the program also reads the station's receive counters
+and input level (`POST /radio/level`, the data behind the **RX LEVEL** button)
+before each file, every 10 s while it plays and after it, and prints a block
+after the file's counts:
+
+```
+  -- Receive health (/radio/level) -----------------------------
+  Frames delivered by the modem: 262   seen on the log: 258
+  Decoded per demodulator: 31 101 198 200 70 27 4 0   unique: 0 3 9 11 2 1 0 0
+  Samples lost: FIFO 0, ADC pool 0   receive DSP load max 41.3 %
+  While playing (180 reading(s)): tone band peak 64 mV RMS, wideband peak 310 mV RMS, gain max 2.10x, raw ADC 812..3140
+  Impulse blanker: 12 sample(s) repaired
+  -> no samples lost, level in range: the frames missing were lost in the audio itself
+```
+
+It answers the first question to ask about a file with many NOT DECODED
+packets: where were they lost?
+
+| Verdict | Meaning |
+|---|---|
+| **samples lost in the receive task … the CPU did not keep up** | The FIFO or the ADC driver's pool overflowed during the file. Frames were lost before any demodulator saw them. |
+| **receive DSP load reached … close to losing samples** | A block took 90 % or more of its own duration to process. |
+| **tone level low** | The tone-band peak stayed under 20 mV RMS, where the RX LEVEL verdict is also *low*: raise RV1 or the playback gain. |
+| **ADC over-range** | A reading saw the raw ADC at its rails. |
+| **… lines lost on the web transport** | The modem delivered more frames than the log mirror showed: the missing frames were decoded but not seen by the bench. |
+| **no samples lost, level in range** | Nothing on the station side explains the misses: they are in the audio itself (noise, twist, collisions, or bass filling the ADC range — see C1 in section 3). |
+
+The counters are cumulative since the demodulator set was last rebuilt, so the
+block shows their growth over the file; a figure that cannot be known (a
+reading failed, or the counters restarted during the file) is printed as `-`.
+Reading `/radio/level` changes nothing on the station, but each reading holds
+its web server for one second, so the log mirror is read a little later during
+it. The serial transport has no such readings and prints no block.
 
 ---
 
@@ -1580,3 +1626,40 @@ grep -E "NOT DECODED|DIFFERENT|HEADER CORRUPT" run.log
 | **Normalisation** | `--normalise`: bringing every WAV to −1 dBFS before the playback gain, so one gain fits recordings made at different levels (section 7.2). |
 | **Latency skew** | The delay of the ESP32 leg (sound card → ADC → demodulator → console) relative to multimon-ng's, measured and compensated automatically (section 12.4). |
 | **HDR-CORRUPT** | A verdict: the ESP32's payload matched exactly but its header (source, destination or path) did not. Counted with DIFFERENT as "decoded, but not correctly". |
+
+---
+
+## 19. PC replay of the receiver (`rx_replay`, `rx_diag.py`)
+
+`rx_replay/` builds `modem_replay`, the firmware's own 1200 Bd receiver running
+on the PC: the demodulators, the HDLC receiver, the impulse blanker and the
+gain control are compiled from the firmware sources unchanged, and the rest of
+the ADC front end (DC removal, decimation, high-pass, tone-band meter, receive
+gate) is reproduced step by step. It tells apart what the algorithm can decode
+from what the device loses.
+
+```bash
+# build (needs gcc and python3); the decimation table is copied from afsk.c
+./rx_replay/build.sh                       # -> rx_replay/modem_replay
+
+# a recording, turned into ADC codes: --gain = ADC counts per full-scale sample
+sox 02_100-Mic-E-Bursts-DE-emphasized.flac.wav -t raw -e signed -b 16 -c 1 -r 76800 track2.raw remix 1
+./rx_replay/modem_replay --gain 1200 --noise 1.2 --gate-mv 0 < track2.raw > track2.tnc2
+
+# what the ESP32's demodulators really received (POST /radio/capture?s=N)
+./rx_replay/modem_replay --capture capture.bin > capture.tnc2
+```
+
+Each decoded frame is written to stdout as a TNC2 line (bytes outside
+0x20–0x7e as `<0xNN>`, the way Direwolf prints them); the statistics go to
+stderr. The demodulator options match the Radiomodem page: `--preset`,
+`--taps`, `--lo`, `--hi`, `--hpf`, `--gate-mv`, `--blank`, `--agc-fixed`,
+`--fix-bits`, `--flat`. For a capture, `--no-gate` feeds every block and
+`--agc` runs the gain control again instead of using the gain the station
+recorded.
+
+`rx_diag.py` automates the whole comparison — every demodulator set, prefilter
+length and level on the PC against Direwolf's `atest`, then the same audio on
+the device with a capture replayed next to it — and writes `report.md` with the
+verdict. It builds `modem_replay` itself through `rx_replay/build.sh`; see
+`./rx_diag.py --help`.

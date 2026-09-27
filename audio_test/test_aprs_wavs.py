@@ -2237,6 +2237,108 @@ _CATALOG["it"].update({
             "--web_password è mascherata in una riga di comando registrata",
 })
 
+# --transport web: receive health from /radio/level
+_CATALOG["es"].update({
+        'samples lost in the receive task: %d (FIFO %d, ADC pool %d) - the CPU did not keep up':
+            'muestras perdidas en la tarea de recepción: %d (FIFO %d, pool del ADC %d): la CPU no dio abasto',
+        'receive DSP load reached %.1f %% of real time - close to losing samples':
+            'la carga del DSP de recepción llegó al %.1f %% del tiempo real: cerca de perder muestras',
+        'tone level low: peak %d mV RMS in the tone band (below %d)':
+            'nivel de tonos bajo: pico de %d mV RMS en la banda de tonos (menos de %d)',
+        'ADC over-range in %d of %d reading(s)':
+            'sobre-rango del ADC en %d de %d lectura(s)',
+        'the modem delivered %d frame(s) but the log mirror showed %d - lines lost on the web transport':
+            'el módem entregó %d trama(s) pero el espejo del log mostró %d: líneas perdidas en el transporte web',
+        'no samples lost, level in range: the frames missing were lost in the audio itself':
+            'sin muestras perdidas y con el nivel en rango: las tramas faltantes se perdieron en el propio audio',
+        '  -- Receive health (/radio/level) -----------------------------':
+            '  -- Salud de la recepción (/radio/level) ----------------------',
+        '  Frames delivered by the modem: %s   seen on the log: %d':
+            '  Tramas entregadas por el módem: %s   vistas en el log: %d',
+        '  Decoded per demodulator: %s   unique: %s':
+            '  Decodificadas por demodulador: %s   únicas: %s',
+        '  Samples lost: FIFO %s, ADC pool %s   receive DSP load max %.1f %%':
+            '  Muestras perdidas: FIFO %s, pool del ADC %s   carga máx. del DSP de recepción %.1f %%',
+        '  While playing (%d reading(s)): tone band peak %s mV RMS, wideband peak %s mV RMS, gain max %.2fx, raw ADC %s..%s':
+            '  Durante la reproducción (%d lectura(s)): pico en la banda de tonos %s mV RMS, pico de banda ancha %s mV RMS, ganancia máx. %.2fx, ADC crudo %s..%s',
+        '  Impulse blanker: %s sample(s) repaired':
+            '  Supresor de impulsos: %s muestra(s) reparada(s)',
+        'Receive health':
+            'Salud de la recepción',
+        'a clean file is attributed to the audio itself':
+            'un archivo limpio se atribuye al propio audio',
+        'lost in the audio itself':
+            'se perdieron en el propio audio',
+        'lost samples and a DSP load near real time are reported as a CPU problem':
+            'las muestras perdidas y una carga del DSP cercana al tiempo real se informan como un problema de CPU',
+        'the CPU did not keep up':
+            'la CPU no dio abasto',
+        'close to losing samples':
+            'cerca de perder muestras',
+        'a low tone level, over-range and frames missing from the log are each reported':
+            'un nivel de tonos bajo, el sobre-rango y las tramas que faltan en el log se informan cada uno',
+        'tone level low':
+            'nivel de tonos bajo',
+        'ADC over-range':
+            'sobre-rango del ADC',
+        'lines lost on the web transport':
+            'líneas perdidas en el transporte web',
+        'counters that restarted during the file give no figure instead of a negative one':
+            'los contadores que se reiniciaron durante el archivo no dan cifra en lugar de una negativa',
+        'a file without any /radio/level reading has no receive health':
+            'un archivo sin ninguna lectura de /radio/level no tiene salud de recepción',
+})
+_CATALOG["it"].update({
+        'samples lost in the receive task: %d (FIFO %d, ADC pool %d) - the CPU did not keep up':
+            "campioni persi nel task di ricezione: %d (FIFO %d, pool dell'ADC %d): la CPU non ha tenuto il passo",
+        'receive DSP load reached %.1f %% of real time - close to losing samples':
+            'il carico del DSP di ricezione ha raggiunto il %.1f %% del tempo reale: vicino a perdere campioni',
+        'tone level low: peak %d mV RMS in the tone band (below %d)':
+            'livello dei toni basso: picco di %d mV RMS nella banda dei toni (sotto %d)',
+        'ADC over-range in %d of %d reading(s)':
+            "fuori scala dell'ADC in %d di %d lettura/e",
+        'the modem delivered %d frame(s) but the log mirror showed %d - lines lost on the web transport':
+            'il modem ha consegnato %d trama/e ma lo specchio del log ne ha mostrate %d: righe perse sul trasporto web',
+        'no samples lost, level in range: the frames missing were lost in the audio itself':
+            "nessun campione perso e livello nei limiti: le trame mancanti sono andate perse nell'audio stesso",
+        '  -- Receive health (/radio/level) -----------------------------':
+            '  -- Salute della ricezione (/radio/level) ---------------------',
+        '  Frames delivered by the modem: %s   seen on the log: %d':
+            '  Trame consegnate dal modem: %s   viste nel log: %d',
+        '  Decoded per demodulator: %s   unique: %s':
+            '  Decodificate per demodulatore: %s   uniche: %s',
+        '  Samples lost: FIFO %s, ADC pool %s   receive DSP load max %.1f %%':
+            "  Campioni persi: FIFO %s, pool dell'ADC %s   carico max del DSP di ricezione %.1f %%",
+        '  While playing (%d reading(s)): tone band peak %s mV RMS, wideband peak %s mV RMS, gain max %.2fx, raw ADC %s..%s':
+            '  Durante la riproduzione (%d lettura/e): picco nella banda dei toni %s mV RMS, picco a banda larga %s mV RMS, guadagno max %.2fx, ADC grezzo %s..%s',
+        '  Impulse blanker: %s sample(s) repaired':
+            '  Soppressore di impulsi: %s campione/i riparato/i',
+        'Receive health':
+            'Salute della ricezione',
+        'a clean file is attributed to the audio itself':
+            "un file pulito viene attribuito all'audio stesso",
+        'lost in the audio itself':
+            "andate perse nell'audio stesso",
+        'lost samples and a DSP load near real time are reported as a CPU problem':
+            'i campioni persi e un carico del DSP vicino al tempo reale sono riportati come un problema di CPU',
+        'the CPU did not keep up':
+            'la CPU non ha tenuto il passo',
+        'close to losing samples':
+            'vicino a perdere campioni',
+        'a low tone level, over-range and frames missing from the log are each reported':
+            'un livello dei toni basso, il fuori scala e le trame mancanti nel log sono riportati ciascuno',
+        'tone level low':
+            'livello dei toni basso',
+        'ADC over-range':
+            "fuori scala dell'ADC",
+        'lines lost on the web transport':
+            'righe perse sul trasporto web',
+        'counters that restarted during the file give no figure instead of a negative one':
+            'i contatori ripartiti durante il file non danno alcun valore invece di uno negativo',
+        'a file without any /radio/level reading has no receive health':
+            'un file senza alcuna lettura di /radio/level non ha salute della ricezione',
+})
+
 # pyserial is only needed by --transport serial. --transport web reads the
 # console through the station's web admin alone and must not depend on,
 # import-fail on, or open anything serial.
@@ -2699,6 +2801,11 @@ class FileResult:
     rows: List[Row] = field(default_factory=list)
     dw_offset: float = 0.0     # measured Direwolf - multimon-ng latency skew, seconds
     t0: float = 0.0            # monotonic start of this file's timing window
+    # Receive health (--transport web): /radio/level before and after the
+    # file, and the readings taken while it played. None / empty otherwise.
+    rx_before: Optional[dict] = None
+    rx_after: Optional[dict] = None
+    rx_polls: List[dict] = field(default_factory=list)
 
 
 # --------------------------------------------------------------------------
@@ -3608,6 +3715,164 @@ class WebLogCollector(threading.Thread):
             self._session.close()
         except Exception:
             pass
+
+
+# --------------------------------------------------------------------------
+# --transport web: receive health from POST /radio/level
+# --------------------------------------------------------------------------
+#
+# /radio/level answers with the receive counters of the modem (frames each
+# demodulator decoded, frames delivered, samples lost in the FIFO or in the
+# ADC driver's pool, the receive DSP load, the impulse blanker count) and a
+# one-second reading of the input (wideband and tone-band level, raw ADC
+# extremes, gain). Read before and after each file, and every
+# RX_HEALTH_POLL_S seconds while it plays, they tell whether frames were lost
+# because the receive task did not keep up, because the input level was
+# wrong, or in the audio itself. The request only reads: it changes nothing
+# on the Radiomodem page. Each reading holds the station's web server for one
+# second, during which the log mirror is read a little later than usual.
+RX_HEALTH_POLL_S = 10.0        # interval of the readings taken while a file plays
+RX_HEALTH_DSP_LIMIT = 900      # DSP load, thousandths of real time, from which the ADC pool can overflow
+RX_HEALTH_BAND_LOW_MV = 20     # tone-band peak the firmware's RX LEVEL calls "low" (RX_LEVEL_BAND_LOW_MV)
+RX_HEALTH_RAW_LOW = 15         # raw ADC codes counted as over-range (AFSK_RAW_CLIP_LOW / AFSK_RAW_CLIP_HIGH)
+RX_HEALTH_RAW_HIGH = 4080
+RX_HEALTH_TRANSPORT_LOSS = 0.02  # share of delivered frames missing from the log mirror that counts as transport loss
+
+
+def rx_level_read(session, base_url: str) -> Optional[dict]:
+    """One POST /radio/level. Returns the JSON object, or None when the
+    station did not answer with ok:true (unreachable, loop test running,
+    older firmware without the endpoint)."""
+    try:
+        resp = session.post(base_url + "/radio/level", timeout=10)
+    except Exception:
+        return None
+    if resp.status_code != 200:
+        return None
+    try:
+        data = resp.json()
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) and data.get("ok") else None
+
+
+class RxHealthPoller(threading.Thread):
+    """Reads /radio/level every RX_HEALTH_POLL_S seconds while a file plays.
+    Uses its own HTTP session, since the log collector's session belongs to
+    the collector's thread."""
+
+    def __init__(self, collector: "WebLogCollector", interval: float = RX_HEALTH_POLL_S) -> None:
+        super().__init__(daemon=True)
+        import requests
+        self.base_url = collector.base_url
+        self.interval = interval
+        self.readings = []  # type: List[dict]
+        self._halt = threading.Event()
+        self._session = requests.Session()
+        self._session.auth = collector._session.auth
+        self._session.headers["Origin"] = collector.base_url
+
+    def run(self) -> None:
+        while not self._halt.wait(self.interval):
+            r = rx_level_read(self._session, self.base_url)
+            if r is not None:
+                self.readings.append(r)
+
+    def stop(self) -> List[dict]:
+        self._halt.set()
+        if self.is_alive():
+            self.join(timeout=self.interval + 12)
+        try:
+            self._session.close()
+        except Exception:
+            pass
+        return self.readings
+
+
+def _rx_delta(before: Optional[dict], after: Optional[dict], key: str) -> Optional[int]:
+    """Growth of one cumulative counter over the file, or None when it cannot
+    be known (a reading is missing, or the counters restarted in between)."""
+    if not before or not after or key not in before or key not in after:
+        return None
+    d = int(after[key]) - int(before[key])
+    return d if d >= 0 else None
+
+
+def _rx_delta_list(before: Optional[dict], after: Optional[dict], key: str) -> Optional[List[int]]:
+    if not before or not after:
+        return None
+    a, b = after.get(key), before.get(key)
+    if not isinstance(a, list) or not isinstance(b, list) or len(a) != len(b):
+        return None
+    d = [int(x) - int(y) for x, y in zip(a, b)]
+    return d if all(v >= 0 for v in d) else None
+
+
+def rx_health(res: FileResult) -> Optional[dict]:
+    """Figures and verdicts of one file's receive health, or None when no
+    /radio/level reading was obtained."""
+    before, after, polls = res.rx_before, res.rx_after, res.rx_polls
+    if not before and not after and not polls:
+        return None
+    readings = [r for r in ([before] + polls + [after]) if r]
+    fifo = _rx_delta(before, after, "fifo_drops")
+    pool = _rx_delta(before, after, "pool_ovf")
+    lost = None if fifo is None or pool is None else fifo + pool
+    delivered = _rx_delta(before, after, "delivered")
+    dsp_max = max((int(r.get("dsp_max", 0)) for r in readings), default=0)
+    band_peak = max((int(r.get("band_peak_mVrms", 0)) for r in polls), default=None)
+    wide_peak = max((int(r.get("peak_mVrms", 0)) for r in polls), default=None)
+    agc_max = max((float(r.get("agc", 0.0)) for r in polls), default=None)
+    raw_min = min((int(r.get("raw_min", 0)) for r in polls), default=None)
+    raw_max = max((int(r.get("raw_max", 0)) for r in polls), default=None)
+    clip = sum(1 for r in polls if int(r.get("raw_min", 2048)) <= RX_HEALTH_RAW_LOW
+               or int(r.get("raw_max", 2048)) >= RX_HEALTH_RAW_HIGH)
+    seen = len(res.esp_packets)
+
+    verdicts = []  # type: List[str]
+    if lost:
+        verdicts.append(T("samples lost in the receive task: %d (FIFO %d, ADC pool %d) - the CPU did not keep up") % (lost, fifo, pool))
+    if dsp_max >= RX_HEALTH_DSP_LIMIT:
+        verdicts.append(T("receive DSP load reached %.1f %% of real time - close to losing samples") % (dsp_max / 10.0))
+    if band_peak is not None and band_peak < RX_HEALTH_BAND_LOW_MV:
+        verdicts.append(T("tone level low: peak %d mV RMS in the tone band (below %d)") % (band_peak, RX_HEALTH_BAND_LOW_MV))
+    if clip:
+        verdicts.append(T("ADC over-range in %d of %d reading(s)") % (clip, len(polls)))
+    if delivered and seen < delivered * (1.0 - RX_HEALTH_TRANSPORT_LOSS):
+        verdicts.append(T("the modem delivered %d frame(s) but the log mirror showed %d - lines lost on the web transport") % (delivered, seen))
+    if not verdicts and lost == 0:
+        verdicts.append(T("no samples lost, level in range: the frames missing were lost in the audio itself"))
+
+    return {
+        "lost": lost, "fifo": fifo, "pool": pool, "delivered": delivered, "seen": seen,
+        "decoded": _rx_delta_list(before, after, "decoded"), "unique": _rx_delta_list(before, after, "unique"),
+        "impulses": _rx_delta(before, after, "impulses"), "dsp_max": dsp_max, "band_peak": band_peak,
+        "wide_peak": wide_peak, "agc_max": agc_max, "raw_min": raw_min, "raw_max": raw_max,
+        "polls": len(polls), "verdicts": verdicts,
+    }
+
+
+def print_rx_health(res: FileResult) -> None:
+    h = rx_health(res)
+    if h is None:
+        return
+
+    def num(v) -> str:
+        return "-" if v is None else str(v)
+
+    def lst(v) -> str:
+        return "-" if v is None else " ".join(str(x) for x in v)
+
+    say(T("  -- Receive health (/radio/level) -----------------------------"))
+    say(T("  Frames delivered by the modem: %s   seen on the log: %d") % (num(h["delivered"]), h["seen"]))
+    say(T("  Decoded per demodulator: %s   unique: %s") % (lst(h["decoded"]), lst(h["unique"])))
+    say(T("  Samples lost: FIFO %s, ADC pool %s   receive DSP load max %.1f %%") % (num(h["fifo"]), num(h["pool"]), h["dsp_max"] / 10.0))
+    if h["polls"]:
+        say(T("  While playing (%d reading(s)): tone band peak %s mV RMS, wideband peak %s mV RMS, gain max %.2fx, raw ADC %s..%s") %
+            (h["polls"], num(h["band_peak"]), num(h["wide_peak"]), h["agc_max"] or 0.0, num(h["raw_min"]), num(h["raw_max"])))
+    say(T("  Impulse blanker: %s sample(s) repaired") % num(h["impulses"]))
+    for v in h["verdicts"]:
+        say("  -> " + v)
 
 
 # --------------------------------------------------------------------------
@@ -8356,6 +8621,40 @@ def selftest() -> int:
           T(FLAT_AUDIO_LABEL) in buf.getvalue() and T("[MODIFIED]") in buf.getvalue(),
           buf.getvalue())
 
+    print(T("Receive health"))
+
+    def _lvl(**kw) -> dict:
+        d = {"ok": True, "fifo_drops": 0, "pool_ovf": 0, "delivered": 0, "decoded": [0, 0], "unique": [0, 0],
+             "impulses": 0, "dsp_max": 300, "band_peak_mVrms": 60, "peak_mVrms": 200, "agc": 1.5,
+             "raw_min": 1500, "raw_max": 2500}
+        d.update(kw)
+        return d
+
+    r = FileResult(name="x")
+    r.esp_packets = [make_packet("A", "B", [], b"x", "")] * 10
+    r.rx_before, r.rx_polls, r.rx_after = _lvl(), [_lvl()], _lvl(delivered=10, decoded=[8, 9], unique=[1, 2])
+    h = rx_health(r)
+    check(T("a clean file is attributed to the audio itself"),
+          h is not None and h["lost"] == 0 and h["decoded"] == [8, 9] and len(h["verdicts"]) == 1
+          and T("lost in the audio itself") in h["verdicts"][0], repr(h))
+    r.rx_after = _lvl(fifo_drops=5, pool_ovf=2, delivered=10, dsp_max=950)
+    h = rx_health(r)
+    check(T("lost samples and a DSP load near real time are reported as a CPU problem"),
+          h["lost"] == 7 and any(T("the CPU did not keep up") in v for v in h["verdicts"])
+          and any(T("close to losing samples") in v for v in h["verdicts"]), repr(h))
+    r.rx_polls = [_lvl(band_peak_mVrms=8, raw_max=4090)]
+    r.rx_after = _lvl(delivered=30)
+    h = rx_health(r)
+    check(T("a low tone level, over-range and frames missing from the log are each reported"),
+          any(T("tone level low") in v for v in h["verdicts"]) and any(T("ADC over-range") in v for v in h["verdicts"])
+          and any(T("lines lost on the web transport") in v for v in h["verdicts"]), repr(h))
+    r.rx_after = _lvl(fifo_drops=0, delivered=0)
+    r.rx_before = _lvl(delivered=50)
+    check(T("counters that restarted during the file give no figure instead of a negative one"),
+          rx_health(r)["delivered"] is None)
+    check(T("a file without any /radio/level reading has no receive health"),
+          rx_health(FileResult(name="y")) is None)
+
     print("")
     if failures:
         print(T("SELFTEST FAILED: %d of the checks above did not pass") % len(failures))
@@ -9868,11 +10167,21 @@ def run_with_args(args: argparse.Namespace) -> int:
             res = FileResult(name=os.path.basename(wav))
             results.append(res)     # appended first: an interrupted file still counts
             _LIVE_STATS.set_file(n, len(wavs), os.path.basename(wav))
-            run_one_wav(res, wav, route, final_volume, args.tail,
-                        args.match_window, col, mm_extra, args.no_play,
-                        normalise=args.normalise, offset_auto=offset_auto,
-                        offset_seed=offset_seed, dw=dw_setup,
-                        reference=args.reference, dw_offset_seed=dw_offset_seed)
+            poller = None  # type: Optional[RxHealthPoller]
+            if isinstance(col, WebLogCollector) and not args.no_play:
+                res.rx_before = rx_level_read(col._session, col.base_url)
+                poller = RxHealthPoller(col)
+                poller.start()
+            try:
+                run_one_wav(res, wav, route, final_volume, args.tail,
+                            args.match_window, col, mm_extra, args.no_play,
+                            normalise=args.normalise, offset_auto=offset_auto,
+                            offset_seed=offset_seed, dw=dw_setup,
+                            reference=args.reference, dw_offset_seed=dw_offset_seed)
+            finally:
+                if poller is not None:
+                    res.rx_polls = poller.stop()
+                    res.rx_after = rx_level_read(col._session, col.base_url)
             if res.dw_offset:
                 dw_offset_seed = res.dw_offset
             print_file_report(res, dry_run=args.no_play)
@@ -9880,6 +10189,7 @@ def run_with_args(args: argparse.Namespace) -> int:
                 print_dw_file_report(res, dw_setup, dry_run=args.no_play)
             if not args.no_play:
                 print_loss_resume(res, results)
+                print_rx_health(res)
             if watch is not None:
                 watch.check(T("test file %d/%d") % (n, len(wavs)))
             sleep_or_stop(args.pause)

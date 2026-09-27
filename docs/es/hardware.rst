@@ -95,7 +95,7 @@ compilación del componente de módem, no de un ideal de hoja de datos.
      - ``DAC_MID=128``, ``AMPLITUDE_PCT=60``, ``DAC_SAMPLERATE=38400``
    * - **GPIO33 (ADC)**
      - Ventana 0–3,1 V; el AGC apunta a 310 mVrms en el pin, lo alcanza desde
-       tan solo ≈39 mVrms, se mantiene por debajo de ≈16 mVrms, recorta por
+       tan solo ≈39 mVrms, se mantiene por debajo de ≈3,3 mVrms, recorta por
        encima de ≈1,1 Vrms
      - ``ADC_ATTEN_DB_12``, ``AGC_TARGET_RMS=0.2``
    * - Radio **MIC IN**
@@ -211,9 +211,29 @@ lados.** Delante de él, la pata inferior del trimmer dejaría el pin del ADC a
 masa, lo que anula la polarización interna, y del lado de transmisión hundiría
 la polarización propia de la entrada de micrófono.
 
-Ambos capacitores deben ser de 1 µF o más. Con 100 nF la frecuencia de corte
-inferior queda cerca de 700 Hz, lo que atenúa el tono de marca de 1200 Hz
-frente al de espacio de 2200 Hz. Use trimmers de 10 kΩ: del lado de
+El capacitor de transmisión debe ser de 1 µF o más. El de recepción forma un
+pasa-altos de primer orden con las resistencias de la autopolarización (unos
+22 kΩ entre el pull-up y el pull-down del pad, que varían de una pieza a otra),
+y su valor depende del audio que entrega el equipo:
+
+* **Audio plano (discriminador / datos): 1 µF o más**, corte en unos 7 Hz. La
+  entrada queda como está.
+* **Audio con deénfasis (parlante): 10 nF**, corte en unos 700 Hz (entre 500 y
+  900 Hz, según la dispersión de las resistencias internas). El deénfasis
+  levanta todo lo que está por debajo de los tonos 6 dB por octava, así que una
+  salida de parlante trae graves muy por encima de los tonos; a través de un
+  capacitor grande esos graves ocupan el rango del conversor y dejan los tonos
+  apenas unas cuentas por encima del propio ruido del ADC, algo que el
+  pasa-altos de la página Radiomodem no puede recuperar porque actúa después
+  del conversor. Delante del ADC el capacitor de 10 nF los elimina, y a la vez
+  quita 1,3 dB al tono de marca de 1200 Hz y 0,4 dB al de espacio de 2200 Hz,
+  un poco del realce del tono de espacio que necesita el audio con deénfasis.
+  Use uno cerámico o de película: no tiene polaridad.
+
+Un capacitor de 100 nF pone el corte en unos 70 Hz, que conserva los graves y
+por lo tanto se comporta como el de 1 µF.
+
+Use trimmers de 10 kΩ: del lado de
 transmisión mantienen liviana la carga sobre la salida del DAC, y la
 atenuación necesaria deja el cursor cerca del 1,4 % del recorrido, así que un
 trimmer multivuelta es lo que lo hace ajustable.

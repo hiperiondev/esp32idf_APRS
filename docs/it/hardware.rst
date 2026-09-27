@@ -96,7 +96,7 @@ del componente modem stesso, non da un ideale da datasheet.
      - ``DAC_MID=128``, ``AMPLITUDE_PCT=60``, ``DAC_SAMPLERATE=38400``
    * - **GPIO33 (ADC)**
      - Finestra 0–3,1 V; l'AGC punta a 310 mVrms al pin, la raggiunge da appena
-       ≈39 mVrms, la mantiene sotto ≈16 mVrms, satura sopra ≈1,1 Vrms
+       ≈39 mVrms, la mantiene sotto ≈3,3 mVrms, satura sopra ≈1,1 Vrms
      - ``ADC_ATTEN_DB_12``, ``AGC_TARGET_RMS=0.2``
    * - **MIC IN** dell'apparato
      - 5–20 mVrms, spesso pre-enfatizzato, bias DC per l'electret
@@ -213,9 +213,31 @@ porterebbe a massa il pin dell'ADC, vanificando la polarizzazione interna, e
 sul lato trasmissione affosserebbe la polarizzazione propria dell'ingresso
 microfonico.
 
-Entrambi i condensatori devono essere da 1 µF o più. Con 100 nF la frequenza
-di taglio inferiore finisce vicino a 700 Hz, il che attenua il tono di mark a
-1200 Hz rispetto a quello di space a 2200 Hz. Usare trimmer da 10 kΩ: sul lato
+Il condensatore di trasmissione deve essere da 1 µF o più. Quello di
+ricezione forma un passa-alto del primo ordine con le resistenze
+dell'autopolarizzazione (circa 22 kΩ tra il pull-up e il pull-down del pad,
+che variano da un esemplare all'altro), e il suo valore dipende dall'audio
+fornito dall'apparato:
+
+* **Audio piatto (discriminatore / dati): 1 µF o più**, taglio a circa 7 Hz.
+  L'ingresso resta com'è.
+* **Audio de-enfatizzato (altoparlante): 10 nF**, taglio a circa 700 Hz (tra
+  500 e 900 Hz secondo la dispersione delle resistenze interne). La de-enfasi
+  solleva tutto ciò che sta sotto i toni di 6 dB per ottava, quindi un'uscita
+  altoparlante porta bassi ben sopra i toni; attraverso un condensatore grande
+  quei bassi occupano la gamma del convertitore e lasciano i toni appena
+  qualche conteggio sopra il rumore proprio dell'ADC, cosa che il passa-alto
+  della pagina Radiomodem non può recuperare perché agisce dopo il
+  convertitore. Davanti all'ADC il condensatore da 10 nF li elimina, e insieme
+  toglie 1,3 dB al tono di mark a 1200 Hz e 0,4 dB a quello di space a
+  2200 Hz, un po' dell'esaltazione del tono di space di cui l'audio
+  de-enfatizzato ha bisogno. Usare un condensatore ceramico o a film: non ha
+  polarità.
+
+Un condensatore da 100 nF porta il taglio a circa 70 Hz, che conserva i bassi
+e quindi si comporta come quello da 1 µF.
+
+Usare trimmer da 10 kΩ: sul lato
 trasmissione mantengono leggero il carico sull'uscita del DAC, e
 l'attenuazione necessaria porta il cursore intorno all'1,4 % della corsa, per
 cui è un trimmer multigiro a renderlo regolabile.

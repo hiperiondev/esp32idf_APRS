@@ -217,8 +217,17 @@ mai elaborato da una catena costruita a metà.
    L'AGC misura il blocco decimato e non il flusso a 76,8 kHz, quindi il rumore
    del discriminatore sopra i 5 kHz non determina il guadagno, e il nuovo
    guadagno si applica al blocco su cui è stato misurato. Attacco 0,25 e rilascio
-   0,002 per blocco da 20 ms, con il passo per blocco limitato a ×2 / ÷2. Un
-   guadagno fisso lo sostituisce quando ``rx.agc_mode`` lo richiede.
+   0,002 per blocco da 20 ms, con il passo per blocco limitato a ×2 / ÷2 e il
+   guadagno tra 0,1 e 8. Il livello è preso su tutta la banda decimata, bassi
+   compresi, così un ingresso ricco di bassi mantiene il guadagno sotto la
+   limitazione dell'ingresso del demodulatore. Un blocco il cui ingresso,
+   misurato prima del guadagno, è sotto 0,002 della semiampiezza dell'ADC
+   (circa 3,3 mV RMS al pin, il rumore proprio del convertitore) lascia fermo
+   il guadagno; la prova è sull'ingresso stesso, quindi ogni segnale reale
+   viene portato al livello di lavoro qualunque fosse il guadagno. La legge sta
+   nell'header ``rx_agc.h``, solo intestazione, che il replay su PC di
+   ``audio_test/rx_replay`` compila senza modifiche. Un guadagno fisso lo
+   sostituisce quando ``rx.agc_mode`` lo richiede.
 
 **Riparazione dei bit tramite sindrome del CRC.**
    CRC-16/X.25 è affine su GF(2): il registro dopo una trama e il suo FCS è
@@ -428,3 +437,7 @@ I file sorgente del modem
      - FEC Reed–Solomon FX.25
    * - ``src/crc_ccit.c``
      - FCS (sequenza di controllo del frame)
+   * - ``include/impulse_blanker.h``, ``include/rx_agc.h``
+     - stadi del front-end di ricezione solo intestazione (soppressore di
+       impulsi, controllo del guadagno), condivisi con il replay su PC di
+       ``audio_test/rx_replay``

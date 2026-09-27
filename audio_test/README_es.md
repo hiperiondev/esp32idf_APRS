@@ -28,6 +28,7 @@ ESP32 en comparación con un decodificador de referencia (**multimon-ng**).
 16. [Limitaciones](#16-limitaciones)
 17. [Hoja de referencia rápida](#17-hoja-de-referencia-rápida)
 18. [Glosario](#18-glosario)
+19. [Replay en PC del receptor (`rx_replay`, `rx_diag.py`)](#19-replay-en-pc-del-receptor-rx_replay-rx_diagpy)
 
 ---
 
@@ -86,7 +87,7 @@ nada del ESP32 hacia la PC.
 | PC con salida de placa de sonido | Salida de auriculares o de línea. Una placa de sonido USB económica y dedicada es una buena idea (ver sección 5). |
 | Cable de audio, plug de 3,5 mm | Punta = canal izquierdo, manga = masa. Sirve cualquiera de los dos canales: el programa envía el mismo audio a ambos. |
 | RV1: trimmer multivuelta de 2 kΩ | Ajusta el nivel. El multivuelta permite un ajuste fino. **Opcional** — la sección 3.1 da una alternativa con resistencias fijas si no tiene un trimmer. |
-| C1: condensador de 1 µF o mayor | Puede ser electrolítico (¡cuide la polaridad!), de 10 V o más. |
+| C1: condensador de 10 nF cerámico o de película (o de 1 µF solo para grabaciones planas) | La sección 3, *Reglas para los componentes*, explica la elección. Uno electrolítico de 1 µF sirve (¡cuide la polaridad!), de 10 V o más. |
 | Cables de conexión | |
 
 ### Software (Linux)
@@ -161,10 +162,18 @@ polaridad, si dispone de uno.
 
 ### Reglas para los componentes
 
-* **C1 debe ser de 1 µF o mayor.** Con un condensador pequeño (por ejemplo 100 nF)
-  el circuito se convierte en un filtro pasa-altos que empieza a cortar alrededor de
-  700 Hz y debilita el tono de 1200 Hz, lo que perjudica la decodificación. Uno
-  mayor está bien (de 1 µF a 10 µF).
+* **C1 es de 10 nF para las grabaciones con deénfasis, y sirve también para las
+  planas.** C1 y las resistencias de autopolarización del ESP32 (unos 22 kΩ, que
+  varían de una pieza a otra) forman un filtro pasa-altos. Con **10 nF** su corte
+  queda en unos 700 Hz (entre 500 y 900 Hz): una grabación con deénfasis como la
+  pista 2 de WA8LMF trae graves muy por encima de los tonos, y sin este filtro
+  esos graves ocupan el rango del ADC y dejan los tonos apenas unas cuentas por
+  encima del ruido del conversor. El pasa-altos de la página Radiomodem no puede
+  recuperarlo, porque actúa después del conversor. El filtro además quita 1,3 dB
+  al tono de 1200 Hz y 0,4 dB al de 2200 Hz, lo que le viene bien al audio con
+  deénfasis; en una grabación plana no produce una diferencia medible. Un 10 nF
+  cerámico o de película no tiene polaridad. **1 µF** (corte en unos 7 Hz) sirve
+  solo para grabaciones planas; 100 nF (unos 70 Hz) se comporta como 1 µF.
 * **El trimmer debe estar *antes* del condensador**, como en el dibujo. Si RV1 se
   pusiera entre el condensador y el pin, su pata inferior conectaría GPIO33 a masa
   y destruiría la polarización.
@@ -1287,11 +1296,48 @@ Patrones típicos:
 | Lo que ve | Causa probable |
 |---|---|
 | `ok=0` desde el principio, todo NOT DECODED | El audio no llega al ESP32 (cable, placa de sonido, nivel, módem desactivado). |
-| Un archivo entero casi todo NOT DECODED, pero el archivo sintético dio OK | Nivel demasiado bajo o alto para esa grabación, o una grabación con deénfasis (pista 2) que necesita otro nivel. Pruebe `--normalise` (sección 7.2). |
+| Un archivo entero casi todo NOT DECODED, pero el archivo sintético dio OK | Nivel demasiado bajo o alto para esa grabación, o una grabación con deénfasis (pista 2) que necesita otro nivel. Pruebe `--normalise` (sección 7.2), lea la salud de la recepción del archivo (sección 11.6) y, en una grabación con deénfasis, compruebe que C1 sea de 10 nF (sección 3). |
 | Pérdidas solo en los tramos densos | Normal con tráfico saturado (colisiones, paquetes espalda con espalda). |
 | Ráfaga súbita de NOT DECODED en mitad de un archivo | Algo perturbó el audio (un sonido del sistema, un cambio de volumen) o la placa de sonido falló. |
 | Muchos EXTRA | El ESP32 es más sensible que multimon-ng con este material. |
 | Unos pocos HDR-CORRUPT entre paquetes débiles o con colisión | Un byte dañado en un campo de dirección. Es esperable en pequeñas cantidades en las pistas 1 y 4. |
+
+### 11.6 Salud de la recepción (`--transport web`)
+
+Con `--transport web` el programa lee además los contadores de recepción y el
+nivel de entrada de la estación (`POST /radio/level`, los datos del botón
+**NIVEL RX**) antes de cada archivo, cada 10 s mientras suena y al terminar, e
+imprime un bloque después de los conteos del archivo:
+
+```
+  -- Salud de la recepción (/radio/level) ----------------------
+  Tramas entregadas por el módem: 262   vistas en el log: 258
+  Decodificadas por demodulador: 31 101 198 200 70 27 4 0   únicas: 0 3 9 11 2 1 0 0
+  Muestras perdidas: FIFO 0, pool del ADC 0   carga máx. del DSP de recepción 41.3 %
+  Durante la reproducción (180 lectura(s)): pico en la banda de tonos 64 mV RMS, pico de banda ancha 310 mV RMS, ganancia máx. 2.10x, ADC crudo 812..3140
+  Supresor de impulsos: 12 muestra(s) reparada(s)
+  -> sin muestras perdidas y con el nivel en rango: las tramas faltantes se perdieron en el propio audio
+```
+
+Responde la primera pregunta ante un archivo con muchos NOT DECODED: ¿dónde se
+perdieron?
+
+| Veredicto | Significado |
+|---|---|
+| **muestras perdidas en la tarea de recepción … la CPU no dio abasto** | La FIFO o el pool del driver del ADC desbordaron durante el archivo. Se perdieron tramas antes de que las viera ningún demodulador. |
+| **la carga del DSP de recepción llegó al … cerca de perder muestras** | Un bloque tardó en procesarse el 90 % o más de su propia duración. |
+| **nivel de tonos bajo** | El pico en la banda de tonos quedó por debajo de 20 mV RMS, donde el veredicto de NIVEL RX también es *bajo*: suba RV1 o la ganancia de reproducción. |
+| **sobre-rango del ADC** | Una lectura vio el ADC crudo en sus extremos. |
+| **… líneas perdidas en el transporte web** | El módem entregó más tramas de las que mostró el espejo del log: las tramas faltantes se decodificaron pero el banco no las vio. |
+| **sin muestras perdidas y con el nivel en rango** | Nada del lado de la estación explica las pérdidas: están en el propio audio (ruido, twist, colisiones, o graves que ocupan el rango del ADC; vea C1 en la sección 3). |
+
+Los contadores son acumulados desde la última reconstrucción del conjunto de
+demoduladores, así que el bloque muestra cuánto crecieron durante el archivo;
+una cifra que no se puede conocer (falló una lectura, o los contadores se
+reiniciaron durante el archivo) se imprime como `-`. Leer `/radio/level` no
+cambia nada en la estación, pero cada lectura ocupa su servidor web durante un
+segundo, así que el espejo del log se lee un poco más tarde mientras tanto. El
+transporte serie no tiene estas lecturas y no imprime el bloque.
 
 ---
 
@@ -1647,3 +1693,41 @@ grep -E "NOT DECODED|DIFFERENT|HEADER CORRUPT" run.log
 | **Normalización** | `--normalise`: llevar cada WAV a −1 dBFS antes de la ganancia de reproducción, para que una sola ganancia sirva a grabaciones hechas a niveles distintos (sección 7.2). |
 | **Desfase de latencia** | El retardo de la rama del ESP32 (placa de sonido → ADC → demodulador → consola) respecto de la de multimon-ng, medido y compensado automáticamente (sección 12.4). |
 | **HDR-CORRUPT** | Un veredicto: la carga útil del ESP32 coincidió exactamente pero su cabecera (origen, destino o ruta) no. Se cuenta junto con DIFFERENT como "decodificado, pero no correctamente". |
+
+---
+
+## 19. Replay en PC del receptor (`rx_replay`, `rx_diag.py`)
+
+`rx_replay/` construye `modem_replay`, el propio receptor de 1200 Bd del
+firmware ejecutándose en la PC: los demoduladores, el receptor HDLC, el
+supresor de impulsos y el control de ganancia se compilan sin cambios desde las
+fuentes del firmware, y el resto del frente del ADC (quitado de continua,
+diezmado, pasa-altos, medidor de la banda de tonos, umbral de recepción) se
+reproduce paso a paso. Separa lo que el algoritmo puede decodificar de lo que
+pierde el equipo.
+
+```bash
+# compilar (necesita gcc y python3); la tabla de diezmado se copia de afsk.c
+./rx_replay/build.sh                       # -> rx_replay/modem_replay
+
+# una grabación, convertida a códigos del ADC: --gain = cuentas del ADC por muestra a fondo de escala
+sox 02_100-Mic-E-Bursts-DE-emphasized.flac.wav -t raw -e signed -b 16 -c 1 -r 76800 track2.raw remix 1
+./rx_replay/modem_replay --gain 1200 --noise 1.2 --gate-mv 0 < track2.raw > track2.tnc2
+
+# lo que realmente recibieron los demoduladores del ESP32 (POST /radio/capture?s=N)
+./rx_replay/modem_replay --capture capture.bin > capture.tnc2
+```
+
+Cada trama decodificada sale por stdout como una línea TNC2 (los bytes fuera de
+0x20–0x7e como `<0xNN>`, como los imprime Direwolf); las estadísticas van a
+stderr. Las opciones del demodulador coinciden con la página Radiomodem:
+`--preset`, `--taps`, `--lo`, `--hi`, `--hpf`, `--gate-mv`, `--blank`,
+`--agc-fixed`, `--fix-bits`, `--flat`. Con una captura, `--no-gate` alimenta
+todos los bloques y `--agc` vuelve a ejecutar el control de ganancia en lugar de
+usar la ganancia que registró la estación.
+
+`rx_diag.py` automatiza la comparación completa — cada conjunto de
+demoduladores, largo de prefiltro y nivel en la PC contra `atest` de Direwolf, y
+luego el mismo audio en el equipo con una captura reproducida al lado — y
+escribe `report.md` con el veredicto. Compila `modem_replay` por su cuenta
+mediante `rx_replay/build.sh`; vea `./rx_diag.py --help`.

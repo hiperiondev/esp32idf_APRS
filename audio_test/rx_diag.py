@@ -144,13 +144,11 @@ class Host:
     def build(self):
         need("gcc")
         m = os.path.join(self.project, "components", "esp32idf_radioamateur_modem")
-        src = [os.path.join(HERE, "rx_replay", "modem_replay.c")] + [
-            os.path.join(m, "src", f) for f in ("modem.c", "ax25.c", "crc_ccit.c", "fx25.c")] + [
-            os.path.join(m, "lwfec", f) for f in ("rs.c", "gf.c")]
-        cmd = ["gcc", "-O2", "-w", "-I" + os.path.join(HERE, "rx_replay", "stubs"), "-I" + m,
-               "-I" + os.path.join(m, "include"), "-I" + os.path.join(m, "lwfec")] + src + ["-lm", "-o", self.bin]
+        # build.sh compiles rx_replay/modem_replay.c against the modem sources
+        # with the firmware's own defines and the host stubs of the component,
+        # and copies the decimation table out of afsk.c next to the binary.
         log("building the replay tool against %s" % m)
-        run(cmd)
+        run(["sh", os.path.join(HERE, "rx_replay", "build.sh"), self.bin, self.project])
 
     def prepare(self, wav):
         need("sox")

@@ -201,8 +201,16 @@ by a half-built chain.
    The AGC measures the decimated block rather than the 76.8 kHz stream, so
    discriminator noise above 5 kHz does not set the gain, and the new gain is
    applied to the block it was measured on. Attack 0.25 and release 0.002 per
-   20 ms block, the step per block bounded to ×2 / ÷2. A fixed gain replaces
-   it when ``rx.agc_mode`` asks for one.
+   20 ms block, the step per block bounded to ×2 / ÷2, gain between 0.1 and 8.
+   The level is taken over the whole decimated band, bass included, so a
+   bass-heavy input keeps the gain below the demodulator input's clamp. A
+   block whose input, measured before the gain, is under 0.002 of the ADC
+   half-range (about 3.3 mV RMS at the pin, the converter's own noise) holds
+   the gain; the test is on the input itself so any real signal is brought up
+   to the working level whatever the gain was. The law lives in the
+   header-only ``rx_agc.h``, which the PC replay in ``audio_test/rx_replay``
+   compiles unchanged. A fixed gain replaces it when ``rx.agc_mode`` asks for
+   one.
 
 **Bit repair by CRC syndrome.**
    CRC-16/X.25 is affine over GF(2): the register after a frame and its FCS is
@@ -401,3 +409,6 @@ The modem source files
      - FX.25 Reed–Solomon FEC
    * - ``src/crc_ccit.c``
      - FCS (frame check sequence)
+   * - ``include/impulse_blanker.h``, ``include/rx_agc.h``
+     - header-only receive front-end stages (impulse blanker, gain control),
+       shared with the PC replay in ``audio_test/rx_replay``

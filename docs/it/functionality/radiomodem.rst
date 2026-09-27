@@ -861,7 +861,16 @@ Guadagno di ricezione e Guadagno fisso di ricezione (dB)
 
 **Automatico** (predefinito) segue il livello di ogni trasmissione sul segnale
 in banda, abbassando in fretta il guadagno su una forte e alzandolo lentamente
-su una debole. **Fisso** applica invece il **Guadagno fisso di ricezione**
+su una debole, tra −20 e +18 dB. Misura tutta la banda decimata, bassi
+compresi, così un'uscita altoparlante ricca di bassi mantiene il guadagno
+abbastanza basso da non portare l'ingresso del demodulatore alla sua
+limitazione. Solo un ingresso sotto circa 3,3 mV RMS al pin — il rumore
+proprio del convertitore — lascia il guadagno dov'è; qualsiasi cosa sopra
+viene portata al livello di lavoro qualunque sia il guadagno, perché i
+demodulatori perdono precisione con un ingresso di pochi conteggi. Con
+**Soglia di ricezione** a 0 il guadagno sale lentamente su un canale libero e
+torna giù in pochi blocchi quando inizia una trasmissione.
+**Fisso** applica invece il **Guadagno fisso di ricezione**
 (da −12 a +18 dB).
 
 Una porta dati o discriminatore fornisce un livello fissato dalla deviazione
