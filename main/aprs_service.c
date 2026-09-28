@@ -2264,7 +2264,7 @@ typedef struct {
     float agcGainPeak;
     // OR of the ModemDcdState() bitmaps sampled across the test window, so a
     // bit stays set once that demodulator has locked at least once.
-    uint8_t dcdLatch;
+    uint16_t dcdLatch;
     uint8_t rxStageMax[MODEM_MAX_DEMODULATOR_COUNT];
     uint32_t adcSamplesStart;
     uint32_t adcSamplesEnd;
@@ -2604,7 +2604,7 @@ bool aprs_loop_test_run(char *msg, size_t msg_len) {
 
             snprintf(msg, msg_len,
                      "FAIL: no packet was received back within %d ms, even though the demodulator's PLL locked onto "
-                     "the tones (DCD bitmap 0x%02X - bit N is demodulator N - RMS peaked at %u mV, AGC peak "
+                     "the tones (DCD bitmap 0x%04X - bit N is demodulator N - RMS peaked at %u mV, AGC peak "
                      "gain %.2fx). Furthest HDLC receive "
                      "stage reached: %u (0=idle, 1=flag seen, 2=assembling a frame). %s",
                      LOOP_TEST_TIMEOUT_MS, (unsigned)s_diag.dcdLatch, (unsigned)s_diag.mVrmsPeak, (double)s_diag.agcGainPeak, (unsigned)stageMax,

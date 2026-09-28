@@ -327,7 +327,7 @@ static struct RxState rxState[MODEM_MAX_DEMODULATOR_COUNT];
 // window's closing can tell whether one of them got it alone.
 static bool dedupOpen = false;
 static uint16_t lastCrc = 0;
-static uint8_t lastCrcMask = 0;
+static uint16_t lastCrcMask = 0;
 static uint16_t rxMultiplexDelay = 0;
 
 // Receive counters (see Ax25GetRxStats()), written by the receive task only.
@@ -933,7 +933,7 @@ void Ax25SetFixBits(uint8_t level) {
 static void dedupClose(void) {
     if (dedupOpen && (lastCrcMask != 0) && ((lastCrcMask & (lastCrcMask - 1)) == 0)) {
         for (uint8_t i = 0; i < MODEM_RX_MAX_DEMODULATORS; i++) {
-            if (lastCrcMask == (uint8_t)(1u << i))
+            if (lastCrcMask == (uint16_t)(1u << i))
                 rxStats.unique[i]++;
         }
     }
@@ -950,14 +950,14 @@ static bool dedupAccept(uint16_t crc, uint8_t modem) {
         rxStats.decoded[modem]++;
 
     if (dedupOpen && (crc == lastCrc)) {
-        lastCrcMask |= (uint8_t)(1u << modem);
+        lastCrcMask |= (uint16_t)(1u << modem);
         return false;
     }
 
     dedupClose();
     dedupOpen = true;
     lastCrc = crc;
-    lastCrcMask = (uint8_t)(1u << modem);
+    lastCrcMask = (uint16_t)(1u << modem);
     rxMultiplexDelay = 0;
     return true;
 }

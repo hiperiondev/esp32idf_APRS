@@ -269,6 +269,10 @@ El preajuste *Clásico* ejecuta en cambio una pareja fija: un pasabanda
 de 8 coeficientes (plano para **Activado**, inclinado hacia 2200 Hz para
 **Apagado**) y un demodulador sin prefiltro.
 
+Los juegos *Multicomparador* no dependen de este ajuste: sus doce
+demoduladores cubren el desbalance de los dos tipos de audio con un solo juego
+de tablas.
+
 **Ejemplos.**
 
 * Baofeng UV-5R, audio tomado del conector de altavoz de 3,5 mm → **apagado**.
@@ -738,46 +742,53 @@ entre todos.
      - +4, 0, −5 dB
      - 0, +3, +6 dB
    * - Multicomparador (por omisión)
-     - 8
-     - prefiltros +6, −5, −14 dB; compensación +9 … −15,5 dB
-     - prefiltros +13, +2, −7 dB; compensación +16 … −8,5 dB
+     - 12
+     - prefiltros +13, +4, −5, −13 dB; compensación +16,5 … −16,5 dB
+     - igual que la entrada plana
    * - Multicomparador, 2 filtros (comparación)
-     - 8
-     - prefiltros +5, −9 dB; compensación +9 … −15,5 dB
-     - prefiltros +9, −4 dB; compensación +16 … −8,5 dB
+     - 12
+     - prefiltros +9, −9 dB; compensación +16,5 … −16,5 dB
+     - igual que la entrada plana
    * - Personalizado
      - *Personalizado: demoduladores*
      - campos *Personalizado: inclinación*
      - campos *Personalizado: inclinación*
 
-**Cómo elegir.** Mantenga **Multicomparador**. Usa tres prefiltros, cada uno
-inclinado hacia el centro de su propia parte del rango de desbalance, con tres,
-tres y dos umbrales de decisión. Cada umbral (peso del comparador) se calcula a partir de
-la inclinación que su prefiltro alcanzó de verdad, así que los ocho
-demoduladores juntos compensan el desbalance en pasos iguales de 3,5 dB — la
-columna de *compensación* de arriba, inclinación del prefiltro más peso del
-comparador — sea cual sea la *Longitud del pasabanda*. Los prefiltros
-inclinados impiden que un tono fuerte se filtre en el correlador del otro
-tono, algo que ningún umbral puede deshacer, y mantienen cada umbral a no más de
-unos 4 dB del neutro, más allá de lo cual un umbral pierde sensibilidad con
-señales débiles. Cuesta más o menos la misma CPU que el juego de tres filtros
-aunque corra ocho decodificadores HDLC.
+**Cómo elegir.** Mantenga **Multicomparador**. Usa cuatro prefiltros, con
+inclinaciones de +13, +4, −5 y −13 dB, cada uno leído por tres umbrales de
+decisión. Cada umbral (peso del comparador) se calcula a partir de la
+inclinación que su prefiltro alcanzó de verdad, así que los doce demoduladores
+juntos compensan el desbalance en pasos parejos de 3 dB desde +16,5 hasta
+−16,5 dB — la columna de *compensación* de arriba, inclinación del prefiltro más
+peso del comparador — cualquiera sea la *Longitud del pasabanda*. Ese rango
+abarca el desbalance del audio de discriminador (hasta unos 12 dB de tono de
+2200 Hz de más por un transmisor con preénfasis) y el del audio de altavoz (el
+tono de 2200 Hz hasta unos 15 dB por debajo) por igual, de modo que los
+multicomparadores usan las mismas tablas diga lo que diga *Entrada de audio
+plana / discriminador*, y una estación oye igual de bien una mezcla de ambos
+tipos de señal. Los prefiltros inclinados impiden que un tono fuerte se filtre
+en el correlador del otro tono, algo que ningún umbral puede deshacer, y
+mantienen cada umbral a menos de unos 3,5 dB del neutro, más allá de lo cual un
+umbral pierde sensibilidad con señales débiles. Corre doce decodificadores
+HDLC; las cifras *DSP* de **NIVEL RX** muestran la carga que ponen sobre la
+tarea de recepción.
 
-En una simulación de un canal FM ruidoso con el desbalance aplicado por la
-etapa de audio del receptor, el juego de altavoz decodifica casi todas las
-tramas de −16 dB (tono de espacio por debajo del de marca) a +10 dB, y el juego
-plano hace lo mismo de −10 a +12 dB. Una salida de altavoz con su propia cadena de
-audio llega en la práctica a −15 dB. Las estadísticas de *NIVEL RX* muestran lo
-que aporta cada demodulador en su propio canal, y el registro indica la
-compensación efectiva de cada uno cada vez que se reconstruye el juego.
+En una simulación en PC de la propia cadena de recepción del firmware
+(``audio_test/rx_replay``) sobre un canal con ruido, el juego decodifica casi
+todas las tramas desde −18 dB (tono de espacio por debajo del de marca) hasta
++12 dB de desbalance con 12 dB de SNR en banda, y con 9 dB sigue decodificando
+la mayoría de las tramas entre −15 y +12 dB de desbalance, sea cual sea el tipo
+de audio que las trae. Las estadísticas de *NIVEL RX* muestran lo que aporta cada
+demodulador en su propio canal, y el registro lista la compensación efectiva de
+cada uno cada vez que se reconstruye el juego.
 
-**Multicomparador, 2 filtros** corre los mismos ocho comparadores sobre los
-mismos rangos con dos prefiltros, cuatro comparadores cada uno. Sus
-comparadores extremos llevan pesos de hasta unos ±6 dB, así que en simulación
-queda por detrás del juego de tres prefiltros con señales débiles. Está para
-comparar las dos disposiciones en su propia estación sin volver a grabar el
-firmware — cambie, guarde y compare las estadísticas de *NIVEL RX* — y es entre
-lo que alterna ``audio_test/rx_diag.py`` en el equipo.
+**Multicomparador, 2 filtros** corre los mismos doce comparadores sobre el
+mismo rango con dos prefiltros, seis comparadores cada uno. Sus comparadores de
+los extremos llevan pesos de hasta unos ±8 dB, así que en simulación queda
+detrás del juego de cuatro prefiltros con señales débiles. Está para comparar
+las dos disposiciones en su propia estación sin volver a grabar el firmware —
+cambie, guarde y compare las estadísticas de *NIVEL RX* — y es lo que
+``audio_test/rx_diag.py`` alterna en el equipo.
 
 **Personalizado: demoduladores** y **Personalizado: inclinación, demodulador
 1–3 (dB)** sólo se aplican al preajuste *Personalizado*: el número de
@@ -817,30 +828,48 @@ demoduladores mientras ese nivel se ha mantenido por encima del umbral durante
 unos cuantos bloques de 20 ms y hasta que cae por debajo de la mitad. Los bloques recibidos
 mientras el umbral decidía abrirse se guardan y se demodulan primero, así que el
 comienzo de una transmisión sigue llegando a los demoduladores. Rango 0–50 mV,
-por omisión 10 mV.
+por omisión **0** (apagado).
 
 Al cerrarse el umbral se borra la detección de portadora de todos los
 demoduladores, porque ya no les llega audio que la deje decaer; un falso
 enganche sobre el ruido del final de una transmisión nunca sobrevive al cierre.
 
-**Cómo elegir.** Con un puerto de datos o de discriminador independiente del
-squelch la entrada nunca queda en silencio, así que el umbral sólo cuesta una
-decisión; ponga **0** para alimentar a los demoduladores siempre. Si el squelch
-de la radio corta el audio entre transmisiones, mantenga el valor por omisión.
+**Cómo elegir.** Déjelo en **0**. Cualquier umbral descarta también las
+estaciones cuyo nivel en la banda de tonos queda por debajo de él, y esas
+suelen seguir siendo decodificables: reproduciendo en una PC la pista de
+40 minutos con deénfasis de WA8LMF a través de los propios demoduladores del
+firmware (``audio_test/rx_replay``), un umbral de 10 mV pierde alrededor de un
+quinto de las tramas que se decodifican con el umbral apagado. Si el squelch de
+la radio corta el audio entre transmisiones, tampoco hay nada que filtrar. Fije
+un umbral, un poco por encima de la cifra ``tonos`` de **NIVEL RX** en reposo,
+solo cuando la entrada trae ruido en reposo que mantiene el canal ocupado
+entre transmisiones.
+
+.. note::
+
+   Una configuración guardada con un umbral de recepción conserva su valor.
+   Ponga 0 aquí y guarde.
 
 Pasa-altos (rechazo de CTCSS)
 -----------------------------
 
-Un pasa-altos de segundo orden a 150, 300 o 400 Hz delante de los
-demoduladores de los perfiles AFSK, **300 Hz** por omisión. Una salida de
-discriminador lleva el tono CTCSS a nivel completo, y una salida de altavoz
-deenfatizada lleva graves muy por encima del nivel de los tonos — el deénfasis
-realza todo lo que está por debajo de los tonos 6 dB por octava. Los prefiltros
-diseñados rechazan ambas cosas dentro de los demoduladores, pero el pasa-altos
-trabaja antes de la ganancia automática, así que la ganancia sigue a los tonos
-y no a los graves, y además cubre el preajuste *Clásico*, cuyo segundo
-demodulador no tiene prefiltro. Apáguelo sólo con un receptor cuyo audio esté
-limpio por debajo de 300 Hz y un preajuste que no necesite quitar nada ahí.
+Un pasa-altos Butterworth de cuarto orden a 150, 300, 400, 600 u 800 Hz delante
+de los demoduladores de los perfiles AFSK, **300 Hz** por omisión; cae 24 dB
+por octava por debajo de su frecuencia de corte, así que a 300 Hz un tono CTCSS
+de 100 Hz queda 38 dB abajo mientras los tonos pierden menos de 0,1 dB. Una
+salida de discriminador lleva el tono CTCSS a nivel completo, y una salida de
+altavoz deenfatizada lleva graves muy por encima del nivel de los tonos — el
+deénfasis levanta todo lo que está por debajo de los tonos 6 dB por octava. Los
+prefiltros diseñados rechazan ambos dentro de los demoduladores, pero el
+pasa-altos va antes de la ganancia automática, así que la ganancia sigue a los
+tonos y no a los graves, y cubre el juego *Clásico*, cuyo segundo demodulador
+no tiene prefiltro. **600** y **800 Hz** cortan además los graves de 400–800 Hz
+de una salida de altavoz que el borde inferior de los prefiltros deja pasar; se
+llevan parte de la energía del tono de marca, y en simulación 800 Hz cuesta
+alrededor de una quinta parte de las tramas débiles con audio plano, así que
+resérvelos para audio de altavoz. Apague el pasa-altos solo con un receptor
+cuyo audio esté limpio por debajo de 300 Hz y un juego que no necesite quitar
+nada ahí.
 
 .. note::
 
@@ -1604,10 +1633,10 @@ Referencia de campos
      - En vivo
    * - Umbral de recepción
      - 0–50 mV (0 = apagado)
-     - 10 mV
+     - 0 (apagado)
      - En vivo
    * - Pasa-altos (rechazo de CTCSS)
-     - apagado / 150 / 300 / 400 Hz
+     - apagado / 150 / 300 / 400 / 600 / 800 Hz
      - 300 Hz
      - En vivo
    * - Ganancia de recepción
@@ -1699,8 +1728,12 @@ Resolución de problemas
        inclinaciones más separadas, y compare las cifras por demodulador en
        **NIVEL RX**.
    * - A menudo se pierde el primer paquete tras un rato de silencio
-     - El umbral de recepción. Ponga **Umbral de recepción** en 0 cuando el
-       audio viene de un puerto independiente del squelch.
+     - El umbral de recepción. Ponga **Umbral de recepción** en 0, el valor por
+       omisión.
+   * - Las estaciones fuertes decodifican, otras más débiles con señal limpia
+       nunca
+     - El umbral de recepción las deja afuera. Ponga **Umbral de recepción**
+       en 0.
    * - Las estaciones débiles decodifican, las fuertes no
      - Recorte. Active **Avisar cuando el audio recibido se sale de rango**,
        ejecute **NIVEL RX** y baje el potenciómetro de recepción.

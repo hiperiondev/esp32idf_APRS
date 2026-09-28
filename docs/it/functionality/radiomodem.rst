@@ -272,6 +272,10 @@ Il preset *Classico* esegue invece una coppia fissa: un passa-banda
 a 8 coefficienti (piatto per **Attivo**, inclinato verso 2200 Hz per
 **Spento**) e un demodulatore senza prefiltro.
 
+I set *Multicomparatore* non dipendono da questa impostazione: i loro dodici
+demodulatori coprono lo sbilanciamento di entrambi i tipi di audio con un solo
+set di tabelle.
+
 **Esempi.**
 
 * Baofeng UV-5R, audio prelevato dalla presa altoparlante da 3,5 mm →
@@ -744,46 +748,52 @@ parte. Un set di prefiltri con inclinazioni diverse lo copre nel complesso.
      - +4, 0, −5 dB
      - 0, +3, +6 dB
    * - Multicomparatore (predefinito)
-     - 8
-     - prefiltri +6, −5, −14 dB; compensazione +9 … −15,5 dB
-     - prefiltri +13, +2, −7 dB; compensazione +16 … −8,5 dB
+     - 12
+     - prefiltri +13, +4, −5, −13 dB; compensazione +16,5 … −16,5 dB
+     - come l'ingresso piatto
    * - Multicomparatore, 2 filtri (confronto)
-     - 8
-     - prefiltri +5, −9 dB; compensazione +9 … −15,5 dB
-     - prefiltri +9, −4 dB; compensazione +16 … −8,5 dB
+     - 12
+     - prefiltri +9, −9 dB; compensazione +16,5 … −16,5 dB
+     - come l'ingresso piatto
    * - Personalizzato
      - *Personalizzato: demodulatori*
      - campi *Personalizzato: inclinazione*
      - campi *Personalizzato: inclinazione*
 
-**Come scegliere.** Tenete **Multicomparatore**. Usa tre prefiltri, ciascuno
-inclinato verso il centro della propria parte dell'intervallo di
-sbilanciamento, con tre, tre e due soglie di decisione. Ogni soglia (peso del comparatore) è calcolata
-dall'inclinazione che il suo prefiltro ha raggiunto davvero, quindi gli otto
-demodulatori insieme compensano lo sbilanciamento a passi uguali di 3,5 dB — la
+**Come scegliere.** Tenete **Multicomparatore**. Usa quattro prefiltri, con
+inclinazioni di +13, +4, −5 e −13 dB, ciascuno letto da tre soglie di
+decisione. Ogni soglia (peso del comparatore) è calcolata dall'inclinazione
+che il suo prefiltro ha realmente raggiunto, così i dodici demodulatori insieme
+compensano lo sbilanciamento a passi regolari di 3 dB da +16,5 a −16,5 dB — la
 colonna *compensazione* qui sopra, inclinazione del prefiltro più peso del
-comparatore — qualunque sia la *Lunghezza del passa-banda*. I prefiltri
-inclinati impediscono che un tono forte trapeli nel correlatore dell'altro,
-cosa che nessuna soglia può correggere, e tengono ogni soglia entro circa 4 dB
-dal neutro, oltre i quali una soglia perde sensibilità sui segnali deboli. Costa
-circa la stessa CPU del set a tre filtri pur eseguendo otto decodificatori
-HDLC.
+comparatore — qualunque sia la *Lunghezza del passa-banda*. Quell'intervallo
+contiene lo sbilanciamento dell'audio da discriminatore (fino a circa 12 dB di
+tono a 2200 Hz in più da un trasmettitore con pre-enfasi) e quello dell'audio
+da altoparlante (il tono a 2200 Hz fino a circa 15 dB sotto) allo stesso modo,
+quindi i multicomparatori usano le stesse tabelle qualunque cosa dica
+*Ingresso audio piatto / discriminatore*, e una stazione sente altrettanto bene
+un misto dei due tipi di segnale. I prefiltri inclinati impediscono a un tono
+forte di infiltrarsi nel correlatore dell'altro tono, cosa che nessuna soglia
+può annullare, e tengono ogni soglia entro circa 3,5 dB dal neutro, oltre i
+quali una soglia perde sensibilità sui segnali deboli. Esegue dodici
+decodificatori HDLC; i valori *DSP* di **LIVELLO RX** mostrano il carico che
+mettono sul task di ricezione.
 
-In una simulazione di un canale FM rumoroso con lo sbilanciamento applicato
-dallo stadio audio del ricevitore, il set altoparlante decodifica quasi tutte
-le trame da −16 dB (tono di spazio sotto quello di marca) a +10 dB, e il set
-piatto fa lo stesso da −10 a +12 dB. Un'uscita altoparlante con la propria
-catena audio arriva in pratica a −15 dB. Le statistiche di *LIVELLO RX*
-mostrano ciò che ogni demodulatore apporta sul vostro canale, e il log indica
-la compensazione effettiva di ciascuno ogni volta che il set viene
-ricostruito.
+In una simulazione su PC della catena di ricezione del firmware stesso
+(``audio_test/rx_replay``) su un canale rumoroso, il set decodifica quasi tutte
+le trame da −18 dB (tono di spazio sotto quello di marca) a +12 dB di
+sbilanciamento con 12 dB di SNR in banda, e a 9 dB decodifica ancora la
+maggior parte delle trame fra −15 e +12 dB di sbilanciamento, qualunque tipo di
+audio le porti. Le statistiche di *LIVELLO RX* mostrano ciò che ogni
+demodulatore contribuisce sul vostro canale, e il log elenca la compensazione
+effettiva di ciascuno ogni volta che il set viene ricostruito.
 
-**Multicomparatore, 2 filtri** esegue gli stessi otto comparatori sugli stessi
-intervalli con due prefiltri, quattro comparatori ciascuno. I suoi comparatori
-estremi portano pesi fino a circa ±6 dB, quindi in simulazione resta dietro al
-set a tre prefiltri sui segnali deboli. Serve a confrontare le due disposizioni
-sulla vostra stazione senza riprogrammare il firmware — cambiate, salvate e
-confrontate le statistiche di *LIVELLO RX* — ed è tra ciò che
+**Multicomparatore, 2 filtri** esegue gli stessi dodici comparatori sullo stesso
+intervallo su due prefiltri, sei comparatori ciascuno. I suoi comparatori
+esterni portano pesi fino a circa ±8 dB, quindi in simulazione resta dietro al
+set a quattro prefiltri sui segnali deboli. Serve a confrontare le due
+disposizioni sulla vostra stazione senza riprogrammare — cambiate, salvate e
+confrontate le statistiche di *LIVELLO RX* — ed è ciò fra cui
 ``audio_test/rx_diag.py`` alterna sul dispositivo.
 
 **Personalizzato: demodulatori** e **Personalizzato: inclinazione,
@@ -824,32 +834,48 @@ alimentati mentre quel livello è rimasto sopra la soglia per alcuni blocchi da
 20 ms e finché non scende sotto la metà. I blocchi ricevuti mentre la soglia
 decideva di aprirsi vengono conservati e demodulati per primi, così l'inizio di
 una trasmissione arriva comunque ai demodulatori. Intervallo 0–50 mV,
-predefinito 10 mV.
+predefinito **0** (spenta).
 
 Alla chiusura della soglia il rilevamento di portante di tutti i demodulatori
 viene azzerato, perché non arriva più audio che lo lasci decadere; un falso
 aggancio sul rumore alla fine di una trasmissione non sopravvive mai alla
 chiusura.
 
-**Come scegliere.** Con una porta dati o discriminatore indipendente dallo
-squelch l'ingresso non resta mai in silenzio, quindi la soglia costa solo una
-decisione; impostate **0** per alimentare sempre i demodulatori. Se lo squelch
-della radio interrompe l'audio tra le trasmissioni, tenete il valore
-predefinito.
+**Come scegliere.** Lasciatela a **0**. Qualsiasi soglia scarta anche le
+stazioni il cui livello nella banda dei toni resta sotto di essa, e spesso
+sono ancora decodificabili: riproducendo su PC la traccia di 40 minuti
+de-enfatizzata di WA8LMF attraverso i demodulatori stessi del firmware
+(``audio_test/rx_replay``), una soglia di 10 mV perde circa un quinto delle
+trame decodificate con la soglia spenta. Se lo squelch della radio interrompe
+l'audio tra le trasmissioni, non c'è comunque nulla da filtrare. Impostate una
+soglia, poco sopra il valore ``toni`` di **LIVELLO RX** a riposo, solo quando
+l'ingresso porta rumore a riposo che tiene il canale occupato tra le
+trasmissioni.
+
+.. note::
+
+   Una configurazione salvata con una soglia di ricezione conserva il suo
+   valore. Impostate 0 qui e salvate.
 
 Passa-alto (reiezione CTCSS)
 ----------------------------
 
-Un passa-alto del secondo ordine a 150, 300 o 400 Hz davanti ai demodulatori
-dei profili AFSK, **300 Hz** per impostazione predefinita. Un'uscita
+Un passa-alto Butterworth del quarto ordine a 150, 300, 400, 600 o 800 Hz
+davanti ai demodulatori dei profili AFSK, **300 Hz** per default; scende di
+24 dB per ottava sotto la frequenza di taglio, così a 300 Hz un tono CTCSS a
+100 Hz è 38 dB più in basso mentre i toni perdono meno di 0,1 dB. Un'uscita
 discriminatore porta il tono CTCSS a pieno livello, e un'uscita altoparlante
-deenfatizzata porta bassi ben sopra il livello dei toni — la deenfasi alza
+de-enfatizzata porta bassi ben sopra il livello dei toni — la de-enfasi alza
 tutto ciò che sta sotto i toni di 6 dB per ottava. I prefiltri progettati
-respingono entrambi dentro i demodulatori, ma il passa-alto lavora prima del
-guadagno automatico, così il guadagno segue i toni e non i bassi, e copre
-anche il preset *Classico*, il cui secondo demodulatore non ha prefiltro.
-Spegnetelo solo con un ricevitore il cui audio sia pulito sotto i 300 Hz e un
-preset che non abbia bisogno di togliere nulla lì.
+respingono entrambi dentro i demodulatori, ma il passa-alto agisce prima del
+guadagno automatico, così il guadagno segue i toni e non i bassi, e copre il
+set *Classico*, il cui secondo demodulatore non ha prefiltro. **600** e
+**800 Hz** tagliano anche i bassi fra 400 e 800 Hz di un'uscita altoparlante che
+il bordo inferiore dei prefiltri lascia passare; portano via parte
+dell'energia del tono di marca, e in simulazione 800 Hz costa circa un quinto
+delle trame deboli con audio piatto, quindi teneteli per l'audio da
+altoparlante. Spegnete il passa-alto solo con un ricevitore il cui audio sia
+pulito sotto 300 Hz e un set che non richieda di togliere nulla lì.
 
 .. note::
 
@@ -1614,10 +1640,10 @@ Riferimento dei campi
      - Dal vivo
    * - Soglia di ricezione
      - 0–50 mV (0 = spenta)
-     - 10 mV
+     - 0 (spenta)
      - Dal vivo
    * - Passa-alto (reiezione CTCSS)
-     - spento / 150 / 300 / 400 Hz
+     - spento / 150 / 300 / 400 / 600 / 800 Hz
      - 300 Hz
      - Dal vivo
    * - Guadagno di ricezione
@@ -1709,8 +1735,11 @@ Risoluzione dei problemi
        inclinazioni più distanziate, e confrontate i valori per demodulatore in
        **LIVELLO RX**.
    * - Il primo pacchetto dopo un periodo di silenzio va spesso perso
-     - La soglia di ricezione. Impostate **Soglia di ricezione** a 0 quando
-       l'audio arriva da una porta indipendente dallo squelch.
+     - La soglia di ricezione. Impostate **Soglia di ricezione** a 0, il
+       predefinito.
+   * - Le stazioni forti decodificano, altre più deboli con segnale pulito mai
+     - La soglia di ricezione le tiene fuori. Impostate **Soglia di
+       ricezione** a 0.
    * - Le stazioni deboli decodificano, quelle forti no
      - Saturazione. Abilitate **Avvisa quando l'audio ricevuto esce dal fondo
        scala**, eseguite **LIVELLO RX** e abbassate il trimmer di ricezione.

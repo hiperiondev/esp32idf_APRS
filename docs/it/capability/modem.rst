@@ -44,8 +44,8 @@ possa convertire il valore salvato direttamente nell'enum:
      - 9600
      - —
 
-I profili a 1200 Bd eseguono **fino a otto demodulatori in parallelo**
-(``MODEM_RX_MAX_DEMODULATORS = 8``). Un demodulatore è un comparatore
+I profili a 1200 Bd eseguono **fino a dodici demodulatori in parallelo**
+(``MODEM_RX_MAX_DEMODULATORS = 12``). Un demodulatore è un comparatore
 sull'uscita di un correlatore (un prefiltro passa-banda e i correlatori di marca
 e spazio che lo seguono): o ognuno ha il proprio prefiltro, con inclinazione
 diversa tra i toni, oppure più comparatori condividono un prefiltro e si

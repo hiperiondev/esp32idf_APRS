@@ -147,21 +147,19 @@ static inline int16_t impulse_blanker_step(impulse_blanker_t *b, int16_t in, boo
     if (thr < IMPULSE_BLANK_MIN_COUNTS)
         thr = IMPULSE_BLANK_MIN_COUNTS;
 
-    // On a steep stretch of audio a clean sample can sit a couple of steps
-    // from the window median; the local step, taken as the median of the four
-    // differences so a glitch cannot inflate it, widens the threshold there.
-    int16_t dv[4] = { (int16_t)(b->h[1] - b->h[0]), (int16_t)(b->h[2] - b->h[1]), (int16_t)(b->h[3] - b->h[2]), (int16_t)(b->h[4] - b->h[3]) };
-    for (int i = 1; i < 4; i++) {
-        int16_t t = dv[i];
-        int j = i - 1;
-        while ((j >= 0) && (dv[j] > t)) {
-            dv[j + 1] = dv[j];
-            j--;
-        }
-        dv[j + 1] = t;
-    }
-    int32_t step = ((int32_t)dv[1] + (int32_t)dv[2]) / 2;
-    thr += IMPULSE_BLANK_STEP_FACTOR * ((step < 0) ? -step : step);
+    // On a steep stretch of audio, and around the crest of a loud tone, a
+    // clean sample can sit a couple of steps from the window median; the local
+    // step widens the threshold there. It is the smaller of the two outer
+    // differences, h[1] - h[0] and h[4] - h[3]: neither touches the sample
+    // being judged, so a one-sample glitch cannot inflate it, and the smaller
+    // one leaves out a glitch that also covers a neighbour. Both keep their
+    // size at a crest, where the differences on either side of the judged
+    // sample change sign and cancel.
+    int32_t s1 = (int32_t)b->h[1] - (int32_t)b->h[0];
+    int32_t s4 = (int32_t)b->h[4] - (int32_t)b->h[3];
+    s1 = (s1 < 0) ? -s1 : s1;
+    s4 = (s4 < 0) ? -s4 : s4;
+    thr += IMPULSE_BLANK_STEP_FACTOR * ((s1 < s4) ? s1 : s4);
 
     if (err > thr) {
         // Interpolate across the glitch from the neighbours that are not

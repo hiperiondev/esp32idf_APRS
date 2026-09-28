@@ -7,14 +7,15 @@
 //
 // @brief PC replay of the 1200 Bd receive chain of the firmware.
 //
-// The demodulators, the HDLC receiver, the impulse blanker and the gain
-// control are the firmware's own sources (modem.c, ax25.c, fx25.c,
-// impulse_blanker.h, rx_agc.h), compiled for the PC against the stand-in
-// headers of components/esp32idf_radioamateur_modem/test/host/stubs. The
-// rest of the front end of AFSK_Poll() in afsk.c - the running DC average,
-// the decimation filter, the high-pass, the tone-band meter and the receive
-// gate with its hold ring - is reproduced here step by step; the decimation
-// coefficients are taken from afsk.c by build.sh when the tool is built.
+// The demodulators, the HDLC receiver, the impulse blanker, the DC tracker,
+// the high-pass and the gain control are the firmware's own sources (modem.c,
+// ax25.c, fx25.c, impulse_blanker.h, rx_dc_block.h, rx_hpf.h, rx_agc.h),
+// compiled for the PC against the stand-in headers of
+// components/esp32idf_radioamateur_modem/test/host/stubs. The rest of the
+// front end of AFSK_Poll() in afsk.c - the decimation filter, the tone-band
+// meter and the receive gate with its hold ring - is reproduced here step by
+// step; the decimation coefficients are taken from afsk.c by build.sh when the
+// tool is built.
 //
 // Two inputs:
 //
@@ -48,6 +49,8 @@
 #include "impulse_blanker.h"
 #include "modem.h"
 #include "rx_agc.h"
+#include "rx_dc_block.h"
+#include "rx_hpf.h"
 
 // Decimation filter of afsk.c for MODEM_RESAMPLE_RATIO == 8, written by
 // build.sh as "static const float resample_coeffs[FILTER_TAPS] = {...};".
@@ -58,7 +61,6 @@ _Static_assert(MODEM_RESAMPLE_RATIO == 8, "the replay reproduces the 76800 -> 96
 
 #define BLOCK        MODEM_BLOCK_SIZE
 #define DECIM        (MODEM_BLOCK_SIZE / MODEM_RESAMPLE_RATIO)
-#define AVG_N        125
 #define HOLD_BLOCKS  3
 #define ADC_MID      2048
 #define RECORD_BYTES 396
@@ -251,18 +253,6 @@ typedef struct {
     float x1, x2, y1, y2;
 } biquad_t;
 
-static void biquad_hpf(biquad_t *f, unsigned hz) {
-    memset(f, 0, sizeof(*f));
-    const float k = tanf((float)M_PI * (float)hz / (float)MODEM_DEMOD_SAMPLERATE);
-    const float q = 1.41421356f;
-    const float norm = 1.0f / (1.0f + q * k + k * k);
-    f->b0 = norm;
-    f->b1 = -2.0f * norm;
-    f->b2 = norm;
-    f->a1 = 2.0f * (k * k - 1.0f) * norm;
-    f->a2 = (1.0f - q * k + k * k) * norm;
-}
-
 static void biquad_band(biquad_t *f) {
     memset(f, 0, sizeof(*f));
     const float f0 = sqrtf(900.0f * 2600.0f);
@@ -388,17 +378,16 @@ static int run_recording(const options_t *o) {
     static int16_t in[BLOCK];
     static float audio[BLOCK];
     static float hold[HOLD_BLOCKS][DECIM];
-    static uint16_t avgBuf[AVG_N];
     impulse_blanker_t blanker;
-    biquad_t hpf, band[2];
+    rx_dc_block_t dcBlock;
+    rx_hpf_t hpf;
+    biquad_t band[2];
 
     impulse_blanker_reset(&blanker);
-    biquad_hpf(&hpf, o->rx.hpf_hz);
+    rx_dc_block_reset(&dcBlock);
+    rx_hpf_setup(&hpf, o->rx.hpf_hz, (float)MODEM_DEMOD_SAMPLERATE);
     biquad_band(&band[0]);
     biquad_band(&band[1]);
-    for (int i = 0; i < AVG_N; i++)
-        avgBuf[i] = ADC_MID;
-    int avgSum = ADC_MID * AVG_N, avgIdx = 0, avg = ADC_MID;
 
     const bool agcFixed = (o->rx.agc_mode == MODEM_RX_AGC_FIXED);
     float gain = agcFixed ? powf(10.0f, (float)o->rx.agc_fixed_gain_db / 20.0f) : 1.0f;
@@ -418,19 +407,11 @@ static int run_recording(const options_t *o) {
             samples++;
 
             int16_t adc = impulse_blanker_step(&blanker, raw, o->rx.impulse_blank);
-            avgSum += adc - (int)avgBuf[avgIdx];
-            avgBuf[avgIdx++] = (uint16_t)adc;
-            if (avgIdx >= AVG_N)
-                avgIdx = 0;
-            avg = avgSum / AVG_N;
-            audio[x] = (float)(adc - avg) / 2048.0f;
+            audio[x] = rx_dc_block_step(&dcBlock, adc) / 2048.0f;
         }
 
         decimate(audio);
-        if (o->rx.hpf_hz > 0) {
-            for (int i = 0; i < DECIM; i++)
-                audio[i] = biquad_step(&hpf, audio[i]);
-        }
+        rx_hpf_run(&hpf, audio, DECIM);
         const int bandMv = (int)(band_rms(band, audio, DECIM) * o->mvPerCount + 0.5f);
 
         if (gateOn > 0) {

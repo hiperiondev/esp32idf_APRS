@@ -413,7 +413,7 @@ Use **version 2.0**: the audio is already in files.
 | Track | What it is | Length | Packets | Use it here? |
 |---|---|---|---|---|
 | **1** | Real traffic on **144.39 MHz, Los Angeles**, at the afternoon rush hour: the channel is saturated. 40 minutes of activity with pauses removed, compressed to ≈ 25 minutes. Discriminator audio, **not** de-emphasized. Has over- and under-deviated signals, collisions, back-to-back packets with almost no gap, raw NMEA trackers, TinyTraks, CW ID on packet … | ≈ 25 min | many (hundreds) | **Yes — the main stress test** |
-| **2** | Same content as track 3 but **de-emphasized** (simulates audio taken from a radio's speaker / volume control). | ≈ 5 min | 100 | **Yes** — compare with track 3 |
+| **2** | Real traffic recorded **de-emphasized** (simulates audio taken from a radio's speaker / volume control). WB2OSZ's analysis of the CD describes it as a flat transmitter heard through a de-emphasizing receiver, with a sharp notch at 3100 Hz, and compares it with track 1 segment by segment. In version 2.0 its file is named `02_100-Mic-E-Bursts-DE-emphasized`; take the packet count from Direwolf rather than from the name. | see Direwolf | many | **Yes** — the speaker-audio test; run it on its own (`--wav_files`) with `--flat_audio off` or `auto` |
 | **3** | A **Kenwood D700 Mic-E** position report, clean, from a service monitor, copied 100 times: **20 bursts per minute for 5 minutes = exactly 100 identical packets**. | ≈ 5 min | exactly **100** | **Yes — gives an exact percentage** |
 | **4** | 25 minutes of **one mobile D700 beaconing every 12 s** while driving, on a quiet channel, 8–10 miles from the receiver: flutter, multipath, weak signals. The page says several packets are audible but fail to decode with the AGW packet engine. | ≈ 25 min | up to ≈ 125 sent | **Yes — weak-signal test** |
 | 5, 6, 7 | KPC3+ "CAL" alternating 1200/2200 Hz tones: flat, de-emphasized, pre-emphasized. For TNC *alignment* (tone level ratio). | ≈ 1 min each | **0** | **No** — they contain no packets. Keep them out of the test directory. |
@@ -920,7 +920,7 @@ over the serial cable.
 | `--web_journal FILE` | `test_aprs_wavs_web.log` | Records every read and write of the Radiomodem page during the run. An empty string disables it. |
 | `--no_modem_optimize` | off | Leave the station's Radiomodem page untouched. By default the bench applies a known-good receive chain and, once the volume is chosen, searches the *Receive demodulator* section (and only that section) for the best settings. |
 | `--demod_max_rounds N` | `24` | Budget of that search, in probes of `--auto_volume_batch` packets. `0` skips it. |
-| `--flat_audio keep\|auto\|on\|off` | `keep` | The *Flat audio input* checkbox: `keep` never touches it, `auto` measures both settings and keeps the better one, `on`/`off` force it. |
+| `--flat_audio keep\|auto\|on\|off` | `keep` | The *Flat audio input* checkbox: `keep` never touches it, `auto` measures both settings and keeps the better one, `on`/`off` force it. The volume, this setting and the Receive demodulator are calibrated once for the whole WAV set, so a set that mixes de-emphasized files (named with `DE-emphasized`, `deemph` or `speaker`) with others is reported with a warning: run those files on their own. |
 
 ### Interface and maintenance
 
@@ -1339,6 +1339,12 @@ case for the matching, so here is exactly what to expect (verified by simulation
   and **smaller than half the spacing** between identical packets. For track 3:
   **1.5 s** (`--match_window 1.5`). The automatic latency compensation of section
   12.4 removes most of that delay, which is what makes so narrow a window usable.
+* The latency compensation learns only from unambiguous pairs. While another
+  packet with identical content also falls inside the window, the pair is still
+  made (nearest first) but does not feed the latency estimate, since the
+  nearest packet could be the neighbouring transmission. With the default 5 s
+  window every pair of track 3 is ambiguous and the estimate stays unlearned;
+  with 1.5 s each pair is unique and the estimate is learned as usual.
 * If the window is *smaller* than the residual delay, packets that the ESP32
   decoded correctly are counted wrongly. So **check the delay first**: run track 3
   and read the `ESP32 latency vs multimon-ng` line of the summary, or compare the
@@ -1634,8 +1640,8 @@ grep -E "NOT DECODED|DIFFERENT|HEADER CORRUPT" run.log
 `rx_replay/` builds `modem_replay`, the firmware's own 1200 Bd receiver running
 on the PC: the demodulators, the HDLC receiver, the impulse blanker and the
 gain control are compiled from the firmware sources unchanged, and the rest of
-the ADC front end (DC removal, decimation, high-pass, tone-band meter, receive
-gate) is reproduced step by step. It tells apart what the algorithm can decode
+the ADC front end (decimation, tone-band meter, receive gate) is reproduced
+step by step; the DC tracker and the high-pass are the firmware's own headers too. It tells apart what the algorithm can decode
 from what the device loses.
 
 ```bash
@@ -1644,7 +1650,7 @@ from what the device loses.
 
 # a recording, turned into ADC codes: --gain = ADC counts per full-scale sample
 sox 02_100-Mic-E-Bursts-DE-emphasized.flac.wav -t raw -e signed -b 16 -c 1 -r 76800 track2.raw remix 1
-./rx_replay/modem_replay --gain 1200 --noise 1.2 --gate-mv 0 < track2.raw > track2.tnc2
+./rx_replay/modem_replay --gain 1200 --noise 1.2 < track2.raw > track2.tnc2
 
 # what the ESP32's demodulators really received (POST /radio/capture?s=N)
 ./rx_replay/modem_replay --capture capture.bin > capture.tnc2
@@ -1656,10 +1662,24 @@ stderr. The demodulator options match the Radiomodem page: `--preset`,
 `--taps`, `--lo`, `--hi`, `--hpf`, `--gate-mv`, `--blank`, `--agc-fixed`,
 `--fix-bits`, `--flat`. For a capture, `--no-gate` feeds every block and
 `--agc` runs the gain control again instead of using the gain the station
-recorded.
+recorded. Every option defaults to the firmware's own default, the receive gate
+included (0, off); give `--gate-mv` the station's value when it has one, since
+a gate drops the frames of the weak stations.
 
 `rx_diag.py` automates the whole comparison — every demodulator set, prefilter
 length and level on the PC against Direwolf's `atest`, then the same audio on
 the device with a capture replayed next to it — and writes `report.md` with the
-verdict. It builds `modem_replay` itself through `rx_replay/build.sh`; see
-`./rx_diag.py --help`.
+verdict. It builds `modem_replay` itself through `rx_replay/build.sh`. Its PC
+phase uses the receive gate given with `--gate-mv`, or the `rxGateMv` of a
+`--set` option, or none. Its device phase runs the bench over the web admin
+unless `--serial-port` is given; since a capture holds the station's web
+server for its whole length, it then plays the recording a second time, at the
+same `--volume`, to capture the demodulator input:
+
+```bash
+./rx_diag.py --wav 02_100-Mic-E-Bursts-DE-emphasized.flac.wav \
+    --esp-host 192.168.4.1 --password secret --set rxGateMv=0 \
+    --device-configs 6:31 --volume 2.383
+```
+
+See `./rx_diag.py --help`.

@@ -2237,6 +2237,32 @@ _CATALOG["it"].update({
             "--web_password è mascherata in una riga di comando registrata",
 })
 
+# WAV sets mixing de-emphasized and flat recordings, repeated identical packets
+_CATALOG["es"].update({
+        '  WARNING: the WAV set mixes de-emphasized (%s) and other (%s) recordings. The volume, the Flat audio input setting and the Receive demodulator are calibrated once, on the whole set, so they fit the files with the most packets; run the de-emphasized files on their own (--wav_files) with --flat_audio off or auto to measure them with settings that fit them.\n':
+            '  ATENCIÓN: el juego de WAV mezcla grabaciones con de-énfasis (%s) y otras (%s). El volumen, la entrada de audio plana y el demodulador de recepción se calibran una sola vez, sobre todo el juego, así que se ajustan a los archivos con más paquetes; pruebe los archivos con de-énfasis por separado (--wav_files) con --flat_audio off o auto para medirlos con ajustes que les correspondan.\n',
+        'identical packets repeated inside the window pair correctly without teaching the latency skew':
+            'los paquetes idénticos repetidos dentro de la ventana se emparejan bien sin enseñar el desfase de latencia',
+        'WAV set emphasis':
+            'Énfasis del juego de WAV',
+        'a set mixing a DE-emphasized track with a flat one is reported':
+            'se avisa de un juego que mezcla una pista con de-énfasis y una plana',
+        'a set of flat tracks only is not reported':
+            'no se avisa de un juego de pistas planas solamente',
+})
+_CATALOG["it"].update({
+        '  WARNING: the WAV set mixes de-emphasized (%s) and other (%s) recordings. The volume, the Flat audio input setting and the Receive demodulator are calibrated once, on the whole set, so they fit the files with the most packets; run the de-emphasized files on their own (--wav_files) with --flat_audio off or auto to measure them with settings that fit them.\n':
+            "  AVVISO: il set di WAV mescola registrazioni de-enfatizzate (%s) e altre (%s). Il volume, l'ingresso audio piatto e il demodulatore di ricezione vengono calibrati una sola volta, sull'intero set, quindi si adattano ai file con più pacchetti; provare i file de-enfatizzati da soli (--wav_files) con --flat_audio off o auto per misurarli con impostazioni adatte.\n",
+        'identical packets repeated inside the window pair correctly without teaching the latency skew':
+            'i pacchetti identici ripetuti nella finestra si accoppiano correttamente senza insegnare lo sfasamento di latenza',
+        'WAV set emphasis':
+            'Enfasi del set di WAV',
+        'a set mixing a DE-emphasized track with a flat one is reported':
+            'un set che mescola una traccia de-enfatizzata con una piatta viene segnalato',
+        'a set of flat tracks only is not reported':
+            'un set di sole tracce piatte non viene segnalato',
+})
+
 # --transport web: receive health from /radio/level
 _CATALOG["es"].update({
         'samples lost in the receive task: %d (FIFO %d, ADC pool %d) - the CPU did not keep up':
@@ -4730,7 +4756,7 @@ DEMOD_SEARCH_DIMENSIONS = [
                             for lo, hi in ((900, 2600), (1000, 2500), (1100, 2400),
                                            (800, 2800), (600, 3000))]),
     ("RX band-pass taps", [{"rxBpfTaps": t} for t in (31, 23, 15)]),
-    ("RX high-pass corner (Hz)", [{"rxHpfHz": h} for h in (0, 150, 300, 400)]),
+    ("RX high-pass corner (Hz)", [{"rxHpfHz": h} for h in (0, 150, 300, 400, 600, 800)]),
     ("RX gate (mV RMS)", [{"rxGateMv": g} for g in (0, 10, 25)]),
     ("RX impulse blanker", [{"rxBlank": True}, {"rxBlank": False}]),
 ]
@@ -6505,6 +6531,14 @@ class LiveMatcher:
                     if ep.key_header() == mp.key_header() and ep.info == mp.info:
                         cands.append((skew(te, tm), mi, ei))
             cands.sort()
+            # A pair is only evidence of the latency when it is the one
+            # possible pairing for both packets: with identical content inside
+            # the window on either side (the same beacon repeated every few
+            # seconds) the nearest candidate can be the neighbouring
+            # transmission, and learning from it would shift every later
+            # comparison by the repeat interval.
+            per_mm = collections.Counter(mi for _, mi, _ei in cands)
+            per_esp = collections.Counter(ei for _, _mi, ei in cands)
             mm_done = set()
             for _, mi, ei in cands:
                 if mi in mm_done or self._esp[ei][2]:
@@ -6513,7 +6547,8 @@ class LiveMatcher:
                 te, ep, _u = self._esp[ei]
                 self._esp[ei][2] = True
                 mm_done.add(mi)
-                self._note_offset(te - tm)
+                if per_mm[mi] == 1 and per_esp[ei] == 1:
+                    self._note_offset(te - tm)
                 events.append(("ok", idx, tm, mp, te, ep))
 
             # Pass 2 - packets whose deadline passed. Exactly ONE verdict is
@@ -6647,6 +6682,7 @@ class ClusterMatcher:
         with self._lock:
             ta = t - self.offset[src]
             best, bd = None, None
+            candidates = 0
             for c in self._open:
                 if src in c["members"]:
                     continue
@@ -6655,17 +6691,22 @@ class ClusterMatcher:
                 d = abs(ta - c["t"])
                 if d > self.window:
                     continue
+                candidates += 1
                 if bd is None or d < bd:
                     best, bd = c, d
             if best is None:
                 self._open.append({"t": ta, "members": {src: (t, pkt)}, "gone": False})
                 return
             m = best["members"]
-            if src == "mm":
-                for s, (ts, _p) in m.items():
-                    self._note(s, ts - t)
-            elif "mm" in m:
-                self._note(src, t - m["mm"][0])
+            # Only an unambiguous join is evidence of the latency: with more
+            # than one open cluster of the same content in the window the
+            # nearest one can belong to the neighbouring transmission.
+            if candidates == 1:
+                if src == "mm":
+                    for s, (ts, _p) in m.items():
+                        self._note(s, ts - t)
+                elif "mm" in m:
+                    self._note(src, t - m["mm"][0])
             m[src] = (t, pkt)
             best["t"] = self._anchor(m)
 
@@ -7139,6 +7180,22 @@ def find_wavs(directory: str, select: Optional[List[str]] = None) -> List[str]:
         wanted = set(select)
         files = [f for f in files if os.path.basename(f) in wanted]
     return files
+
+
+# File-name marks of a de-emphasized recording (WA8LMF names its speaker-audio
+# tracks "...DE-emphasized..."), compared case-insensitively with any
+# separators removed.
+DEEMPHASIS_NAME_MARKS = ("deemph", "deenfasi", "speaker")
+
+
+def emphasis_mix(wavs: List[str]) -> Optional[Tuple[List[str], List[str]]]:
+    """Split the WAV set by the de-emphasis mark in the file names. Returns
+    (de-emphasized, others) when the set holds both kinds, else None."""
+    deemph, other = [], []
+    for w in wavs:
+        key = re.sub(r"[^a-z]", "", os.path.basename(w).lower())
+        (deemph if any(m in key for m in DEEMPHASIS_NAME_MARKS) else other).append(w)
+    return (deemph, other) if deemph and other else None
 
 
 def parse_wav_files_option(raw: str) -> List[str]:
@@ -7860,6 +7917,25 @@ def selftest() -> int:
           lm.offset_locked and abs(lm.offset - 0.8) < 0.05,
           T("offset=%.3f") % lm.offset)
 
+    lm = LiveMatcher(5.0, offset_auto=True)
+    rep_pk = make_packet("LU1ABC", "APRS", [], b"`same Mic-E burst", "")
+    for i in range(OFFSET_MIN_SAMPLES + 2):
+        lm.add_mm(3.0 * i, rep_pk)
+        lm.add_esp(3.0 * i + 0.2, rep_pk)
+    ev = [e for e in lm.step(100.0, final=True) if e[0] == "ok"]
+    check(T("identical packets repeated inside the window pair correctly without teaching the latency skew"),
+          len(ev) == OFFSET_MIN_SAMPLES + 2 and all(abs(e[4] - e[2] - 0.2) < 1e-9 for e in ev)
+          and not lm.offset_locked and lm.offset == 0.0,
+          T("offset=%.3f") % lm.offset)
+
+    print(T("WAV set emphasis"))
+    mix = emphasis_mix(["/a/01_40-Mins-Traffic-on-144.39.wav",
+                        "/a/02_100-Mic-E-Bursts-DE-emphasized.flac.wav"])
+    check(T("a set mixing a DE-emphasized track with a flat one is reported"),
+          mix is not None and len(mix[0]) == 1 and len(mix[1]) == 1, T("got %r") % (mix,))
+    check(T("a set of flat tracks only is not reported"),
+          emphasis_mix(["/a/01_40-Mins-Traffic-on-144.39.wav", "/a/03_100-Mic-E-Bursts-Flat.wav"]) is None)
+
     print(T("Statistics"))
     lo, hi = wilson(45, 50)
     check(T("Wilson interval at 45/50 is wide enough to swallow 1-packet noise"),
@@ -8221,7 +8297,7 @@ def selftest() -> int:
                       "adcSelfBias", "rxClipWarn")
         SELECTS = {"fx25Mode": (0, 1, 2), "afskModem": (0, 1, 2, 3),
                    "rfTxBuffers": (1, 2, 3, 4), "rxEqPreset": (0, 1, 2, 3, 5, 6, 4),
-                   "rxHpfHz": (0, 150, 300, 400), "rxAgcMode": (0, 1),
+                   "rxHpfHz": (0, 150, 300, 400, 600, 800), "rxAgcMode": (0, 1),
                    "rxFixBits": (0, 1, 2), "dacRate": (38400, 76800)}
 
         def __init__(self) -> None:
@@ -9828,6 +9904,15 @@ def run_with_args(args: argparse.Namespace) -> int:
         return 2
 
     print(T("Found %d wav file(s) in %s") % (len(wavs), os.path.abspath(args.wav_dir)))
+    mixed = emphasis_mix(wavs)
+    if mixed and not args.no_play and args.transport == "web":
+        sys.stderr.write(T("  WARNING: the WAV set mixes de-emphasized (%s) and other (%s) recordings. The "
+                           "volume, the Flat audio input setting and the Receive demodulator are calibrated "
+                           "once, on the whole set, so they fit the files with the most packets; run the "
+                           "de-emphasized files on their own (--wav_files) with --flat_audio off or auto "
+                           "to measure them with settings that fit them.\n") %
+                         (", ".join(os.path.basename(w) for w in mixed[0]),
+                          ", ".join(os.path.basename(w) for w in mixed[1])))
     if args.no_play:
         print(T("DRY RUN (--no_play): only multimon-ng runs; serial port and sound "
                 "card are NOT used, so ESP32 results below are not meaningful."))

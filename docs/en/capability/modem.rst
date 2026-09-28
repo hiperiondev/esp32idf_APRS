@@ -44,8 +44,8 @@ saved value straight to the enum:
      - 9600
      - —
 
-The 1200 Bd profiles run **up to eight demodulators in parallel**
-(``MODEM_RX_MAX_DEMODULATORS = 8``). A demodulator is a slicer on the output of
+The 1200 Bd profiles run **up to twelve demodulators in parallel**
+(``MODEM_RX_MAX_DEMODULATORS = 12``). A demodulator is a slicer on the output of
 a correlator (a band-pass prefilter and the mark/space correlators behind it):
 either each one has its own prefilter, tilted differently between the mark and
 space tones, or several slicers share a prefilter and differ in the weight they

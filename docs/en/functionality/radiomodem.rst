@@ -260,6 +260,9 @@ The *Legacy* preset runs a fixed pair instead: one 8-tap band-pass
 (flat for **On**, tilted towards 2200 Hz for **Off**) and one demodulator
 without prefilter.
 
+The *Multi-slicer* presets are not affected by this setting: their twelve
+demodulators cover the twist of both kinds of audio with one set of tables.
+
 **Examples.**
 
 * Baofeng UV-5R, audio taken from the 3.5 mm speaker jack → **off**.
@@ -708,42 +711,45 @@ prefilters with different tilts covers it together.
      - +4, 0, −5 dB
      - 0, +3, +6 dB
    * - Multi-slicer (default)
-     - 8
-     - prefilters +6, −5, −14 dB; compensation +9 … −15.5 dB
-     - prefilters +13, +2, −7 dB; compensation +16 … −8.5 dB
+     - 12
+     - prefilters +13, +4, −5, −13 dB; compensation +16.5 … −16.5 dB
+     - same as flat input
    * - Multi-slicer, 2 filters (comparison)
-     - 8
-     - prefilters +5, −9 dB; compensation +9 … −15.5 dB
-     - prefilters +9, −4 dB; compensation +16 … −8.5 dB
+     - 12
+     - prefilters +9, −9 dB; compensation +16.5 … −16.5 dB
+     - same as flat input
    * - Custom
      - *Custom: demodulators*
      - *Custom: tilt* fields
      - *Custom: tilt* fields
 
-**How to choose.** Keep **Multi-slicer**. It runs three prefilters, each
-tilted to the centre of its own part of the twist range, with three, three and
-two decision thresholds.
-Each threshold (slicer weight) is computed from the tilt its prefilter really
-reached, so the eight demodulators together compensate twist in even 3.5 dB
-steps — the *compensation* column above, prefilter tilt plus slicer weight —
-whatever the *Band-pass length*. The tilted prefilters keep a loud tone from
+**How to choose.** Keep **Multi-slicer**. It runs four prefilters, tilted
++13, +4, −5 and −13 dB, each read by three decision thresholds. Each threshold
+(slicer weight) is computed from the tilt its prefilter really reached, so the
+twelve demodulators together compensate twist in even 3 dB steps from +16.5 to
+−16.5 dB — the *compensation* column above, prefilter tilt plus slicer weight —
+whatever the *Band-pass length*. That range holds the twist of discriminator
+audio (up to about 12 dB of excess 2200 Hz tone from a pre-emphasizing
+transmitter) and of speaker audio (the 2200 Hz tone up to about 15 dB down)
+alike, so the multi-slicer sets use the same tables whatever
+*Flat / discriminator audio input* says, and one station hears a mixture of
+both kinds of signal equally well. The tilted prefilters keep a loud tone from
 leaking into the other tone's correlator, which no threshold can undo, and keep
-every threshold within about 4 dB of neutral, beyond which a threshold loses
-sensitivity on weak signals. It costs about the same CPU as the three-filter
-set while running eight HDLC decoders.
+every threshold within about 3.5 dB of neutral, beyond which a threshold loses
+sensitivity on weak signals. It runs twelve HDLC decoders; the *DSP* figures
+of **RX LEVEL** show the load they put on the receive task.
 
-In a host simulation of a noisy FM channel with the twist applied by the
-receiver's audio stage, the speaker set decodes nearly every frame from
-−16 dB (space tone below mark) to +10 dB, and the flat set does the same from
-−10 to +12 dB. A
-speaker output with its own audio chain reaches −15 dB in practice. The
-*RX LEVEL* statistics show what each demodulator contributes on your own
-channel, and the log lists the effective compensation of each one whenever
-the set is rebuilt.
+In a host simulation of the firmware's own receive chain
+(``audio_test/rx_replay``) on a noisy channel, the set decodes nearly every
+frame from −18 dB (space tone below mark) to +12 dB of twist at 12 dB of
+in-band SNR, and at 9 dB it still decodes most frames from −15 to +12 dB of
+twist whichever kind of audio carries them. The *RX LEVEL* statistics
+show what each demodulator contributes on your own channel, and the log lists
+the effective compensation of each one whenever the set is rebuilt.
 
-**Multi-slicer, 2 filters** runs the same eight slicers over the same ranges on
-two prefilters, four slicers each. Its outer slicers carry weights of up to
-about ±6 dB, so in simulation it trails the three-prefilter set on weak
+**Multi-slicer, 2 filters** runs the same twelve slicers over the same range on
+two prefilters, six slicers each. Its outer slicers carry weights of up to
+about ±8 dB, so in simulation it trails the four-prefilter set on weak
 signals. It is there to compare the two layouts on your own station without
 reflashing — switch, save, and compare the *RX LEVEL* statistics — and it is
 what ``audio_test/rx_diag.py`` switches between on the device.
@@ -782,29 +788,45 @@ of **RX LEVEL** — so hum, CTCSS or the bass of a speaker output neither open n
 hold it. The demodulators are fed while that level has stayed above the
 threshold for a few 20 ms blocks and until it falls below half of it. The blocks received while the gate was deciding to open
 are kept and demodulated first, so the start of a transmission still reaches
-the demodulators. Range 0–50 mV, default 10 mV.
+the demodulators. Range 0–50 mV, default **0** (off).
 
 When the gate closes the carrier detect of every demodulator is cleared, since
 no further audio reaches them to let it decay; a false lock taken on the noise
 at the end of a transmission therefore never outlives the gate.
 
-**How to choose.** With a squelch-independent data or discriminator port the
-input never falls silent, so the gate only costs a decision; set **0** to feed
-the demodulators continuously. With the radio's squelch closing the audio
-between transmissions, keep the default.
+**How to choose.** Leave it at **0**. Any threshold also drops the stations
+whose tone-band level stays under it, and those are often still decodable:
+replaying the WA8LMF de-emphasized 40-minute track through the firmware's own
+demodulators on a PC (``audio_test/rx_replay``), a 10 mV gate loses about a
+fifth of the frames decoded with the gate off. With the radio's squelch
+closing the audio between transmissions there is nothing to gate either. Set a
+threshold, a little above the idle ``tones`` figure of **RX LEVEL**, only when
+the input carries idle noise that keeps the channel busy between
+transmissions.
+
+.. note::
+
+   A configuration saved with a receive gate keeps its stored value. Set 0
+   here and save.
 
 High-pass (CTCSS rejection)
 ---------------------------
 
-A second-order high-pass at 150, 300 or 400 Hz in front of the demodulators of
-the AFSK profiles, **300 Hz** by default. A discriminator output carries the
+A fourth-order Butterworth high-pass at 150, 300, 400, 600 or 800 Hz in front
+of the demodulators of the AFSK profiles, **300 Hz** by default; it falls by
+24 dB per octave below its corner, so at 300 Hz a 100 Hz CTCSS tone is 38 dB
+down while the tones lose less than 0.1 dB. A discriminator output carries the
 CTCSS tone at full level, and a de-emphasized speaker output carries bass well
 above the level of the tones — de-emphasis lifts everything below the tones by
 6 dB per octave. The designed prefilters reject both inside the demodulators,
 but the high-pass runs ahead of the automatic gain, so the gain follows the
 tones rather than the low end, and it covers the *Legacy* preset, whose second
-demodulator has no prefilter. Turn it off only for a receiver whose audio is
-clean below 300 Hz and a preset that needs nothing removed there.
+demodulator has no prefilter. **600** and **800 Hz** also cut the 400–800 Hz
+bass of a speaker output that the prefilters' lower edge lets through; they
+take some of the mark tone's energy with them, and in simulation 800 Hz costs
+about a fifth of the weak flat-audio frames, so keep them for speaker audio.
+Turn the high-pass off only for a receiver whose audio is clean below 300 Hz
+and a preset that needs nothing removed there.
 
 .. note::
 
@@ -1533,10 +1555,10 @@ Field reference
      - Live
    * - Receive gate
      - 0–50 mV (0 = off)
-     - 10 mV
+     - 0 (off)
      - Live
    * - High-pass (CTCSS rejection)
-     - off / 150 / 300 / 400 Hz
+     - off / 150 / 300 / 400 / 600 / 800 Hz
      - 300 Hz
      - Live
    * - Receive gain
@@ -1624,8 +1646,9 @@ Troubleshooting
        **Multi-slicer** set, or a *Custom* set with a wider spread of tilts, and
        compare the per-demodulator figures in **RX LEVEL**.
    * - The first packet after a quiet period is often lost
-     - The receive gate. Set **Receive gate** to 0 when the audio comes from a
-       squelch-independent port.
+     - The receive gate. Set **Receive gate** to 0, the default.
+   * - Strong stations decode, weaker ones with a clean signal never do
+     - The receive gate keeps them out. Set **Receive gate** to 0.
    * - Weak stations decode, strong ones do not
      - Clipping. Enable **Warn on receive over-range**, run **RX LEVEL**, and
        reduce the receive trimmer.

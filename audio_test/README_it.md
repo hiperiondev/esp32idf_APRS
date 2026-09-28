@@ -443,7 +443,7 @@ Usare la **versione 2.0**: l'audio è già in file.
 | Traccia | Cos'è | Durata | Pacchetti | Da usare qui? |
 |---|---|---|---|---|
 | **1** | Traffico reale su **144,39 MHz, Los Angeles**, nell'ora di punta del pomeriggio: il canale è saturo. 40 minuti di attività con le pause eliminate, compressi in ≈ 25 minuti. Audio del discriminatore, **senza** de-enfasi. Contiene segnali sovra- e sottodeviati, collisioni, pacchetti consecutivi quasi senza pausa, tracker con NMEA grezzo, TinyTrak, identificazioni in CW dentro pacchetti … | ≈ 25 min | molti (centinaia) | **Sì — la prova di stress principale** |
-| **2** | Stesso contenuto della traccia 3 ma **de-enfatizzato** (simula l'audio prelevato dall'altoparlante / dal controllo di volume di un ricevitore). | ≈ 5 min | 100 | **Sì** — confrontarla con la traccia 3 |
+| **2** | Traffico reale registrato **de-enfatizzato** (simula l'audio prelevato dall'altoparlante / dal controllo di volume di un ricevitore). L'analisi del CD di WB2OSZ la descrive come un trasmettitore piatto ascoltato attraverso un ricevitore con de-enfasi, con un notch marcato a 3100 Hz, e la confronta tratto per tratto con la traccia 1. Nella versione 2.0 il suo file si chiama `02_100-Mic-E-Bursts-DE-emphasized`; prendete il numero di pacchetti da Direwolf e non dal nome. | vedi Direwolf | molti | **Sì** — la prova con audio da altoparlante; eseguitela da sola (`--wav_files`) con `--flat_audio off` o `auto` |
 | **3** | Un rapporto di posizione **Mic-E di un Kenwood D700**, pulito, da un monitor di servizio, copiato 100 volte: **20 burst al minuto per 5 minuti = esattamente 100 pacchetti identici**. | ≈ 5 min | esattamente **100** | **Sì — dà una percentuale esatta** |
 | **4** | 25 minuti di **un D700 mobile che emette un beacon ogni 12 s** durante la guida, su un canale tranquillo, a 8–10 miglia dal ricevitore: flutter, multipath, segnali deboli. La pagina dice che diversi pacchetti si sentono ma non vengono decodificati con il motore packet AGW. | ≈ 25 min | fino a ≈ 125 inviati | **Sì — prova di segnale debole** |
 | 5, 6, 7 | Toni alternati 1200/2200 Hz della modalità "CAL" di un KPC3+: piatti, de-enfatizzati, pre-enfatizzati. Servono per *allineare* i TNC (rapporto tra i livelli dei toni). | ≈ 1 min ciascuna | **0** | **No** — non contengono pacchetti. Tenerle fuori dalla directory di test. |
@@ -972,7 +972,7 @@ esattamente come tramite il cavo seriale.
 | `--web_journal FILE` | `test_aprs_wavs_web.log` | Registra ogni lettura e scrittura della pagina Radiomodem durante l'esecuzione. Una stringa vuota lo disattiva. |
 | `--no_modem_optimize` | disattivato | Lascia intatta la pagina Radiomodem della stazione. Per impostazione predefinita il banco applica una catena di ricezione collaudata e, scelto il volume, cerca nella sezione *Demodulatore di ricezione* (e solo in quella) le impostazioni migliori. |
 | `--demod_max_rounds N` | `24` | Budget di quella ricerca, in sondaggi di `--auto_volume_batch` pacchetti. `0` la salta. |
-| `--flat_audio keep\|auto\|on\|off` | `keep` | La casella *Ingresso audio piatto*: `keep` non la tocca mai, `auto` misura entrambi i valori e mantiene il migliore, `on`/`off` la forzano. |
+| `--flat_audio keep\|auto\|on\|off` | `keep` | La casella *Ingresso audio piatto*: `keep` non la tocca mai, `auto` misura entrambi i valori e mantiene il migliore, `on`/`off` la forzano. Il volume, questa impostazione e il demodulatore di ricezione vengono calibrati una sola volta per tutto il set di WAV, quindi un set che mescola file de-enfatizzati (con `DE-emphasized`, `deemph` o `speaker` nel nome) con altri viene segnalato con un avviso: eseguite quei file da soli. |
 
 ### Interfaccia e manutenzione
 
@@ -1404,6 +1404,13 @@ simulazione):
   Per la traccia 3: **1,5 s** (`--match_window 1.5`). La compensazione automatica della
   latenza della sezione 12.4 elimina gran parte di quel ritardo, ed è ciò che rende
   utilizzabile una finestra così stretta.
+* La compensazione della latenza impara solo da coppie non ambigue. Finché un
+  altro pacchetto dal contenuto identico cade anch'esso nella finestra, la coppia
+  viene comunque formata (la più vicina per prima) ma non alimenta la stima
+  della latenza, perché il pacchetto più vicino potrebbe essere la trasmissione
+  adiacente. Con la finestra predefinita di 5 s tutte le coppie della traccia 3
+  sono ambigue e la stima resta non appresa; con 1,5 s ogni coppia è unica e la
+  stima viene appresa come di consueto.
 * Se la finestra è *più piccola* del ritardo residuo, pacchetti che l'ESP32 ha
   decodificato correttamente vengono contati male. Quindi **verifica prima il ritardo**:
   esegui la traccia 3 e leggi la riga `ESP32 latency vs multimon-ng` del riepilogo,
@@ -1705,10 +1712,10 @@ grep -E "NOT DECODED|DIFFERENT|HEADER CORRUPT" run.log
 
 `rx_replay/` costruisce `modem_replay`, il ricevitore a 1200 Bd del firmware
 stesso eseguito sul PC: i demodulatori, il ricevitore HDLC, il soppressore di
-impulsi e il controllo del guadagno sono compilati senza modifiche dai sorgenti
-del firmware, e il resto del front-end dell'ADC (rimozione della continua,
-decimazione, passa-alto, misuratore della banda dei toni, soglia di ricezione)
-è riprodotto passo per passo. Separa ciò che l'algoritmo sa decodificare da
+impulsi, l'inseguitore della continua, il passa-alto e il controllo del
+guadagno sono compilati senza modifiche dai sorgenti del firmware, e il resto
+del front-end dell'ADC (decimazione, misuratore della banda dei toni, soglia di
+ricezione) è riprodotto passo per passo. Separa ciò che l'algoritmo sa decodificare da
 ciò che il dispositivo perde.
 
 ```bash
@@ -1717,7 +1724,7 @@ ciò che il dispositivo perde.
 
 # una registrazione, convertita in codici dell'ADC: --gain = conteggi dell'ADC per campione a fondo scala
 sox 02_100-Mic-E-Bursts-DE-emphasized.flac.wav -t raw -e signed -b 16 -c 1 -r 76800 track2.raw remix 1
-./rx_replay/modem_replay --gain 1200 --noise 1.2 --gate-mv 0 < track2.raw > track2.tnc2
+./rx_replay/modem_replay --gain 1200 --noise 1.2 < track2.raw > track2.tnc2
 
 # ciò che i demodulatori dell'ESP32 hanno davvero ricevuto (POST /radio/capture?s=N)
 ./rx_replay/modem_replay --capture capture.bin > capture.tnc2
@@ -1729,10 +1736,25 @@ stderr. Le opzioni del demodulatore corrispondono alla pagina Radiomodem:
 `--preset`, `--taps`, `--lo`, `--hi`, `--hpf`, `--gate-mv`, `--blank`,
 `--agc-fixed`, `--fix-bits`, `--flat`. Con una cattura, `--no-gate` alimenta
 ogni blocco e `--agc` riesegue il controllo del guadagno invece di usare il
-guadagno registrato dalla stazione.
+guadagno registrato dalla stazione. Ogni opzione assume il valore
+predefinito del firmware, soglia di ricezione compresa (0, spenta); passate a
+`--gate-mv` il valore della stazione quando ne ha uno, perché una soglia scarta
+le trame delle stazioni deboli.
 
 `rx_diag.py` automatizza il confronto completo — ogni insieme di demodulatori,
 lunghezza del prefiltro e livello sul PC contro `atest` di Direwolf, poi lo
 stesso audio sul dispositivo con una cattura riprodotta accanto — e scrive
 `report.md` con il verdetto. Compila `modem_replay` da solo tramite
-`rx_replay/build.sh`; vedi `./rx_diag.py --help`.
+`rx_replay/build.sh`. La sua fase su PC usa la soglia di ricezione data con
+`--gate-mv`, o il `rxGateMv` di un'opzione `--set`, o nessuna; vedi
+`./rx_diag.py --help`. La sua fase sul dispositivo usa il banco tramite
+l'amministrazione web a meno che non si indichi `--serial-port`; poiché una
+cattura occupa il server web della stazione per tutta la sua durata, riproduce
+allora la registrazione una seconda volta, con lo stesso `--volume`, per
+catturare l'ingresso dei demodulatori:
+
+```bash
+./rx_diag.py --wav 02_100-Mic-E-Bursts-DE-emphasized.flac.wav \
+    --esp-host 192.168.4.1 --password secret --set rxGateMv=0 \
+    --device-configs 6:31 --volume 2.383
+```

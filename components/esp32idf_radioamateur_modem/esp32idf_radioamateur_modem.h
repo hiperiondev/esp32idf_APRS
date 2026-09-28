@@ -91,7 +91,7 @@ typedef enum {
 #define MODEM_RX_BPF_TAPS_MIN    9     /**< Shortest band-pass prefilter, taps (always odd). */
 #define MODEM_RX_BPF_TAPS_MAX    31    /**< Longest band-pass prefilter, taps (always odd). */
 #define MODEM_RX_GATE_MV_MAX     50    /**< Highest receive gate threshold, mV RMS (0 disables the gate). */
-#define MODEM_RX_HPF_HZ_MAX      400   /**< Highest high-pass corner, Hz (0 disables the high-pass). */
+#define MODEM_RX_HPF_HZ_MAX      800   /**< Highest high-pass corner, Hz (0 disables the high-pass). */
 #define MODEM_RX_AGC_GAIN_DB_MIN (-12) /**< Lowest fixed receive gain, dB. */
 #define MODEM_RX_AGC_GAIN_DB_MAX 18    /**< Highest fixed receive gain, dB. */
 #define MODEM_RX_FIX_BITS_MAX    2     /**< Highest bit-repair level (see ::modem_rx_tuning_t::fix_bits). */
@@ -103,39 +103,41 @@ typedef enum {
  * Every entry except ::MODEM_RX_EQ_LEGACY designs its band-pass prefilters at
  * run time from ::modem_rx_tuning_t::bpf_lo_hz, ::modem_rx_tuning_t::bpf_hi_hz
  * and ::modem_rx_tuning_t::bpf_taps. The tilt of each prefilter is the gain
- * difference between the space and the mark tone, and the preset tilt tables
- * depend on ::modem_config_t::flat_audio:
+ * difference between the space and the mark tone. The tilt tables of the
+ * single-slicer presets depend on ::modem_config_t::flat_audio; the
+ * multi-slicer presets use one table for both kinds of input:
  *
  * | Preset        | Flat / discriminator input | De-emphasized (speaker) input |
  * |---------------|----------------------------|-------------------------------|
  * | SINGLE        | 0 dB                       | +3 dB                         |
  * | DIVERSITY2    | 0, -5 dB                   | 0, +5 dB                      |
  * | DIVERSITY3    | +4, 0, -5 dB               | 0, +3, +6 dB                  |
- * | MULTISLICE    | +6, -5, -14 dB; +9 .. -15.5 dB | +13, +2, -7 dB; +16 .. -8.5 dB |
- * | MULTISLICE2   | +5, -9 dB; +9 .. -15.5 dB  | +9, -4 dB; +16 .. -8.5 dB     |
+ * | MULTISLICE    | +13, +4, -5, -13 dB; +16.5 .. -16.5 dB | same as flat input          |
+ * | MULTISLICE2   | +9, -9 dB; +16.5 .. -16.5 dB           | same as flat input            |
  *
  * Tone twist on the air ranges well beyond what one prefilter can absorb:
  * a transmitter that pre-emphasizes its audio arrives on a discriminator
  * output with the space tone 5 to 12 dB louder than the mark tone, a flat
  * data-port transmitter arrives with no twist at all, and a speaker output
  * shifts both by the receiver's de-emphasis, with the audio chain in front of
- * the ADC adding a slope of its own. The SINGLE to CUSTOM presets cover that
- * range with several prefilters of different tilt, each with its own
- * correlator and demodulator. ::MODEM_RX_EQ_MULTISLICE covers it with three
- * prefilters, each tilted to the centre of its part of the range and read by
- * three, three and two of the ::MODEM_RX_SLICER_COUNT slicers (the multi-slicer
- * cell of the table lists the prefilter tilts and the range of the set's
- * compensation). A slicer compares the mark tone magnitude
+ * the ADC adding a slope of its own. The SINGLE to CUSTOM presets cover part
+ * of that range with several prefilters of different tilt, each with its own
+ * correlator and demodulator, chosen by the input type.
+ * ::MODEM_RX_EQ_MULTISLICE covers all of it, for either input type, with
+ * ::MODEM_RX_SLICER_PREFILTERS prefilters, each tilted to the centre of its
+ * part of the range and read by three of the ::MODEM_RX_SLICER_COUNT slicers
+ * (the multi-slicer cell of the table lists the prefilter tilts and the range
+ * of the set's compensation). A slicer compares the mark tone magnitude
  * against the space tone magnitude weighted by the difference between its
  * target and the tilt its prefilter actually realized, so the set's twist
- * compensation (prefilter tilt plus slicer weight) steps 3.5 dB across the
+ * compensation (prefilter tilt plus slicer weight) steps 3 dB across the
  * range in the table whatever the prefilter length. The weighting has the
  * same effect on the decision as a prefilter tilt, reaches values a short
  * prefilter cannot, and costs a fraction of the CPU time of separate
  * correlators; the tilted prefilters keep a loud tone from leaking into the
  * other tone's correlator, which no weighting can undo, and keep every slicer
- * weight within about 4 dB of unity, beyond which a slicer loses sensitivity
- * on weak signals.
+ * weight within about 3.5 dB of unity, beyond which a slicer loses
+ * sensitivity on weak signals.
  */
 typedef enum {
     MODEM_RX_EQ_LEGACY = 0, /**< Two demodulators with the fixed 8-tap tables: a tilted or flat band-pass, depending on flat_audio, and an unfiltered one. */
@@ -143,8 +145,9 @@ typedef enum {
     MODEM_RX_EQ_DIVERSITY2 = 2,  /**< Two demodulators with different prefilter tilts. */
     MODEM_RX_EQ_DIVERSITY3 = 3,  /**< Three demodulators with different prefilter tilts. */
     MODEM_RX_EQ_CUSTOM = 4,      /**< custom_count demodulators with the tilts in custom_tilt_db[]. */
-    MODEM_RX_EQ_MULTISLICE = 5,  /**< Three tilted prefilters and ::MODEM_RX_SLICER_COUNT slicers spreading twist compensation over the range. */
-    MODEM_RX_EQ_MULTISLICE2 = 6, /**< The ::MODEM_RX_EQ_MULTISLICE slicers and ranges on two prefilters, four slicers each, for comparison. */
+    MODEM_RX_EQ_MULTISLICE = 5,  /**< ::MODEM_RX_SLICER_PREFILTERS tilted prefilters and ::MODEM_RX_SLICER_COUNT slicers spreading twist compensation over the
+                                    range of both input types. */
+    MODEM_RX_EQ_MULTISLICE2 = 6, /**< The ::MODEM_RX_EQ_MULTISLICE slicers and range on two prefilters, six slicers each, for comparison. */
 } modem_rx_eq_preset_t;
 
 /**
@@ -173,9 +176,10 @@ typedef struct {
                          exceeds this value; it closes again below half of it. Hum, CTCSS and bass therefore neither open nor hold the gate.
                          The blocks received while the gate is closed are held and demodulated when it opens, so the start of a transmission is
                          not lost. 0 feeds the demodulators continuously, which suits a squelch-independent data or discriminator port. */
-    uint16_t hpf_hz;  /**< Corner of a second-order high-pass applied to the demodulator input of the AFSK profiles, Hz, or 0 for none. Removes
-                         CTCSS tones and hum that a discriminator output carries at full level, and the bass a de-emphasized speaker output
-                         carries above the level of the tones, before they reach the gain control. */
+    uint16_t hpf_hz;  /**< Corner of a fourth-order Butterworth high-pass applied to the demodulator input of the AFSK profiles, Hz, or 0 for
+                         none (see rx_hpf.h). Removes CTCSS tones and hum that a discriminator output carries at full level, and the bass a
+                         de-emphasized speaker output carries above the level of the tones, before they reach the gain control. The corners
+                         above 400 Hz are meant for speaker audio, whose bass between 400 and 900 Hz otherwise leaks into the mark correlator. */
     modem_rx_agc_mode_t agc_mode; /**< Automatic or fixed receive gain. */
     int8_t agc_fixed_gain_db;     /**< Receive gain used by ::MODEM_RX_AGC_FIXED, dB. */
     uint8_t fix_bits;             /**< Repair of frames whose FCS does not match: 0 = off, 1 = one corrupted symbol (two adjacent bits after NRZI decoding),
@@ -192,7 +196,7 @@ typedef struct {
 /**
  * @brief Build a ::modem_rx_tuning_t initializer with the default receive
  *        tuning: the multi-slicer demodulator set, a 900-2600 Hz band,
- *        31-tap prefilters, a 10 mV receive gate, a 300 Hz high-pass,
+ *        31-tap prefilters, the receive gate off, a 300 Hz high-pass,
  *        automatic gain, no bit repair and the impulse blanker on.
  *
  * 31 taps is the longest prefilter and the one that realizes the requested
@@ -201,6 +205,14 @@ typedef struct {
  * high-pass keeps low-frequency energy - hum, CTCSS, and the bass a
  * de-emphasized speaker output carries well above the tones - out of the gain
  * control and the tone-band level measurement.
+ *
+ * The receive gate is off so the demodulators see every block: any threshold
+ * also drops the stations whose tone-band level stays under it, which are
+ * often still decodable. Replaying the WA8LMF de-emphasized 40-minute track
+ * through the firmware's demodulators, a 10 mV gate loses about a fifth of the
+ * frames the demodulators decode with the gate off. A threshold is only worth
+ * setting when the input carries idle noise that keeps a false carrier detect
+ * up between transmissions.
  */
 #define MODEM_RX_TUNING_DEFAULT()                                                                                                                              \
     {                                                                                                                                                          \
@@ -210,7 +222,7 @@ typedef struct {
         .bpf_lo_hz = 900,                                                                                                                                      \
         .bpf_hi_hz = 2600,                                                                                                                                     \
         .bpf_taps = 31,                                                                                                                                        \
-        .gate_mv = 10,                                                                                                                                         \
+        .gate_mv = 0,                                                                                                                                          \
         .hpf_hz = 300,                                                                                                                                         \
         .agc_mode = MODEM_RX_AGC_AUTO,                                                                                                                         \
         .agc_fixed_gain_db = 0,                                                                                                                                \
@@ -251,7 +263,7 @@ typedef struct {
 typedef struct {
     modem_mode_t modem;    /**< Modem profile to use. */
     bool flat_audio;       /**< true when the audio input is flat/discriminator output, false for de-emphasized (speaker) audio. Selects the prefilter
-                              tilt table of the ::modem_rx_eq_preset_t presets. */
+                              tilt table of the single-slicer ::modem_rx_eq_preset_t presets; the multi-slicer presets cover both inputs. */
     bool full_duplex;      /**< true: key up immediately and keep receiving while transmitting. */
     bool allow_non_aprs;   /**< true: accept frames whose Control/PID fields are not 0x03/0xF0. */
     uint16_t preamble_ms;  /**< TXDelay (preamble) duration, in milliseconds. */

@@ -284,7 +284,7 @@ static int16_t coeffHiI[NMAX], coeffLoI[NMAX], coeffHiQ[NMAX], coeffLoQ[NMAX];
 // Written only from the receive task: by MODEM_DECODE() on every demodulated
 // sample and by ModemResetDcd() whenever samples stop reaching the
 // demodulators, so the bitmap never outlives the audio it was derived from.
-static uint8_t dcd = 0;
+static uint16_t dcd = 0;
 
 // G3RUH scrambler state. TX and RX must have one each.
 //
@@ -484,7 +484,7 @@ uint8_t ModemGetDemodulatorCount(void) {
     return demodCount;
 }
 
-uint8_t ModemDcdState(void) {
+uint16_t ModemDcdState(void) {
     return dcd;
 }
 
@@ -612,7 +612,7 @@ static inline uint8_t IRAM_ATTR scramble(uint8_t in) {
 }
 
 void MODEM_DECODE(int16_t sample, uint16_t mVrms) {
-    uint8_t dcdBits = 0;
+    uint16_t dcdBits = 0;
 
     // input signal amplitude tracking
     if (sample >= inputPeak)
@@ -633,7 +633,7 @@ void MODEM_DECODE(int16_t sample, uint16_t mVrms) {
 
         decode(symbol, i, mVrms);
         if (demodState[i].dcd)
-            dcdBits |= (uint8_t)(1u << i);
+            dcdBits |= (uint16_t)(1u << i);
     }
 
     // The status LED and the busy-channel test both mean "any demodulator
@@ -896,11 +896,11 @@ static const int8_t tiltDiv3Flat[3] = { 4, 0, -5 };
 static const int8_t tiltDiv3Speaker[3] = { 0, 3, 6 };
 
 // Multi-slicer demodulator sets: a few prefilters, prefilter c feeding count[c]
-// slicers. The tilt tables hold the tilt requested from each prefilter; the
-// target tables hold the twist compensation every slicer
-// ends up with, in dB: the prefilter's realized tilt plus the slicer's own
-// weight on the space magnitude. Positive values boost the space tone against
-// the mark tone, negative ones favour the mark tone.
+// slicers. The tilt table holds the tilt requested from each prefilter; the
+// target table holds the twist compensation every slicer ends up with, in dB:
+// the prefilter's realized tilt plus the slicer's own weight on the space
+// magnitude. Positive values boost the space tone against the mark tone,
+// negative ones favour the mark tone.
 //
 // Twist compensation is split between the two on purpose. A slicer is nearly
 // free and reaches any weight exactly, where a short prefilter realizes only
@@ -913,63 +913,60 @@ static const int8_t tiltDiv3Speaker[3] = { 0, 3, 6 };
 // magnitudes are weighted afterwards. Only a filter ahead of the correlators
 // removes it. Weak signals show the same limit on a smaller scale: a slicer
 // whose weight is more than about 3 dB from unity loses sensitivity against
-// one whose prefilter already sits near its target. MODEM_RX_EQ_MULTISLICE
-// therefore uses three prefilters, each tilted to the centre of its own group of targets,
-// so no slicer weight goes much beyond +-4 dB.
+// one whose prefilter already sits near its target.
 //
 // The targets cover twist as it reaches the demodulators, which includes the
 // slope of the capture chain itself: the decimation filter alone takes about
 // 1.3 dB off the space tone, and a sound card or a receiver's audio stage adds
-// its own. De-emphasized (speaker) audio arrives with the space tone well
-// below the mark tone - a receiver's de-emphasis takes about 5 dB between the
-// two tones, and speaker outputs measured with the audio chain in front of the
-// ADC reach 15 dB - so its set runs from +16 to -8.5 dB. Flat (discriminator)
-// audio carries up to about 12 dB of excess space tone from a pre-emphasizing
-// transmitter and the chain's own slope from a flat one, so its set runs from
-// +9 to -15.5 dB. Both sets step 3.5 dB, which keeps every twist inside
-// about 1.75 dB of a slicer.
+// its own. Flat (discriminator) audio carries up to about 12 dB of excess
+// space tone from a pre-emphasizing transmitter; de-emphasized (speaker)
+// audio arrives with the space tone well below the mark tone - a receiver's
+// de-emphasis takes about 5 dB between the two tones, and speaker outputs
+// measured with the audio chain in front of the ADC reach 15 dB. Both kinds
+// of input, and a mixture of them on one channel, are therefore covered by
+// the same target range, +16.5 to -16.5 dB in 3 dB steps, so every twist
+// sits within 1.5 dB of a slicer whatever the input type setting says.
 //
-// MODEM_RX_EQ_MULTISLICE2 arranges the same eight slicers over two
-// prefilters, four slicers each, tilted towards the two ends of the same
-// target ranges. Its outer slicers carry weights up to about +-6 dB, so it
-// trails the three-prefilter set on weak signals in simulation; it is there
-// to compare the two layouts on a live station without reflashing.
-#define SLICE_MAX_PREFILTERS 3
-#define SLICE_MAX_WEIGHTS    4
+// MODEM_RX_EQ_MULTISLICE spreads the twelve slicers over four prefilters,
+// three each, every prefilter tilted to the centre of its own group of
+// targets, so no slicer weight goes beyond about +-3.5 dB.
+//
+// MODEM_RX_EQ_MULTISLICE2 arranges the same twelve targets over two
+// prefilters, six slicers each, tilted towards the two halves of the range.
+// Its outer slicers carry weights up to about +-8 dB, so it trails the
+// four-prefilter set on weak signals in simulation; it is there to compare
+// the two layouts on a live station without reflashing.
+#define SLICE_MAX_PREFILTERS MODEM_RX_SLICER_PREFILTERS
+#define SLICE_MAX_WEIGHTS    6
 _Static_assert(SLICE_MAX_PREFILTERS <= MODEM_MAX_CORRELATOR_COUNT, "the multi-slicer presets need one correlator per prefilter");
+_Static_assert(MODEM_RX_SLICER_COUNT <= MODEM_MAX_DEMODULATOR_COUNT, "the multi-slicer presets need one demodulator per slicer");
 
-// One multi-slicer arrangement. Row c of the target tables holds count[c]
+// One multi-slicer arrangement. Row c of the target table holds count[c]
 // targets for prefilter c; the entries past that count are unused.
 typedef struct {
     uint8_t prefilters;
     uint8_t count[SLICE_MAX_PREFILTERS];
-    int8_t tiltFlat[SLICE_MAX_PREFILTERS];
-    int8_t tiltSpeaker[SLICE_MAX_PREFILTERS];
-    float targetFlat[SLICE_MAX_PREFILTERS][SLICE_MAX_WEIGHTS];
-    float targetSpeaker[SLICE_MAX_PREFILTERS][SLICE_MAX_WEIGHTS];
+    int8_t tilt[SLICE_MAX_PREFILTERS];
+    float target[SLICE_MAX_PREFILTERS][SLICE_MAX_WEIGHTS];
 } slice_layout_t;
 
-// MODEM_RX_EQ_MULTISLICE: three prefilters, 3/3/2 slicers.
-static const slice_layout_t sliceLayout3 = {
-    .prefilters = 3,
-    .count = { 3, 3, 2 },
-    .tiltFlat = { 6, -5, -14 },
-    .tiltSpeaker = { 13, 2, -7 },
-    .targetFlat = { { 9.0f, 5.5f, 2.0f }, { -1.5f, -5.0f, -8.5f }, { -12.0f, -15.5f } },
-    .targetSpeaker = { { 16.0f, 12.5f, 9.0f }, { 5.5f, 2.0f, -1.5f }, { -5.0f, -8.5f } },
+// MODEM_RX_EQ_MULTISLICE: four prefilters, three slicers each.
+static const slice_layout_t sliceLayout4 = {
+    .prefilters = 4,
+    .count = { 3, 3, 3, 3 },
+    .tilt = { 13, 4, -5, -13 },
+    .target = { { 16.5f, 13.5f, 10.5f }, { 7.5f, 4.5f, 1.5f }, { -1.5f, -4.5f, -7.5f }, { -10.5f, -13.5f, -16.5f } },
 };
-_Static_assert(3 + 3 + 2 == MODEM_RX_SLICER_COUNT, "sliceLayout3 must run MODEM_RX_SLICER_COUNT slicers");
+_Static_assert(3 + 3 + 3 + 3 == MODEM_RX_SLICER_COUNT, "sliceLayout4 must run MODEM_RX_SLICER_COUNT slicers");
 
-// MODEM_RX_EQ_MULTISLICE2: two prefilters, four slicers each.
+// MODEM_RX_EQ_MULTISLICE2: two prefilters, six slicers each.
 static const slice_layout_t sliceLayout2 = {
     .prefilters = 2,
-    .count = { 4, 4 },
-    .tiltFlat = { 5, -9 },
-    .tiltSpeaker = { 9, -4 },
-    .targetFlat = { { 9.0f, 5.5f, 2.0f, -1.5f }, { -5.0f, -8.5f, -12.0f, -15.5f } },
-    .targetSpeaker = { { 16.0f, 12.5f, 9.0f, 5.5f }, { 2.0f, -1.5f, -5.0f, -8.5f } },
+    .count = { 6, 6 },
+    .tilt = { 9, -9 },
+    .target = { { 16.5f, 13.5f, 10.5f, 7.5f, 4.5f, 1.5f }, { -1.5f, -4.5f, -7.5f, -10.5f, -13.5f, -16.5f } },
 };
-_Static_assert(4 + 4 == MODEM_RX_SLICER_COUNT, "sliceLayout2 must run MODEM_RX_SLICER_COUNT slicers");
+_Static_assert(6 + 6 == MODEM_RX_SLICER_COUNT, "sliceLayout2 must run MODEM_RX_SLICER_COUNT slicers");
 
 // Largest slicer weight, dB either way. The targets sit within this of any
 // tilt a designed prefilter can realize, and it keeps the weighted magnitude
@@ -1099,20 +1096,20 @@ static void designCorrelatorPrefilter(uint8_t index, int8_t tiltDb) {
 }
 
 // @brief Build a multi-slicer demodulator set from one layout.
+//
+// The layouts cover flat and de-emphasized input alike, so
+// ModemConfig.flatAudioIn plays no part here.
 static void setupMultiSlice(const slice_layout_t *layout) {
-    const int8_t *tilts = ModemConfig.flatAudioIn ? layout->tiltFlat : layout->tiltSpeaker;
-    const float (*targets)[SLICE_MAX_WEIGHTS] = ModemConfig.flatAudioIn ? layout->targetFlat : layout->targetSpeaker;
-
     corrCount = layout->prefilters;
     demodCount = MODEM_RX_SLICER_COUNT;
     uint8_t i = 0;
     for (uint8_t c = 0; c < corrCount; c++) {
         setupCorrelator(&correlators[c], lpf1200, sizeof(lpf1200) / sizeof(*lpf1200), 15);
-        designCorrelatorPrefilter(c, tilts[c]);
+        designCorrelatorPrefilter(c, layout->tilt[c]);
         for (uint8_t k = 0; k < layout->count[c]; k++) {
             // The slicer supplies whatever the prefilter's realized tilt
             // leaves between it and the target.
-            float weightDb = targets[c][k] - correlators[c].bpfTiltDb;
+            float weightDb = layout->target[c][k] - correlators[c].bpfTiltDb;
             weightDb = fmaxf(fminf(weightDb, SLICE_WEIGHT_DB_MAX), -SLICE_WEIGHT_DB_MAX);
             setup1200Demod(&demodState[i++], c, weightDb);
         }
@@ -1148,7 +1145,7 @@ static void setup1200DemodSet(void) {
             return;
         case MODEM_RX_EQ_MULTISLICE:
         default:
-            setupMultiSlice(&sliceLayout3);
+            setupMultiSlice(&sliceLayout4);
             return;
     }
 

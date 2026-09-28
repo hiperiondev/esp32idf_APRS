@@ -74,6 +74,8 @@
 #include "impulse_blanker.h"
 #include "modem.h"
 #include "rx_agc.h"
+#include "rx_dc_block.h"
+#include "rx_hpf.h"
 
 #ifdef ENABLE_FX25
 #include "fx25.h"
@@ -286,13 +288,9 @@ static uint32_t s_dacRate = MODEM_DAC_SAMPLERATE;
 // Selection state of the ADC pad's internal input bias.
 static bool s_adcSelfBias = false;
 
-// Running DC average of the raw ADC stream, used to re-centre the samples
-// before demodulation.
-#define AVG_N 125
-static uint16_t s_avgBuf[AVG_N];
-static uint8_t s_avgIdx = 0;
-static int s_avgSum = 0;
-static uint16_t s_avg = 2048;
+// DC tracker of the raw ADC stream, used to re-centre the samples before
+// demodulation (see rx_dc_block.h).
+static rx_dc_block_t s_dcBlock;
 
 // DAC idle/centre code and amplitude scaling.
 //
@@ -349,12 +347,10 @@ static float s_fixedGain = 1.0f;
 static bool s_pendAgcFixed = false;
 static int8_t s_pendFixedGainDb = 0;
 
-// Second-order Butterworth high-pass on the decimated AFSK signal, direct
-// form I, disabled while s_hpfOn is false.
+// Fourth-order Butterworth high-pass on the decimated AFSK signal (see
+// rx_hpf.h); s_pendHpfHz is its corner as stored by afskSetRxFrontEnd().
 static uint16_t s_pendHpfHz = 0;
-static bool s_hpfOn = false;
-static float s_hpfB0, s_hpfB1, s_hpfB2, s_hpfA1, s_hpfA2;
-static float s_hpfX1, s_hpfX2, s_hpfY1, s_hpfY2;
+static rx_hpf_t s_hpf;
 
 // Decimated blocks received while the gate was closed, oldest first once the
 // ring has wrapped. When the gate opens these are demodulated ahead of the
@@ -376,36 +372,6 @@ static uint8_t s_holdCount = 0; // valid slots
 // AGC_SQUELCH_RMS holds the gain.
 static void update_agc(const float *buf, size_t len) {
     s_agcGain = rx_agc_update(s_agcGain, buf, len);
-}
-
-// @brief Build the high-pass coefficients for a corner at hz, or disable it.
-static void hpf_setup(uint16_t hz) {
-    s_hpfX1 = s_hpfX2 = s_hpfY1 = s_hpfY2 = 0.0f;
-    s_hpfOn = (hz > 0);
-    if (!s_hpfOn)
-        return;
-
-    // Bilinear transform of a second-order Butterworth high-pass.
-    const float k = tanf((float)M_PI * (float)hz / (float)MODEM_DEMOD_SAMPLERATE);
-    const float q = 1.41421356f; // 1 / Q, Q = 1/sqrt(2)
-    const float norm = 1.0f / (1.0f + q * k + k * k);
-    s_hpfB0 = norm;
-    s_hpfB1 = -2.0f * norm;
-    s_hpfB2 = norm;
-    s_hpfA1 = 2.0f * (k * k - 1.0f) * norm;
-    s_hpfA2 = (1.0f - q * k + k * k) * norm;
-}
-
-static void hpf_run(float *buf, int len) {
-    for (int i = 0; i < len; i++) {
-        float x = buf[i];
-        float y = s_hpfB0 * x + s_hpfB1 * s_hpfX1 + s_hpfB2 * s_hpfX2 - s_hpfA1 * s_hpfY1 - s_hpfA2 * s_hpfY2;
-        s_hpfX2 = s_hpfX1;
-        s_hpfX1 = x;
-        s_hpfY2 = s_hpfY1;
-        s_hpfY1 = y;
-        buf[i] = y;
-    }
 }
 
 // @brief Build the tone-band meter coefficients and clear its state.
@@ -1450,19 +1416,12 @@ void AFSK_Poll(void) {
             // that would spread a glitch over the whole tone band.
             adc = impulse_blanker_step(&s_blanker, adc, blank);
 
-            // running DC average
-            s_avgSum += adc - (int)s_avgBuf[s_avgIdx];
-            s_avgBuf[s_avgIdx++] = (uint16_t)adc;
-            if (s_avgIdx >= AVG_N)
-                s_avgIdx -= AVG_N;
-            s_avg = (uint16_t)(s_avgSum / AVG_N);
-
             if (adc < rawMin)
                 rawMin = adc;
             if (adc > rawMax)
                 rawMax = adc;
 
-            int adcVal = (int)adc - (int)s_avg;
+            const float adcVal = rx_dc_block_step(&s_dcBlock, adc);
 
             if (x % m == 0) {
                 adc_cali_raw_to_voltage(s_cali, adc, &mV);
@@ -1471,10 +1430,10 @@ void AFSK_Poll(void) {
                 mVsumCount++;
             }
 
-            s_audio[x] = (float)adcVal / 2048.0f;
+            s_audio[x] = adcVal / 2048.0f;
         }
 
-        adc_cali_raw_to_voltage(s_cali, s_avg, &s_offset);
+        adc_cali_raw_to_voltage(s_cali, rx_dc_block_level(&s_dcBlock), &s_offset);
 
         if (rawMin <= rawMax) {
             s_rawMin = rawMin;
@@ -1518,8 +1477,7 @@ void AFSK_Poll(void) {
 
         if (decimate) {
             resample_audio(s_audio);
-            if (s_hpfOn)
-                hpf_run(s_audio, count);
+            rx_hpf_run(&s_hpf, s_audio, count);
             s_bandMvRms = (int)(band_meter_run(s_audio, count) * s_mvPerCount + 0.5f);
         } else {
             s_bandMvRms = s_mVrms;
@@ -1763,10 +1721,7 @@ void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t pream
 
     // Reset the RX front-end so a profile change cannot leak old state, and
     // apply the front-end settings stored by afskSetRxFrontEnd().
-    memset(s_avgBuf, 0, sizeof(s_avgBuf));
-    s_avgIdx = 0;
-    s_avgSum = 0;
-    s_avg = 2048;
+    rx_dc_block_reset(&s_dcBlock);
     s_dcdCnt = 0;
     s_gateOpen = false;
     s_holdHead = 0;
@@ -1776,7 +1731,7 @@ void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t pream
     s_gateOffMv = (uint16_t)(s_pendGateMv / 2);
     s_blankOn = s_pendBlank;
     impulse_blanker_reset(&s_blanker);
-    hpf_setup(s_pendHpfHz);
+    rx_hpf_setup(&s_hpf, s_pendHpfHz, (float)MODEM_DEMOD_SAMPLERATE);
     s_agcFixed = s_pendAgcFixed;
     s_fixedGain = powf(10.0f, (float)s_pendFixedGainDb / 20.0f);
     s_agcGain = s_agcFixed ? s_fixedGain : 1.0f;
@@ -1793,7 +1748,7 @@ void afskSetModem(uint8_t val, bool flatAudio, uint16_t timeSlot, uint16_t pream
              MODEM_RESAMPLE_RATIO, MODEM_DEMOD_SAMPLERATE);
     ModemLogConfig();
     ESP_LOGI(TAG, "RX front end: impulse blanker %s, gate %s%u mV (tone band), high-pass %s%u Hz, gain %s %.2fx", s_blankOn ? "on" : "off",
-             s_gateOnMv ? "" : "off/", (unsigned)s_gateOnMv, s_hpfOn ? "" : "off/", (unsigned)s_pendHpfHz, s_agcFixed ? "fixed" : "auto, start",
+             s_gateOnMv ? "" : "off/", (unsigned)s_gateOnMv, s_hpf.on ? "" : "off/", (unsigned)s_pendHpfHz, s_agcFixed ? "fixed" : "auto, start",
              (double)s_agcGain);
 }
 

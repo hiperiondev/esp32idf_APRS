@@ -19,7 +19,8 @@ Host phase (needs gcc, sox; Direwolf's `atest` for Q2):
   input level, counting decodes and the frames that match Direwolf.
 
 Device phase (needs the ESP32 on the network, the bench of
-test_aprs_wavs.py wired as usual, and the web admin password):
+test_aprs_wavs.py wired as usual, and the web admin password; the bench reads
+the ESP32 over the web admin, or over its serial console with --serial-port):
   for every device configuration it sets the demodulator set and prefilter
   length through the web admin (the full Radiomodem form is read and posted
   back, exactly as the browser does), runs test_aprs_wavs.py with a fixed
@@ -32,6 +33,15 @@ test_aprs_wavs.py wired as usual, and the web admin password):
   replayed at the level the capture shows, so every device run is compared
   with its own input and with the clean audio at the same level.
 
+  With the web transport (no --serial-port) the bench reads the decoded frames
+  through the same web server that streams the capture, and a capture holds
+  that server for its whole length. The recording is therefore played twice:
+  once under the bench, which collects the device's frames while RX LEVEL is
+  polled, and once more by rx_diag itself, through the bench's own play chain
+  and at the same --volume, while the capture streams. The two playbacks carry
+  the same audio, so the device's frames and the replay of its input are
+  compared as rates, not frame by frame.
+
 Everything is written to a results directory: report.md (the verdict and
 every table), report.json (all raw figures), the bench logs and CSVs, and
 the decoded frames of every replay.
@@ -40,7 +50,11 @@ Examples:
   # PC only
   ./rx_diag.py --wav one2/02_100-Mic-E-Bursts-DE-emphasized.flac.wav
 
-  # PC and device
+  # PC and device, bench over the web admin
+  ./rx_diag.py --wav one2/02_100-Mic-E-Bursts-DE-emphasized.flac.wav \\
+      --esp-host 192.168.4.1 --user admin --password secret --volume 2.383
+
+  # PC and device, bench over the serial console
   ./rx_diag.py --wav one2/02_100-Mic-E-Bursts-DE-emphasized.flac.wav \\
       --esp-host 192.168.4.1 --user admin --password secret \\
       --serial-port /dev/ttyUSB0 --audio-device hw:1,0 --volume 1.334
@@ -132,11 +146,12 @@ def file_peak(wav):
 # --------------------------------------------------------------------------
 
 class Host:
-    def __init__(self, project, out, noise, flat):
+    def __init__(self, project, out, noise, flat, gate_mv=0):
         self.project = project
         self.out = out
         self.noise = noise
         self.flat = flat
+        self.gate_mv = gate_mv
         self.bin = os.path.join(out, "modem_replay")
         self.raw = {}
         self.ref = {}
@@ -208,7 +223,8 @@ class Host:
         errp = os.path.join(self.out, tag + ".log")
         with open(self.raw[wav], "rb") as fin, open(tnc2, "w") as fo, open(errp, "w") as fe:
             subprocess.run([self.bin, "--preset", str(preset), "--taps", str(taps), "--gain", str(gain),
-                            "--noise", str(self.noise), "--flat", str(self.flat)], stdin=fin, stdout=fo, stderr=fe, check=True)
+                            "--noise", str(self.noise), "--flat", str(self.flat), "--gate-mv", str(self.gate_mv)],
+                           stdin=fin, stdout=fo, stderr=fe, check=True)
         err = open(errp).read()
         ours = load_packets(tnc2)
         ref = self.ref.get(wav)
@@ -360,6 +376,57 @@ def wav_seconds(wav):
         return 3600.0
 
 
+def capture_pass(args, esp, wav, cap_path):
+    """Play the recording once more, through the bench's own play chain at
+    --volume, while POST /radio/capture streams the demodulator input into
+    cap_path. Returns None, or what went wrong."""
+    sys.path.insert(0, HERE)
+    import test_aprs_wavs as bench_mod
+
+    try:
+        sinks, default_name = bench_mod.pw_list_sinks()
+        sink = bench_mod.resolve_sink(args.audio_device, sinks, default_name)
+    except (RuntimeError, ValueError) as e:
+        return "no PipeWire output for the capture playback: %s" % e
+    try:
+        rendered = bench_mod.render_for_play(wav, args.volume, False)
+    except RuntimeError as e:
+        return "the capture playback could not be rendered: %s" % e
+
+    log("  capture: second playback of %s to %s" % (os.path.basename(wav), sink.name))
+    stop = threading.Event()
+    result = {}
+
+    def grab():
+        try:
+            result["bytes"] = esp.capture(wav_seconds(wav) + 30, cap_path, stop)
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace").strip()
+            result["error"] = "HTTP %d: %s" % (e.code, detail or e.reason)
+        except (urllib.error.URLError, OSError) as e:
+            result["error"] = str(e)
+
+    th = threading.Thread(target=grab, daemon=True)
+    th.start()
+    time.sleep(2.0)  # the capture ring is armed before the first sample plays
+    try:
+        player = bench_mod.start_player(rendered, sink, 1.0, "rx_diag capture")
+        player.wait()
+        time.sleep(3.0)  # the tail of the last frame reaches the demodulators
+    finally:
+        stop.set()
+        th.join(timeout=90)
+        try:
+            os.unlink(rendered)
+        except OSError:
+            pass
+    if "error" in result:
+        return result["error"]
+    if result.get("bytes", 0) < 396:
+        return "the capture stream ended with %d bytes" % result.get("bytes", 0)
+    return None
+
+
 def device_run(args, esp, host, wav, preset, taps, out, blank=None):
     base = os.path.splitext(os.path.basename(wav))[0]
     tag = "%s.dev.p%d.t%d%s" % (base, preset, taps, "" if blank is None else (".b1" if blank else ".b0"))
@@ -373,11 +440,19 @@ def device_run(args, esp, host, wav, preset, taps, out, blank=None):
         overrides[k] = v
     esp.set_radio(overrides)
 
+    web = not args.serial_port
     bench = [sys.executable, os.path.join(HERE, "test_aprs_wavs.py"),
              "--wav_dir", os.path.dirname(os.path.abspath(wav)), "--wav_files", os.path.basename(wav),
-             "--audio_device", args.audio_device, "--serial_port", args.serial_port,
-             "--volume", str(args.volume), "--no_auto_volume", "--reset", "--lang", "en",
+             "--volume", str(args.volume), "--no_auto_volume", "--lang", "en",
              "--report_csv", os.path.join(out, tag + ".csv")]
+    if args.audio_device:
+        bench += ["--audio_device", args.audio_device]
+    if web:
+        # The bench must leave the settings rx_diag has just posted alone.
+        bench += ["--transport", "web", "--web_host", args.esp_host, "--web_user", args.user,
+                  "--web_password", args.password, "--no_modem_optimize"]
+    else:
+        bench += ["--serial_port", args.serial_port, "--reset"]
     if args.match_window:
         bench += ["--match_window", str(args.match_window)]
     bench += args.bench_arg or []
@@ -389,16 +464,20 @@ def device_run(args, esp, host, wav, preset, taps, out, blank=None):
     cap_error = []
 
     def watcher():
-        # The bench resets the chip first; wait for the web server, take the
-        # baseline of the loss counters, then either capture the demodulator
-        # input for the whole run or poll RX LEVEL.
-        time.sleep(15)
+        # Over the serial console the bench resets the chip first; wait for the
+        # web server, take the baseline of the loss counters, then either
+        # capture the demodulator input for the whole run or poll RX LEVEL.
+        # Over the web transport a capture would hold the web server the
+        # bench reads its frames from, so RX LEVEL is polled and the capture
+        # is taken during a second playback (capture_pass()).
+        if not web:
+            time.sleep(15)
         esp.wait_up()
         try:
             baseline.update(esp.rx_level())
         except (urllib.error.URLError, OSError, ValueError):
             pass
-        if args.capture:
+        if args.capture and not web:
             try:
                 n = esp.capture(wav_seconds(wav) + 600, cap_path, stop)
                 if n >= 396:
@@ -430,6 +509,11 @@ def device_run(args, esp, host, wav, preset, taps, out, blank=None):
     th.join(timeout=90)
     esp.wait_up()
     final = esp.rx_level()
+    if web and args.capture:
+        err = capture_pass(args, esp, wav, cap_path)
+        if err:
+            cap_error.append(err)
+            log("  capture failed (%s)" % err)
 
     text = open(logp).read()
     rates = {m.group(1): (int(m.group(2)), int(m.group(3))) for m in RATE.finditer(text)}
@@ -461,6 +545,7 @@ def device_run(args, esp, host, wav, preset, taps, out, blank=None):
         "dsp_mean_permille": (sum(q.get("dsp_mean", 0) for q in ok) / len(ok)) if ok else None,
         "final": final,
         "capture": None,
+        "capture_second_pass": web,
         "capture_error": cap_error[0] if cap_error else None,
         "bench_tail": text.splitlines()[-15:] if not rates else None,
     }
@@ -580,6 +665,10 @@ def verdict(host_rows, dev_rows, matched):
 
         if cap:
             ref = cap.get("ref")
+            if d.get("capture_second_pass"):
+                lines.append("- The capture comes from a second playback of the same recording at the same volume (web "
+                             "transport): device frames and replay frames are compared as counts, and the overlap between "
+                             "them only counts frames both playbacks decoded.")
             lines.append("- Capture: %s blocks (%s missing from the stream); blocks at the ADC rails %s; gate closed %.1f %% of blocks; "
                          "impulsive blocks %.3f %%; blocks with glitches repaired by the impulse blanker %s %%; receive task per block "
                          "mean %.0f us, max %s us of 20000."
@@ -644,7 +733,7 @@ def fmt(v, f="%s"):
     return "-" if v is None else (f % v)
 
 
-def write_report(out, args, host_rows, dev_rows, matched):
+def write_report(out, args, host_rows, dev_rows, matched, gate_mv=0):
     data = {"when": datetime.datetime.now().isoformat(timespec="seconds"), "args": vars(args),
             "host": host_rows, "device": dev_rows,
             "matched": [dict(v, key=list(k)) for k, v in matched.items()]}
@@ -654,7 +743,8 @@ def write_report(out, args, host_rows, dev_rows, matched):
     L = ["# rx_diag report", "", "Generated %s." % data["when"], "", "## Verdict", ""]
     L += verdict(host_rows, dev_rows, matched)
     if host_rows:
-        L += ["", "## PC replay", ""]
+        L += ["", "## PC replay", "",
+              "Converter noise %.1f counts RMS; receive gate %s." % (args.noise, ("%d mV" % gate_mv) if gate_mv else "off"), ""]
         L += md_table(sorted(host_rows, key=lambda r: (r["wav"], r["preset"], -r["taps"], r["gain"])), [
             ("recording", lambda r: r["wav"]), ("set", lambda r: r["set"]), ("taps", lambda r: str(r["taps"])),
             ("gain", lambda r: str(r["gain"])), ("frames", lambda r: str(r["frames"])),
@@ -718,11 +808,14 @@ def main():
     ap.add_argument("--gains", default="300,600,1200,2000", help="PC replay input levels, ADC counts per full-scale sample")
     ap.add_argument("--noise", type=float, default=1.2, help="converter noise added in the replay, RMS ADC counts (default 1.2, ~1 mV)")
     ap.add_argument("--flat", type=int, default=0, help="1 = flat/discriminator demodulator set in the replay (match the device)")
+    ap.add_argument("--gate-mv", type=int, default=None,
+                    help="receive gate of the PC replay, mV RMS (default: the rxGateMv given with --set, else 0 as the firmware default); "
+                         "a gate drops the frames of weak stations, so match the device")
     ap.add_argument("--esp-host", help="ESP32 address; enables the device phase")
     ap.add_argument("--user", default="admin", help="web admin user (default admin)")
     ap.add_argument("--password", help="web admin password")
-    ap.add_argument("--serial-port", help="serial port for test_aprs_wavs.py")
-    ap.add_argument("--audio-device", help="audio device for test_aprs_wavs.py")
+    ap.add_argument("--serial-port", help="serial port for test_aprs_wavs.py; without it the bench reads the ESP32 over the web admin")
+    ap.add_argument("--audio-device", help="PipeWire output wired to the ESP32 (default: the PipeWire default output)")
     ap.add_argument("--volume", type=float, default=1.0, help="fixed bench playback gain (default 1.0)")
     ap.add_argument("--match-window", type=float, default=None, help="passed to the bench (1.5 for burst recordings)")
     ap.add_argument("--device-configs", default="6:31,5:31,5:21",
@@ -744,7 +837,14 @@ def main():
     os.makedirs(out, exist_ok=True)
     log("results in %s" % out)
 
-    host = Host(args.project, out, args.noise, args.flat)
+    gate_mv = args.gate_mv
+    if gate_mv is None:
+        gate_mv = 0
+        for kv in (args.set or []):
+            k, _, v = kv.partition("=")
+            if k.strip() == "rxGateMv" and v.strip().lstrip("-").isdigit():
+                gate_mv = int(v)
+    host = Host(args.project, out, args.noise, args.flat, gate_mv)
     host_rows, dev_rows, matched = [], [], {}
     presets = ints(args.presets)
     need_host = (not args.no_host) or bool(args.esp_host)
@@ -761,9 +861,10 @@ def main():
                         log("PC %s %s t%d g%d: %d frames, match %s" % (r["wav"], r["set"], t, g, r["frames"], fmt(r["match"])))
 
     if args.esp_host:
-        for opt in ("password", "serial_port", "audio_device"):
-            if not getattr(args, opt):
-                sys.exit("rx_diag: the device phase needs --%s" % opt.replace("_", "-"))
+        if not args.password:
+            sys.exit("rx_diag: the device phase needs --password")
+        if args.serial_port and not args.audio_device:
+            sys.exit("rx_diag: the device phase over the serial console needs --audio-device")
         esp = Esp(args.esp_host, args.user, args.password)
         if not esp.wait_up(30):
             sys.exit("rx_diag: no answer from http://%s/radio" % args.esp_host)
@@ -785,7 +886,7 @@ def main():
                     matched[(d["wav"], p, t, None if bl is None else bool(bl))] = m
                     log("  PC replay at the device's level (gain %d): match %s" % (m["gain"], fmt(m["match"])))
 
-    write_report(out, args, host_rows, dev_rows, matched)
+    write_report(out, args, host_rows, dev_rows, matched, gate_mv)
     log("report: %s" % os.path.join(out, "report.md"))
 
 

@@ -24,22 +24,23 @@ La catena, fase per fase
      - ISR del driver su core 0
    * - ingest: de-interleave coppie, soppressore di impulsi
        (``impulse_blanker.h``: mediana di cinque, picchi sostituiti per
-       interpolazione, ritardo di due campioni), rimozione offset DC, misura RMS
-       a banda larga
+       interpolazione, ritardo di due campioni), rimozione della DC
+       (inseguitore del primo ordine, ``rx_dc_block.h``, taglio ~6 Hz), misura
+       RMS a banda larga
      - 76 800 Hz
      - ``afsk.c``
    * - FIR di decimazione (48 coefficienti, rapporto **8:1**), passa-alto
-       CTCSS e bassi (300 Hz predefinito), misura del livello della banda dei
+       del quarto ordine per CTCSS e bassi (``rx_hpf.h``, 300 Hz predefinito), misura del livello della banda dei
        toni e decisione della soglia di ricezione, AGC o guadagno fisso, anello
        di trattenuta della soglia
      - → **9 600 Hz**
      - ``afsk.c``
-   * - per correlatore (fino a tre): prefiltro passa-banda, correlatori
+   * - per correlatore (fino a quattro): prefiltro passa-banda, correlatori
        mark/space, magnitudini dei toni, passa-basso, stima dello
        sbilanciamento dei toni
      - 9 600 Hz
      - ``modem.c``
-   * - per demodulatore (fino a otto): comparatore sulle magnitudini di un
+   * - per demodulatore (fino a dodici): comparatore sulle magnitudini di un
        correlatore, DCD, DPLL, decodifica NRZI
      - 9 600 Hz
      - ``modem.c``
@@ -152,47 +153,50 @@ gruppo *Demodulatore di ricezione* di :ref:`it-radiomodem`) ed è applicato da
 mai elaborato da una catena costruita a metà.
 
 **Correlatori e comparatori.**
-   Ogni correlatore misura la magnitudine vera ``sqrt(I² + Q²)`` del tono mark
-   e di quello space; ``|I| + |Q|`` oscillerebbe tra 1 e 1,41 volte quel valore
-   secondo la fase del tono, cioè 3 dB di rumore sulla decisione. Un
-   comparatore confronta poi la magnitudine del mark con quella dello space
-   moltiplicata per il proprio peso. In aria lo sbilanciamento tra i toni va da
-   nullo (trasmettitore piatto su porta dati verso un'uscita discriminatore) a
-   5-12 dB a favore del tono space (trasmettitore con pre-enfasi verso
-   un'uscita discriminatore), e un'uscita altoparlante sposta entrambi per la
-   deenfasi del ricevitore: una singola decisione senza peso fallisce oltre
-   circa ±12 dB di sbilanciamento.
+   Ogni correlatore misura la magnitudine vera ``sqrt(I² + Q²)`` del tono di
+   marca e di quello di spazio; ``|I| + |Q|`` oscillerebbe fra 1 e 1,41 volte
+   quel valore con la fase del tono, cioè 3 dB di rumore sulla decisione. Un
+   comparatore confronta poi la magnitudine di marca con quella di spazio
+   moltiplicata per il proprio peso. In aria lo sbilanciamento fra i toni va da
+   nulla (un trasmettitore con ingresso dati piatto su un'uscita
+   discriminatore) a 5–12 dB a favore del tono di spazio (un trasmettitore con
+   pre-enfasi su un'uscita discriminatore), e un'uscita altoparlante sposta
+   entrambi i casi per la de-enfasi del ricevitore, quindi una sola decisione
+   senza peso fallisce oltre circa ±12 dB di sbilanciamento.
 
-   Le due metà lo compensano. I prefiltri vengono progettati in ``ModemInit()``
+   Le due metà lo compensano. I prefiltri sono progettati in ``ModemInit()``
    (campionamento in frequenza, finestra di Hamming, fase lineare, picco della
-   banda passante scalato all'unità perché i percorsi int16 e int32 restino nei
-   limiti) a partire dai bordi di banda, dalla lunghezza e da una
-   *inclinazione*; l'inclinazione che raggiungono davvero, misurata sui
-   coefficienti, viene scritta nel log e usata dalla stima dello
-   sbilanciamento. Il peso del comparatore è esatto e quasi gratuito, perché il
-   passa-basso dopo la rivelazione è lineare e può quindi lavorare sulle due
-   magnitudini prima di pesarle: più comparatori condividono un correlatore al
-   prezzo di una moltiplicazione e una sottrazione ciascuno. Quello che un
-   comparatore non può fare è tenere un tono space forte fuori dal correlatore
-   del mark: il correlatore dura un simbolo, quindi la sua risposta è
-   abbastanza larga perché l'altro tono entri, e solo un filtro a monte lo
-   toglie. Per questo il set predefinito ``MODEM_RX_EQ_MULTISLICE`` usa tre
-   prefiltri, ciascuno inclinato verso il centro della propria parte
-   dell'intervallo (+6, −5 e −14 dB con audio piatto, +13, +2 e −7 dB con audio
-   altoparlante), con tre, tre e due comparatori; tenere ogni peso entro circa
-   4 dB dall'unità conta sui segnali deboli, dove un peso lontano costa
-   sensibilità. Le tabelle di ``modem.c`` contengono la compensazione con cui deve
-   finire ogni comparatore — inclinazione del prefiltro più peso del
-   comparatore — e ogni peso è calcolato dall'inclinazione che il suo prefiltro
-   ha raggiunto davvero, quindi gli otto demodulatori avanzano a passi di
-   3,5 dB da +9 a −15,5 dB (piatto) o da +16 a −8,5 dB (altoparlante)
-   qualunque sia la lunghezza del prefiltro. ``ModemLogConfig()`` scrive il
-   risultato quando il task di ricezione torna a girare.
-   ``MODEM_RX_EQ_MULTISLICE2`` dispone gli stessi otto comparatori su due
-   prefiltri, quattro ciascuno (+5/−9 dB piatto, +9/−4 dB altoparlante), per
-   confrontare le due disposizioni su una stazione reale. I set di filtri danno
-   a ogni demodulatore il proprio prefiltro e un comparatore senza peso, e il
-   set classico conserva le tabelle fisse a 8 coefficienti.
+   banda passante scalato all'unità perché i percorsi int16 e int32 restino
+   nell'intervallo) a partire dai bordi di banda, dalla lunghezza e da
+   un'*inclinazione*; l'inclinazione realmente raggiunta, misurata sui
+   coefficienti, viene registrata e usata dalla stima dello sbilanciamento. Il
+   peso del comparatore è esatto e quasi gratuito, perché il passa-basso dopo
+   la rivelazione è lineare e può agire sulle due magnitudini prima della
+   pesatura — più comparatori condividono un correlatore al costo di una
+   moltiplicazione e una sottrazione ciascuno. Ciò che un comparatore non può
+   fare è tenere un tono forte fuori dal correlatore dell'altro tono: il
+   correlatore dura un simbolo, quindi la sua risposta è abbastanza larga da
+   lasciar entrare l'altro tono, e solo un filtro davanti lo toglie. Per questo
+   il set predefinito ``MODEM_RX_EQ_MULTISLICE`` usa
+   ``MODEM_RX_SLICER_PREFILTERS`` = 4 prefiltri, inclinati di +13, +4, −5 e
+   −13 dB, con tre comparatori ciascuno; tenere ogni peso entro circa 3,5 dB
+   dall'unità conta sui segnali deboli, dove un peso lontano costa
+   sensibilità. La tabella in ``modem.c`` contiene la compensazione con cui
+   ogni comparatore deve finire — inclinazione del prefiltro più peso — e ogni
+   peso è derivato dall'inclinazione che il suo prefiltro ha realmente
+   raggiunto, così i dodici demodulatori avanzano a passi di 3 dB fra +16,5 e
+   −16,5 dB qualunque sia la lunghezza del prefiltro. Quell'unico intervallo
+   contiene lo sbilanciamento dell'audio piatto e di quello de-enfatizzato,
+   quindi i multicomparatori ignorano ``flat_audio``; solo i set di filtri e il
+   classico scelgono le loro inclinazioni in base ad esso. ``ModemLogConfig()``
+   elenca il risultato appena il task di ricezione riparte.
+   ``MODEM_RX_EQ_MULTISLICE2`` dispone gli stessi dodici comparatori su due
+   prefiltri, sei ciascuno (+9/−9 dB), per confrontare le due disposizioni su
+   una stazione in funzione. I set di filtri danno a ogni demodulatore il
+   proprio prefiltro e un comparatore senza peso, e il set classico mantiene le
+   tabelle fisse a 8 coefficienti. La mappa di bit del rilevamento di portante
+   e la maschera dei demodulatori della finestra dei duplicati sono a 16 bit, il
+   che limita ``MODEM_RX_MAX_DEMODULATORS`` a 16.
 
 **Soppressione dei duplicati e statistiche.**
    Una trama con FCS valido apre una finestra di 32 periodi di bit × il numero
@@ -398,9 +402,9 @@ sovrascriverla.
      - 3
      - 1..3
    * - ``MODEM_RX_MAX_DEMODULATORS``
-     - 8
+     - 12
      - demodulatori (comparatori) a 1200 Bd in parallelo,
-       ``MODEM_RX_SLICER_COUNT``..8
+       ``MODEM_RX_SLICER_COUNT``..16
    * - *(derivato)* ``MODEM_DEMOD_SAMPLERATE``
      - 9600
      - fisso
@@ -437,7 +441,8 @@ I file sorgente del modem
      - FEC Reed–Solomon FX.25
    * - ``src/crc_ccit.c``
      - FCS (sequenza di controllo del frame)
-   * - ``include/impulse_blanker.h``, ``include/rx_agc.h``
+   * - ``include/impulse_blanker.h``, ``include/rx_dc_block.h``,
+       ``include/rx_hpf.h``, ``include/rx_agc.h``
      - stadi del front-end di ricezione solo intestazione (soppressore di
-       impulsi, controllo del guadagno), condivisi con il replay su PC di
+       impulsi, inseguitore della DC, passa-alto, controllo del guadagno), condivisi con il replay su PC di
        ``audio_test/rx_replay``

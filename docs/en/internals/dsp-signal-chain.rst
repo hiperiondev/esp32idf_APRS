@@ -24,19 +24,20 @@ The chain, stage by stage
      - driver ISR on core 0
    * - ingest: pair un-swap, impulse blanker (``impulse_blanker.h``: median of
        five, glitches replaced by interpolation, two-sample delay),
-       DC-offset removal, wideband RMS metering
+       DC removal (first-order tracker, ``rx_dc_block.h``, corner ~6 Hz),
+       wideband RMS metering
      - 76 800 Hz
      - ``afsk.c``
-   * - decimation FIR (48 taps, ratio **8:1**), CTCSS/bass high-pass
-       (300 Hz by default), tone-band level meter and receive gate decision,
+   * - decimation FIR (48 taps, ratio **8:1**), fourth-order CTCSS/bass
+       high-pass (``rx_hpf.h``, 300 Hz by default), tone-band level meter and receive gate decision,
        AGC or fixed gain, gate hold ring
      - → **9 600 Hz**
      - ``afsk.c``
-   * - per correlator (up to three): band-pass prefilter, mark/space
+   * - per correlator (up to four): band-pass prefilter, mark/space
        correlators, tone magnitudes, low-pass, tone-twist tracking
      - 9 600 Hz
      - ``modem.c``
-   * - per demodulator (up to eight): slicer on a correlator's magnitudes, DCD,
+   * - per demodulator (up to twelve): slicer on a correlator's magnitudes, DCD,
        DPLL, NRZI decode
      - 9 600 Hz
      - ``modem.c``
@@ -161,23 +162,27 @@ by a half-built chain.
    is exact and nearly free, since the post-detection low-pass is linear and
    can therefore run on the two magnitudes before they are weighted — several
    slicers share one correlator for a multiply and a subtract each. What a
-   slicer cannot do is keep a loud space tone out of the mark correlator: the
-   correlator is one symbol long, so its response is broad enough for the
+   slicer cannot do is keep a loud tone out of the other tone's correlator:
+   the correlator is one symbol long, so its response is broad enough for the
    other tone to leak in, and only a filter ahead of it removes that. The
-   default ``MODEM_RX_EQ_MULTISLICE`` set therefore runs three prefilters,
-   each tilted to the centre of its part of the range (+6, −5 and −14 dB on
-   flat audio, +13, +2 and −7 dB on speaker audio), with three, three and two
-   slicers; keeping every slicer weight within about 4 dB of unity matters on
-   weak signals, where a far-off weight costs sensitivity. The tables in
-   ``modem.c`` hold the compensation every slicer should end up with — prefilter
-   tilt plus slicer weight — and each weight is derived from the tilt its
-   prefilter actually realized, so the eight demodulators step 3.5 dB over
-   +9 to −15.5 dB (flat) or +16 to −8.5 dB (speaker) whatever the prefilter
-   length. ``ModemLogConfig()`` lists the result once the receive task runs
-   again. ``MODEM_RX_EQ_MULTISLICE2`` arranges the same eight slicers over two
-   prefilters, four each (+5/−9 dB flat, +9/−4 dB speaker), to compare the two
-   layouts on a live station. The filter-set presets give every demodulator its own prefilter and
-   an unweighted slicer, and the legacy set keeps the fixed 8-tap tables.
+   default ``MODEM_RX_EQ_MULTISLICE`` set therefore runs
+   ``MODEM_RX_SLICER_PREFILTERS`` = 4 prefilters, tilted +13, +4, −5 and
+   −13 dB, with three slicers each; keeping every slicer weight within about
+   3.5 dB of unity matters on weak signals, where a far-off weight costs
+   sensitivity. The table in ``modem.c`` holds the compensation every slicer
+   should end up with — prefilter tilt plus slicer weight — and each weight is
+   derived from the tilt its prefilter actually realized, so the twelve
+   demodulators step 3 dB over +16.5 to −16.5 dB whatever the prefilter
+   length. That one range holds the twist of flat and of de-emphasized audio,
+   so the multi-slicer sets ignore ``flat_audio``; only the filter-set and
+   legacy presets choose their tilts from it. ``ModemLogConfig()`` lists the
+   result once the receive task runs again. ``MODEM_RX_EQ_MULTISLICE2``
+   arranges the same twelve slicers over two prefilters, six each (+9/−9 dB),
+   to compare the two layouts on a live station. The filter-set presets give
+   every demodulator its own prefilter and an unweighted slicer, and the
+   legacy set keeps the fixed 8-tap tables. The carrier-detect bitmap and the
+   duplicate window's demodulator mask are 16 bits wide, which bounds
+   ``MODEM_RX_MAX_DEMODULATORS`` to 16.
 
 **Duplicate suppression and statistics.**
    A frame with a valid FCS opens a window of 32 bit periods × the active
@@ -371,8 +376,8 @@ every macro ``#ifndef``-guarded so the build system can override it.
      - 3
      - 1..3
    * - ``MODEM_RX_MAX_DEMODULATORS``
-     - 8
-     - parallel 1200 Bd demodulators (slicers), ``MODEM_RX_SLICER_COUNT``..8
+     - 12
+     - parallel 1200 Bd demodulators (slicers), ``MODEM_RX_SLICER_COUNT``..16
    * - *(derived)* ``MODEM_DEMOD_SAMPLERATE``
      - 9600
      - fixed
@@ -409,6 +414,8 @@ The modem source files
      - FX.25 Reed–Solomon FEC
    * - ``src/crc_ccit.c``
      - FCS (frame check sequence)
-   * - ``include/impulse_blanker.h``, ``include/rx_agc.h``
-     - header-only receive front-end stages (impulse blanker, gain control),
+   * - ``include/impulse_blanker.h``, ``include/rx_dc_block.h``,
+       ``include/rx_hpf.h``, ``include/rx_agc.h``
+     - header-only receive front-end stages (impulse blanker, DC tracker,
+       high-pass, gain control),
        shared with the PC replay in ``audio_test/rx_replay``

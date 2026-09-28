@@ -154,7 +154,7 @@ bool getTransmit(void) {
     return s_transmitting || s_forceActive;
 }
 
-uint8_t ModemDcdState(void) {
+uint16_t ModemDcdState(void) {
     return 0;
 }
 

@@ -2245,8 +2245,9 @@
     "el límite. Los valores útiles quedan muy por encima de la trama más larga que envía esta estación."
 /** Spanish text of the contextual help for the "Demodulator set" option. */
 #define TR_H_F_RX_EQ_PRESET                                                                                                                                    \
-    "Los demoduladores trabajan sobre el mismo audio y se diferencian en cómo compensan el desbalance de tonos de cada estación. El multicomparador "          \
-    "combina dos pasabanda con seis umbrales de decisión y cubre el rango más amplio; los juegos de filtros usan un pasabanda por demodulador."
+    "Los demoduladores trabajan sobre el mismo audio y se diferencian en cómo compensan el desbalance de tonos de cada estación. El multicomparador usa doce " \
+    "umbrales de decisión sobre cuatro pasabanda y cubre el desbalance del audio de discriminador y del de altavoz por igual, sea cual sea el tipo de "        \
+    "entrada; los juegos de filtros usan un pasabanda por demodulador; el Clásico usa un par de filtros fijos."
 /** Spanish text of the contextual help for the "Custom: demodulators" option. */
 #define TR_H_F_RX_EQ_COUNT "Cantidad de demoduladores del juego Personalizado, de 1 a 3. Cada uno usa la inclinación indicada abajo."
 /** Spanish text of the contextual help for the "Custom: tilt" option. */
@@ -2266,12 +2267,14 @@
     "pares se redondean al impar siguiente."
 /** Spanish text of the contextual help for the "Receive gate (mV RMS, 0 = off)" option. */
 #define TR_H_F_RX_GATE_MV                                                                                                                                      \
-    "Los demoduladores reciben audio solo mientras la entrada supera este nivel; los bloques recibidos mientras se abre se guardan y decodifican. "            \
-    "0 los alimenta siempre, lo mejor para una salida de datos."
+    "Los demoduladores reciben audio solo mientras la entrada supera este nivel; los bloques recibidos mientras se abre se guardan y decodifican. 0 (el "      \
+    "valor por omisión) los alimenta siempre y conserva las estaciones débiles que un umbral descartaría; fije un nivel solo si el ruido en reposo mantiene "  \
+    "el canal ocupado entre transmisiones."
 /** Spanish text of the contextual help for the "High-pass (CTCSS rejection)" option. */
 #define TR_H_F_RX_HPF_HZ                                                                                                                                       \
-    "Elimina tonos CTCSS y zumbido por debajo de la frecuencia elegida antes de los demoduladores. Una salida de discriminador lleva el CTCSS "                \
-    "completo; la de altavoz suele tenerlo filtrado."
+    "Elimina tonos CTCSS y zumbido por debajo de la frecuencia elegida antes de los demoduladores. Una salida de discriminador lleva el CTCSS completo; la "   \
+    "de altavoz suele tenerlo filtrado. 600 y 800 Hz cortan además los graves de una salida de altavoz deenfatizada, pero restan decodificaciones de señales " \
+    "débiles con audio plano."
 /** Spanish text of the contextual help for the "Receive gain" option. */
 #define TR_H_F_RX_AGC_MODE                                                                                                                                     \
     "Automática sigue el nivel de cada transmisión. Fija conviene a una salida de datos o discriminador, cuyo nivel depende de la desviación del "             \
@@ -2290,8 +2293,8 @@
     "toma de datos o discriminador. Apáguelo si los demoduladores ya reciben una señal limpia."
 /** Spanish text of the contextual help for the "Flat / discriminator audio input" option. */
 #define TR_H_F_FLAT_AUDIO_INPUT                                                                                                                                \
-    "Actívelo para una toma de datos o de discriminador (sin filtrar, sin deénfasis) y apáguelo para una salida de altavoz o auriculares (ya "                 \
-    "deenfatizada). Elige las inclinaciones del juego de demoduladores."
+    "Actívelo para una toma de datos o de discriminador (sin filtrar, sin deénfasis) y apáguelo para una salida de altavoz o auriculares (ya deenfatizada). "  \
+    "Elige las inclinaciones del juego Clásico y de los juegos de filtros; los multicomparadores cubren los dos tipos de entrada."
 /** Spanish text of the contextual help for the "Beacon interval (s)" option. */
 #define TR_H_F_BEACON_INTERVAL_S                                                                                                                               \
     "Segundos entre balizas de posición. Use un intervalo largo en una frecuencia cargada; 0 deja vigente el valor por defecto del servicio."

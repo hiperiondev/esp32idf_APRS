@@ -251,7 +251,7 @@ uint8_t afskGetDacAmplitude(void);
  * The bias is only nominally half of the supply: the internal pull resistors
  * are specified between 30 kOhm and 80 kOhm, are not matched to each other
  * and drift with temperature, so the resting level lands anywhere between
- * roughly 1.2 V and 2.0 V. The running DC average in AFSK_Poll() removes
+ * roughly 1.2 V and 2.0 V. The DC tracker in AFSK_Poll() (rx_dc_block.h) removes
  * whatever it settles at, and afskGetDcOffset() reports it in millivolts.
  *
  * Only GPIO32 and GPIO33 carry RTC pull resistors; on any other ADC pin this
@@ -327,7 +327,7 @@ void afskGetRawMinMax(int16_t *min, int16_t *max);
  *                    half of it. The blocks received while the gate was
  *                    closed are held and demodulated first when it opens.
  *                    0 disables the gate: every block is demodulated.
- * @param hpfHz       Corner of the second-order Butterworth high-pass
+ * @param hpfHz       Corner of the fourth-order Butterworth high-pass
  *                    applied to the decimated signal of the AFSK profiles,
  *                    Hz, or 0 for none.
  * @param agcFixed    true for a fixed receive gain, false for automatic gain

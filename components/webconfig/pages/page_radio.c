@@ -222,6 +222,8 @@ esp_err_t page_radio_get(httpd_req_t *req) {
         web_select_option(req, 150, "150 Hz", t->hpf_hz == 150);
         web_select_option(req, 300, "300 Hz", t->hpf_hz == 300);
         web_select_option(req, 400, "400 Hz", t->hpf_hz == 400);
+        web_select_option(req, 600, "600 Hz", t->hpf_hz == 600);
+        web_select_option(req, 800, "800 Hz", t->hpf_hz == 800);
         web_select_close(req);
         web_select_open(req, TR_F_RX_AGC_MODE, "rxAgcMode");
         web_select_option(req, MODEM_RX_AGC_AUTO, TR_F_RX_AGC_AUTO, t->agc_mode == MODEM_RX_AGC_AUTO);
@@ -430,7 +432,7 @@ esp_err_t page_radio_level_post(httpd_req_t *req) {
     // number of known width or a fixed keyword plus the fixed keys, the
     // receive statistics being five fixed counters plus two arrays of up to
     // MODEM_RX_MAX_DEMODULATORS 10-digit entries, three DSP load figures and
-    // the impulse count, about 590 bytes in all -
+    // the impulse count, about 680 bytes in all with twelve demodulators -
     // with room for the failure form, which is shorter.
     char result[768];
     aprs_rx_level_sample(result, sizeof(result));

@@ -2145,8 +2145,9 @@
     "time-out off. Useful settings sit well above the longest frame this station sends."
 /** Contextual help for the "Demodulator set" option. */
 #define TR_H_F_RX_EQ_PRESET                                                                                                                                    \
-    "Demodulators run on the same audio and differ in how they compensate the tone twist of each station. Multi-slicer pairs two band-passes with "            \
-    "six decision thresholds and covers the widest range; the filter sets run one band-pass per demodulator; Legacy runs a fixed pair of filters."
+    "Demodulators run on the same audio and differ in how they compensate the tone twist of each station. Multi-slicer runs twelve decision thresholds on "    \
+    "four band-passes and covers the twist of discriminator and speaker audio alike, whatever the input type setting; the filter sets run one band-pass per "  \
+    "demodulator; Legacy runs a fixed pair of filters."
 /** Contextual help for the "Custom: demodulators" option. */
 #define TR_H_F_RX_EQ_COUNT "Number of demodulators the Custom set runs, 1 to 3. Each uses the tilt entered below for it."
 /** Contextual help for the "Custom: tilt" option. */
@@ -2165,12 +2166,12 @@
     "to odd."
 /** Contextual help for the "Receive gate (mV RMS, 0 = off)" option. */
 #define TR_H_F_RX_GATE_MV                                                                                                                                      \
-    "The demodulators are fed only while the input stays above this level; the blocks received while it opens are kept and decoded. 0 feeds them "             \
-    "continuously, the best choice for a data or discriminator port."
+    "The demodulators are fed only while the input stays above this level; the blocks received while it opens are kept and decoded. 0 (the default) feeds "    \
+    "them continuously and keeps the weak stations a threshold would drop; set a level only if idle noise keeps the channel busy between transmissions."
 /** Contextual help for the "High-pass (CTCSS rejection)" option. */
 #define TR_H_F_RX_HPF_HZ                                                                                                                                       \
-    "Removes CTCSS tones and hum below the chosen frequency before the demodulators. A discriminator output carries CTCSS at full level; a "                   \
-    "speaker output usually has it filtered already."
+    "Removes CTCSS tones and hum below the chosen frequency before the demodulators. A discriminator output carries CTCSS at full level; a speaker output "    \
+    "usually has it filtered already. 600 and 800 Hz also cut the bass of a de-emphasized speaker output, but cost weak-signal decodes on flat audio."
 /** Contextual help for the "Receive gain" option. */
 #define TR_H_F_RX_AGC_MODE                                                                                                                                     \
     "Automatic tracks the level of each transmission. Fixed suits a data or discriminator port, whose level is set by the transmitter's deviation "            \
@@ -2189,8 +2190,8 @@
     "benefits most. Leave it off if the demodulators already see a clean signal."
 /** Contextual help for the "Flat / discriminator audio input" option. */
 #define TR_H_F_FLAT_AUDIO_INPUT                                                                                                                                \
-    "On for a data or discriminator jack (unfiltered, no de-emphasis), off for a speaker or headphone output (already de-emphasized). Selects the "            \
-    "filter tilts of the demodulator set."
+    "On for a data or discriminator jack (unfiltered, no de-emphasis), off for a speaker or headphone output (already de-emphasized). Selects the filter "     \
+    "tilts of the Legacy and filter sets; the multi-slicer sets cover both kinds of input."
 /** Contextual help for the "Beacon interval (s)" option. */
 #define TR_H_F_BEACON_INTERVAL_S "Seconds between position beacons. Use a longer interval on a busy frequency; 0 leaves the service default in force."
 /** Contextual help for the "Beacon position" option. */

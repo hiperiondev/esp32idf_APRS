@@ -293,8 +293,8 @@
 #endif
 
 /**
- * @brief Number of band-pass prefilters (correlators) a 1200 Bd demodulator
- *        set can design.
+ * @brief Number of band-pass prefilters (correlators) the fixed and Custom
+ *        1200 Bd demodulator sets can design.
  *
  * A prefilter and the mark/space correlators behind it form one correlator.
  * The fixed presets use up to three, and ::modem_rx_tuning_t::custom_tilt_db
@@ -304,37 +304,54 @@
 #define MODEM_RX_MAX_PREFILTERS 3
 
 /**
- * @brief Number of slicers run by the ::MODEM_RX_EQ_MULTISLICE preset.
+ * @brief Number of tilted band-pass prefilters (correlators) run by the
+ *        ::MODEM_RX_EQ_MULTISLICE preset.
  *
- * The slicers are split over three tilted prefilters (correlators), three,
- * three and two on each. They differ only in the weight given to the space
- * tone, chosen so
- * that the twist compensation of the whole set - prefilter tilt plus slicer
- * weight - steps 3.5 dB over a 24.5 dB range; see modem.c for the target
- * tables.
+ * The prefilters are tilted to +13, +4, -5 and -13 dB, so that together
+ * with their slicers they cover the tone twist of flat (discriminator) and
+ * de-emphasized (speaker) audio with one set; see modem.c for the tables.
  */
-#define MODEM_RX_SLICER_COUNT 8
+#define MODEM_RX_SLICER_PREFILTERS 4
+
+/**
+ * @brief Number of slicers run by the ::MODEM_RX_EQ_MULTISLICE and
+ *        ::MODEM_RX_EQ_MULTISLICE2 presets.
+ *
+ * ::MODEM_RX_EQ_MULTISLICE splits them over its ::MODEM_RX_SLICER_PREFILTERS
+ * prefilters, three on each. The slicers differ only in the weight given to
+ * the space tone, chosen so that the twist compensation of the whole set -
+ * prefilter tilt plus slicer weight - steps 3 dB over the range +16.5 to
+ * -16.5 dB; see modem.c for the target tables.
+ */
+#define MODEM_RX_SLICER_COUNT 12
+
+/**
+ * @brief Number of correlators (prefilter plus mark/space correlators) the
+ *        demodulator core provides: the larger of ::MODEM_RX_MAX_PREFILTERS
+ *        and ::MODEM_RX_SLICER_PREFILTERS.
+ */
+#define MODEM_RX_MAX_CORRELATORS ((MODEM_RX_SLICER_PREFILTERS > MODEM_RX_MAX_PREFILTERS) ? MODEM_RX_SLICER_PREFILTERS : MODEM_RX_MAX_PREFILTERS)
 
 /**
  * @brief Maximum number of 1200 Bd demodulators that can run in parallel on
  *        the same audio.
  *
  * A demodulator is a slicer with its own carrier detect, clock recovery and
- * HDLC decoder, reading one of up to ::MODEM_RX_MAX_PREFILTERS correlators; a
+ * HDLC decoder, reading one of up to ::MODEM_RX_MAX_CORRELATORS correlators; a
  * frame is delivered by whichever demodulator completes it first and the
  * copies the others produce are dropped by FCS comparison. A slicer that
  * shares its correlator costs a few multiplies per sample, and every
  * demodulator carries a frame buffer of ::AX25_FRAME_MAX_SIZE plus FCS bytes.
  * The ::MODEM_RX_EQ_MULTISLICE preset runs ::MODEM_RX_SLICER_COUNT of them and
- * the carrier-detect bitmap is 8 bits wide, which bounds the value to
- * ::MODEM_RX_SLICER_COUNT..8.
+ * the carrier-detect and duplicate-window bitmaps are 16 bits wide, which
+ * bounds the value to ::MODEM_RX_SLICER_COUNT..16.
  */
 #ifndef MODEM_RX_MAX_DEMODULATORS
-#define MODEM_RX_MAX_DEMODULATORS 8
+#define MODEM_RX_MAX_DEMODULATORS 12
 #endif
 
-#if (MODEM_RX_MAX_DEMODULATORS < MODEM_RX_SLICER_COUNT) || (MODEM_RX_MAX_DEMODULATORS > 8) || (MODEM_RX_MAX_DEMODULATORS < MODEM_RX_MAX_PREFILTERS)
-#error "MODEM_RX_MAX_DEMODULATORS must be MODEM_RX_SLICER_COUNT..8: the multi-slicer preset runs that many demodulators and the DCD bitmap is 8 bits wide."
+#if (MODEM_RX_MAX_DEMODULATORS < MODEM_RX_SLICER_COUNT) || (MODEM_RX_MAX_DEMODULATORS > 16) || (MODEM_RX_MAX_DEMODULATORS < MODEM_RX_MAX_CORRELATORS)
+#error "MODEM_RX_MAX_DEMODULATORS must be MODEM_RX_SLICER_COUNT..16: the multi-slicer presets run that many demodulators and the DCD bitmap is 16 bits wide."
 #endif
 
 /**

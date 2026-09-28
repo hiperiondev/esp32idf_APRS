@@ -43,7 +43,7 @@
  * @brief Maximum number of correlators (prefilter plus mark/space
  *        correlators) that can run in parallel.
  */
-#define MODEM_MAX_CORRELATOR_COUNT MODEM_RX_MAX_PREFILTERS
+#define MODEM_MAX_CORRELATOR_COUNT MODEM_RX_MAX_CORRELATORS
 
 /**
  * @brief Runtime configuration of the demodulator.
@@ -186,7 +186,7 @@ void ModemSetRxTuning(const modem_rx_tuning_t *t);
  * @return Bitmap of the demodulators that currently have carrier lock, 0 if
  *         the channel is free.
  */
-uint8_t ModemDcdState(void);
+uint16_t ModemDcdState(void);
 
 /**
  * @brief Clear the Data Carrier Detect state of every demodulator.
