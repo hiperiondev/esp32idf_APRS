@@ -33,11 +33,11 @@ Inalámbrico
    **Punto de acceso (AP)** — el punto de acceso propio de la estación: nombre de red, contraseña y canal (1 a 13).
 
 .. figure:: /_static/webadmin/wireless_fs02.png
-   :alt: Cliente WiFi — uno de los cinco espacios de cliente, cada uno con su interruptor Habilitar, nombre de red y contraseña.
+   :alt: Cliente WiFi n.º 1 — uno de los cinco espacios de cliente, cada uno con su interruptor Habilitar, nombre de red y contraseña.
    :align: center
    :width: 90%
 
-   **Cliente WiFi** — uno de los cinco espacios de cliente, cada uno con su interruptor *Habilitar*, nombre de red y contraseña.
+   **Cliente WiFi n.º 1** — uno de los cinco espacios de cliente, cada uno con su interruptor *Habilitar*, nombre de red y contraseña.
 
 Los espacios son juegos de credenciales alternativos, no una lista de
 respaldo: al arrancar se usa el primer espacio activado que tenga nombre de

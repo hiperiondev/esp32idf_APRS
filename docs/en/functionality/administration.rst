@@ -32,11 +32,11 @@ Wireless
    **Access Point (AP)** — the station's own access point: network name, password and channel (1 to 13).
 
 .. figure:: /_static/webadmin/wireless_fs02.png
-   :alt: WiFi Client — one of the five client slots, each with its own Enable switch, network name and password.
+   :alt: WiFi Client #1 — one of the five client slots, each with its own Enable switch, network name and password.
    :align: center
    :width: 90%
 
-   **WiFi Client** — one of the five client slots, each with its own *Enable* switch, network name and password.
+   **WiFi Client #1** — one of the five client slots, each with its own *Enable* switch, network name and password.
 
 The slots are alternative sets of credentials, not a failover list: at boot
 the first enabled slot with a network name is the one used, so moving a unit

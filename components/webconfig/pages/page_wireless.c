@@ -89,7 +89,10 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
     httpd_resp_sendstr_chunk(req, "<datalist id='ssidList'></datalist>");
 
     for (int i = 0; i < WIFI_STA_NUM; i++) {
-        web_fieldset_open(req, TR_WIFI_CLIENT_LEGEND);
+        // The legend format numbers the slots from 1, as the operator counts them.
+        char legend[32];
+        snprintf(legend, sizeof(legend), TR_WIFI_CLIENT_LEGEND, i + 1);
+        web_fieldset_open(req, legend);
         {
             char buf[80];
             snprintf(buf, sizeof(buf), "<label><input type='checkbox' name='staEn%d' %s> " TR_F_ENABLE "</label>", i,

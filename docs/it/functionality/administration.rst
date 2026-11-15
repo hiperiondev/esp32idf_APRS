@@ -32,11 +32,11 @@ Senza fili
    **Punto di accesso (AP)** — il punto di accesso della stazione: nome della rete, password e canale (da 1 a 13).
 
 .. figure:: /_static/webadmin/wireless_fs02.png
-   :alt: Client WiFi — uno dei cinque slot client, ciascuno con il proprio interruttore Abilita, nome della rete e password.
+   :alt: Client WiFi #1 — uno dei cinque slot client, ciascuno con il proprio interruttore Abilita, nome della rete e password.
    :align: center
    :width: 90%
 
-   **Client WiFi** — uno dei cinque slot client, ciascuno con il proprio interruttore *Abilita*, nome della rete e password.
+   **Client WiFi #1** — uno dei cinque slot client, ciascuno con il proprio interruttore *Abilita*, nome della rete e password.
 
 Gli slot sono insiemi di credenziali alternativi, non un elenco di failover:
 all'avvio si usa il primo slot abilitato che abbia un nome di rete, quindi
