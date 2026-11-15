@@ -199,3 +199,52 @@ ogni canale analogico e un menu a tendina *Channel* per ogni bit digitale dal
 registro ``sensors_local`` in tempo reale, filtrato per i canali di telemetria
 annunciati di ogni driver. I valori per canale in tempo reale sono mostrati
 tramite ``/tlm/values``. Vedi :ref:`it-sensor-framework`.
+
+.. _it-telemetry-web:
+
+Nell'amministrazione web
+========================
+
+Le schermate qui sotto sono la pagina esattamente come la genera il firmware, con i valori di fabbrica e una stazione di esempio (``LU3VEA``) impostata.
+
+.. figure:: /_static/webadmin/tlm_top.png
+   :alt: La pagina Telemetria all'apertura.
+   :align: center
+   :width: 100%
+
+   La pagina *Telemetria* all'apertura.
+
+.. figure:: /_static/webadmin/tlm_fs00.png
+   :alt: Beacon — beacon di telemetria: abilitazione, identità, RF/Internet, percorso e intervallo.
+   :align: center
+   :width: 90%
+
+   **Beacon** — beacon di telemetria: abilitazione, identità, RF/Internet, percorso e intervallo.
+
+.. figure:: /_static/webadmin/tlm_fs01.png
+   :alt: Parametri del report — parametri del rapporto: sequenza, larghezza dei campi, commento e stazione per cui si invia.
+   :align: center
+   :width: 90%
+
+   **Parametri del report** — parametri del rapporto: sequenza, larghezza dei campi, commento e stazione per cui si invia.
+
+.. figure:: /_static/webadmin/tlm_fs02.png
+   :alt: Messaggi di definizione — quali messaggi di definizione PARM / UNIT / EQNS / BITS vengono inviati.
+   :align: center
+   :width: 90%
+
+   **Messaggi di definizione** — quali messaggi di definizione PARM / UNIT / EQNS / BITS vengono inviati.
+
+.. figure:: /_static/webadmin/tlm_fs03.png
+   :alt: Canali analogici (A1-A5) — i cinque canali analogici: nome, unità, canale sorgente, intervallo grezzo e la calibrazione a·x²+b·x+c.
+   :align: center
+   :width: 90%
+
+   **Canali analogici (A1-A5)** — i cinque canali analogici: nome, unità, canale sorgente, intervallo grezzo e la calibrazione a·x²+b·x+c.
+
+.. figure:: /_static/webadmin/tlm_fs04.png
+   :alt: Canali digitali (B1-B8) — gli otto bit digitali: nome, etichetta dello stato attivo, senso e sorgente.
+   :align: center
+   :width: 90%
+
+   **Canali digitali (B1-B8)** — gli otto bit digitali: nome, etichetta dello stato attivo, senso e sorgente.

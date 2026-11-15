@@ -90,6 +90,14 @@ dichiarazione di viewport e le proprie regole inline invece di collegare
 ``/style.css``: deve rendersi allo stesso modo quando il foglio di stile non può
 essere servito, che è esattamente ciò che alcune di queste risposte segnalano.
 
+.. figure:: /_static/webadmin/mobile_dashboard.png
+   :alt: Il pannello sullo schermo di un telefono largo 390 pixel: la navigazione diventa un cassetto dietro il pulsante del menu e il contenuto occupa tutta la larghezza.
+   :align: center
+   :width: 40%
+
+   Il pannello sullo schermo di un telefono largo 390 pixel: la navigazione diventa un cassetto dietro il pulsante del menu e il contenuto occupa tutta la larghezza.
+
+
 Perché helper per campo
 =======================
 
@@ -170,6 +178,14 @@ tutti e tre i file ``lang_*.h`` e una riga a ``web_help.c``. Omettere la riga no
 è un errore di compilazione — l'opzione si rende senza punto interrogativo —
 quindi vale la pena dare un'occhiata alla tabella ogni volta che una pagina
 guadagna un campo.
+
+
+.. figure:: /_static/webadmin/help_open.png
+   :alt: Un riquadro di aiuto contestuale aperto nella pagina IGate: il punto interrogativo dopo l'etichetta mostra la spiegazione al passaggio del mouse, al focus o al tocco.
+   :align: center
+   :width: 80%
+
+   Un riquadro di aiuto contestuale aperto nella pagina *IGate*: il punto interrogativo dopo l'etichetta mostra la spiegazione al passaggio del mouse, al focus o al tocco.
 
 
 Le pagine
@@ -475,6 +491,58 @@ Le pagine
    ``components/igate``, ciascuno con il proprio ambito. Con l'interruttore
    spento, nessuno dei due servizi tratta mai un frame come duplicato, e i due
    campi numerici diventano grigi e mantengono i valori salvati.
+
+Dove è documentata ogni pagina
+------------------------------
+
+Ogni pagina è mostrata, gruppo per gruppo, nel capitolo della funzione che configura:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 50 50
+
+   * - Pagina
+     - Capitolo
+   * - Pannello
+     - :ref:`it-dashboard`
+   * - Stazione, Simboli APRS
+     - :ref:`it-station`
+   * - IGate
+     - :ref:`it-igate`
+   * - BrandMeister
+     - :ref:`it-brandmeister`
+   * - Digipeater
+     - :ref:`it-digipeater`
+   * - Tracker
+     - :ref:`it-tracker`
+   * - Messaggio, Inv/Ric Msg
+     - :ref:`it-messaging`
+   * - Interrogazione
+     - :ref:`it-query`
+   * - Meteo
+     - :ref:`it-weather`
+   * - Telemetria
+     - :ref:`it-telemetry`
+   * - Bollettini, Oggetti e Item
+     - :ref:`it-bulletins-objects`
+   * - Telegram
+     - :ref:`it-telegram`
+   * - Winlink
+     - :ref:`it-winlink`
+   * - GPS
+     - :ref:`it-gps`
+   * - Radiomodem
+     - :ref:`it-radiomodem`
+   * - Senza fili, Sistema, Archiviazione file, Firmware, Registri
+     - :ref:`it-administration`
+
+.. figure:: /_static/webadmin/dashboard_top.png
+   :alt: L'amministrazione web in un browser desktop: la navigazione a sinistra, la pagina scelta a destra.
+   :align: center
+   :width: 100%
+
+   L'amministrazione web in un browser desktop: la navigazione a sinistra, la pagina scelta a destra.
+
 
 Le statistiche della dashboard
 ==============================

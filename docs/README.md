@@ -21,6 +21,8 @@ esp32_APRS_igate/
     ├── dataflow/, tuning/   master copies of the per-language data-flow and tuning
     │                        figures (each tree embeds its own copy from _static/)
     ├── _static/             master copies of custom.css and logo.png (not read by Sphinx)
+    ├── tools/webadmin_shots/ host renderer that regenerates the web admin screenshots
+    ├── tools/k1_figures/    scripts that draw the Kenwood-K1 (UV-5R) wiring figures
     ├── requirements.txt     Sphinx + Breeze theme pins
     └── build_all.py         builds all three trees into ./_site
 ```
@@ -30,7 +32,11 @@ figures) since each is an independent Sphinx project and Sphinx only looks up
 `html_static_path` inside its own source tree. The top-level `docs/_static/`,
 `docs/dataflow/` and `docs/tuning/` folders are only the master copies those
 trees are refreshed from; no build reads them, so an edited image or stylesheet
-must be copied into each language's `_static/` to take effect. `logo.png` is the small top-bar brand
+must be copied into each language's `_static/` to take effect. Two figure sets
+live only inside the language trees, because their text is translated:
+`_static/k1/` holds the Kenwood-K1 plug pinout and interface wiring drawings of
+the hardware chapter, and `_static/webadmin/` the web admin screenshots shown
+by the functionality chapters. `logo.png` is the small top-bar brand
 logo (set via `light_logo`/`dark_logo` in `_shared/conf_base.py`);
 `welcome_logo.png` is the larger centered image at the top of each language's
 Welcome page (`index.rst`). The two are independent by design.
@@ -44,6 +50,24 @@ pick a language.
 The chapters are organised by **Functionality** (what the station does),
 **Capability** (cross-cutting properties), and **Internals** (how it is built),
 plus a **Reference** section.
+
+## Web admin screenshots
+
+The screenshots are not mock-ups: `tools/webadmin_shots/make_shots.sh`
+compiles the real page handlers of `components/webconfig` on the host, against
+stub ESP-IDF headers and a sample station, renders every page in the three
+languages and screenshots each page and fieldset with a headless Chromium. Run
+it from the project root after changing a page, then rebuild the docs:
+
+```bash
+pip install pillow playwright && python -m playwright install chromium
+docs/tools/webadmin_shots/make_shots.sh
+```
+
+It refreshes only the images the chapters embed. The K1 wiring figures are
+redrawn with `python tools/k1_figures/k1_schem.py <lang>/_static/k1 <lang>` and
+`python tools/k1_figures/k1_pinout.py <lang>/_static/k1 <lang>` (needs
+`schemdraw` and `matplotlib`).
 
 ## Build locally
 

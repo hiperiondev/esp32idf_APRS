@@ -103,10 +103,13 @@ This documentation is organised into three parts, each with its own set of
 chapters:
 
 * **Functionalities** — what the station *does* as seen by an operator:
-  gatewaying, the BrandMeister interconnect, digipeating, beacons, messaging,
-  the query responder, weather, telemetry, bulletins, objects, the optional
-  Telegram bot, Winlink radio e-mail, the radiomodem page and the web admin —
-  which also holds the GNSS receiver's live view.
+  the dashboard and live traffic, the station identity, gatewaying, the
+  BrandMeister interconnect, digipeating, beacons, the tracker, messaging, the
+  query responder, weather, telemetry, local sensors, bulletins, objects, the
+  optional Telegram bot, Winlink radio e-mail, the GNSS receiver, the
+  radiomodem page, station administration (Wi-Fi, system, storage, firmware
+  and logs) and the web admin itself. Every chapter shows the matching web
+  admin page.
 * **Capabilities** — the *properties* of the firmware that cut across
   features: the modem profiles, filtering, localization, storage, OTA,
   networking and hardware support.
@@ -125,18 +128,24 @@ chapters:
    :maxdepth: 2
    :caption: Functionalities
 
+   functionality/dashboard
+   functionality/station
    functionality/igate
    functionality/brandmeister
    functionality/digipeater
    functionality/beacons
+   functionality/tracker
    functionality/messaging
    functionality/query
    functionality/weather
    functionality/telemetry
+   functionality/sensors
    functionality/bulletins-objects
    functionality/telegram
    functionality/winlink
+   functionality/gps
    functionality/radiomodem
+   functionality/administration
    functionality/web-admin
 
 .. toctree::

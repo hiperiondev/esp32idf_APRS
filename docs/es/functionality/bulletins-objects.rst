@@ -170,3 +170,73 @@ propios datos. Cada archivo se escribe con el mismo escritor JSON en flujo,
 byte a byte, que usa la configuración principal, bajo su propio mutex, con un
 ``setvbuf()`` explícito para que newlib no asigne perezosamente un búfer stdio
 grande a mitad de escritura sobre un heap fragmentado.
+
+.. _es-bulletins-objects-web:
+
+En la administración web
+========================
+
+Las capturas de abajo son la página tal como la genera el firmware, con los valores de fábrica y una estación de ejemplo (``LU3VEA``) cargada.
+
+.. figure:: /_static/webadmin/bulletins_top.png
+   :alt: La página Boletines al abrirse.
+   :align: center
+   :width: 100%
+
+   La página *Boletines* al abrirse.
+
+.. figure:: /_static/webadmin/bulletins_main.png
+   :alt: Los cinco espacios de boletín en acordeón; el primero está abierto.
+   :align: center
+   :width: 90%
+
+   Los cinco espacios de boletín en acordeón; el primero está abierto.
+
+.. figure:: /_static/webadmin/objects_top.png
+   :alt: La página Objetos e Ítems al abrirse.
+   :align: center
+   :width: 100%
+
+   La página *Objetos e Ítems* al abrirse.
+
+.. figure:: /_static/webadmin/objects_fs00.png
+   :alt: Control de Transmisión — activación, RF/Internet y alcance del primer objeto.
+   :align: center
+   :width: 90%
+
+   **Control de Transmisión** — activación, RF/Internet y alcance del primer objeto.
+
+.. figure:: /_static/webadmin/objects_fs01.png
+   :alt: Identidad y Estado — nombre, objeto/ítem, vivo/eliminado y la marca de permanente.
+   :align: center
+   :width: 90%
+
+   **Identidad y Estado** — nombre, objeto/ítem, vivo/eliminado y la marca de permanente.
+
+.. figure:: /_static/webadmin/objects_fs02.png
+   :alt: Posición y Símbolo — posición, símbolo, rumbo y velocidad.
+   :align: center
+   :width: 90%
+
+   **Posición y Símbolo** — posición, símbolo, rumbo y velocidad.
+
+.. figure:: /_static/webadmin/objects_fs04.png
+   :alt: Objeto de Área — forma, color y tamaño del objeto de área.
+   :align: center
+   :width: 90%
+
+   **Objeto de Área** — forma, color y tamaño del objeto de área.
+
+.. figure:: /_static/webadmin/objects_fs06.png
+   :alt: Parámetros de Radio del Repetidor — bloque de frecuencia de repetidora, tono/DCS, alcance y frecuencia de recepción.
+   :align: center
+   :width: 90%
+
+   **Parámetros de Radio del Repetidor** — bloque de frecuencia de repetidora, tono/DCS, alcance y frecuencia de recepción.
+
+.. figure:: /_static/webadmin/objects_fs07.png
+   :alt: Temporización de Baliza — intervalo inicial, decaimiento y vencimiento.
+   :align: center
+   :width: 90%
+
+   **Temporización de Baliza** — intervalo inicial, decaimiento y vencimiento.

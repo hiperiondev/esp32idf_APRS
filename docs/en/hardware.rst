@@ -141,6 +141,12 @@ Passive, ~15 parts, no op-amps.
    :align: center
    :width: 70%
 
+The contact names printed on these generic schematics (``MIC``, ``SPKR``,
+``RING (PTT)``, ``SLEEVE (GND)``) stand for whatever the radio's connector
+calls those signals. They do **not** describe a Kenwood-K1 hand-held, where PTT
+is on the 3.5 mm sleeve and ground on the 2.5 mm sleeve; for those radios use
+the wiring in :ref:`en-hardware-k1`.
+
 Key component roles: R1/R2 + C2/C3 form a two-pole reconstruction low-pass
 (fc ≈ 4.8 kHz) that kills the 38.4 kHz DAC images; C1 blocks the DAC's 1.65 V
 idle bias from the mic input; R3/RV1 pad and trim the TX level; R5/R6 set a
@@ -244,33 +250,113 @@ other equipment and trimmed to 2.5 to 3.5 kHz.
    speaker output to GPIO33 through the capacitor alone.
 
 
+.. _en-hardware-k1:
+
 Baofeng UV-5R and K-plug HTs
 ----------------------------
 
-The UV-5R (and Kenwood-K1-style two-pin clones: UV-82, BF-888, GT-3, RT-5R…)
-exposes two plugs rather than a combined jack:
+The UV-5R and the other hand-helds that use the Kenwood **K1** two-pin
+accessory socket (UV-82, BF-888S, BF-F8HP, GT-3, RT-5R, Quansheng UV-K5,
+Wouxun, TYT and many more) bring the audio out on two separate plugs, a 3.5 mm
+one and a 2.5 mm one, both three-contact (tip, ring, sleeve):
+
+.. image:: /_static/k1/k1_pinout_en.png
+   :alt: Kenwood K1 pinout - 3.5 mm plug: tip +V, ring MIC+, sleeve MIC-/PTT; 2.5 mm plug: tip SPK+, ring unused, sleeve GND
+   :align: center
+   :width: 85%
 
 .. list-table::
    :header-rows: 1
-   :widths: 22 22 56
+   :widths: 18 14 34 34
 
    * - Plug
-     - Size
-     - Signal
-   * - Large
-     - 3.5 mm TS
-     - Tip = SPKR audio out, Sleeve = GND
-   * - Small
-     - 2.5 mm TRS
-     - Tip = MIC in, Ring = PTT (short to sleeve to key), Sleeve = GND
+     - Contact
+     - Radio side
+     - Interface side
+   * - 3.5 mm (MIC / PTT)
+     - Tip
+     - +V from the radio (microphone bias)
+     - **not connected**
+   * - 3.5 mm (MIC / PTT)
+     - Ring
+     - MIC+, transmit audio input
+     - TX audio (RV1 wiper)
+   * - 3.5 mm (MIC / PTT)
+     - Sleeve
+     - MIC− / PTT sense: the radio transmits while this contact is pulled to
+       its ground
+     - PTT switch (Q1 collector or opto-transistor collector)
+   * - 2.5 mm (SPK)
+     - Tip
+     - SPK+, receive audio output (after the volume control)
+     - RX audio (top of RV2)
+   * - 2.5 mm (SPK)
+     - Ring
+     - not used (serial data for programming on some models)
+     - **not connected**
+   * - 2.5 mm (SPK)
+     - Sleeve
+     - radio ground
+     - interface and ESP32 **GND**
 
-There is **no separate UV-5R circuit** — build the minimal schematic exactly
-as above; only where the three off-board leads land changes, because the rig
-splits "rig" across two plugs. Note that these HTs have **no discriminator
-jack**, so 9600 Bd G3RUH is out of reach; **AFSK 1200 Bd Bell 202 is the
-realistic ceiling** through the stock 2-pin connector. Verify the plug pinout
-with a meter before soldering — cheap aftermarket cables sometimes swap mic
-and PTT.
+The radio keys up when the **3.5 mm sleeve is shorted to the 2.5 mm sleeve**.
+That gives the three rules the wiring follows:
+
+* The interface ground (ESP32 GND, the bottom of RV1/RV2/R6/C5/D2 and the
+  emitter of the PTT switch) goes to the **2.5 mm sleeve** and nowhere else on
+  the radio.
+* The **3.5 mm sleeve is the PTT line, not a ground**. Tying it to GND keys the
+  radio permanently; it is connected only to the collector of the PTT switch.
+  While the switch is closed the microphone return sits at ground through it,
+  which is what makes the transmit audio on the ring usable.
+* The **3.5 mm tip stays open**: it carries the radio's microphone bias, and
+  C1 already keeps the DAC's own DC off the ring.
+
+There is **no separate UV-5R circuit**: the reference interface above is used
+unchanged and only its four off-board leads are assigned to the plug contacts.
+The figure below shows it wired that way, with the non-inverting NPN PTT stage
+that matches the shipped ``MODEM_PTT_ACTIVE_HIGH=1``:
+
+.. image:: /_static/k1/k1_full_en.png
+   :alt: Reference interface wired to the K1 plugs - TX filter to the 3.5 mm ring, RX bias network from the 2.5 mm tip, NPN PTT switch on the 3.5 mm sleeve, ground on the 2.5 mm sleeve
+   :align: center
+   :width: 100%
+
+C4 is drawn with its positive lead toward the R5/R6 node, the side that sits at
+the 1.65 V bias, while RV2's end of the capacitor is at 0 V DC. The generic
+receive schematic above draws C4 the other way round; fit it with the positive
+lead toward R5/R6 there as well.
+
+With the opto-isolated PTT stage (option A) the switching side is the same:
+the photo-transistor's collector goes to the 3.5 mm sleeve and its emitter to
+the 2.5 mm sleeve. The LED is driven from +3V3 and sinks into GPIO26, so this
+stage keys on a **low** level and needs ``MODEM_PTT_ACTIVE_HIGH=0``:
+
+.. image:: /_static/k1/k1_opto_en.png
+   :alt: Opto-isolated PTT on the K1 plugs - PC817 collector to the 3.5 mm sleeve, emitter to the 2.5 mm sleeve
+   :align: center
+   :width: 80%
+
+The reduced interface (one coupling capacitor and one trimmer per direction,
+see the previous section) lands on the same contacts. Both capacitors go
+after their trimmer, and the receive capacitor is 10 nF because the UV-5R's
+only audio output is the de-emphasized speaker line:
+
+.. image:: /_static/k1/k1_reduced_en.png
+   :alt: Reduced interface on the K1 plugs - RV1 divider and C1 to the 3.5 mm ring, RV2 across the 2.5 mm tip with C2 to GPIO33
+   :align: center
+   :width: 100%
+
+On the Radiomodem page of such a station leave *Flat / discriminator audio
+input* off, and enable *ADC input self-bias* when the reduced interface is
+used.
+
+These HTs have **no discriminator or data jack**, so 9600 Bd G3RUH is out of
+reach; **AFSK 1200 Bd Bell 202 is the realistic ceiling** through the K1
+socket. Keep the volume knob low before the first connection: the speaker
+output at full volume is several volts. Check the plug wiring with a meter
+before soldering - aftermarket cables do not always follow the colour codes,
+and a few radios sold with K1-style sockets use a different allocation.
 
 Bring-up order
 ==============

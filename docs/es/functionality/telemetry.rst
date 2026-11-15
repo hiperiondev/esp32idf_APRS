@@ -195,3 +195,52 @@ canal analógico y un desplegable *Channel* por cada bit digital a partir del
 registro ``sensors_local`` en vivo, filtrado por los canales de telemetría
 anunciados de cada controlador. Los valores por canal en vivo se muestran vía
 ``/tlm/values``. Véase :ref:`es-sensor-framework`.
+
+.. _es-telemetry-web:
+
+En la administración web
+========================
+
+Las capturas de abajo son la página tal como la genera el firmware, con los valores de fábrica y una estación de ejemplo (``LU3VEA``) cargada.
+
+.. figure:: /_static/webadmin/tlm_top.png
+   :alt: La página Telemetría al abrirse.
+   :align: center
+   :width: 100%
+
+   La página *Telemetría* al abrirse.
+
+.. figure:: /_static/webadmin/tlm_fs00.png
+   :alt: Baliza — baliza de telemetría: activación, identidad, RF/Internet, ruta e intervalo.
+   :align: center
+   :width: 90%
+
+   **Baliza** — baliza de telemetría: activación, identidad, RF/Internet, ruta e intervalo.
+
+.. figure:: /_static/webadmin/tlm_fs01.png
+   :alt: Parámetros del reporte — parámetros del informe: secuencia, ancho de campo, comentario y estación para la que se envía.
+   :align: center
+   :width: 90%
+
+   **Parámetros del reporte** — parámetros del informe: secuencia, ancho de campo, comentario y estación para la que se envía.
+
+.. figure:: /_static/webadmin/tlm_fs02.png
+   :alt: Mensajes de definición — qué mensajes de definición PARM / UNIT / EQNS / BITS se envían.
+   :align: center
+   :width: 90%
+
+   **Mensajes de definición** — qué mensajes de definición PARM / UNIT / EQNS / BITS se envían.
+
+.. figure:: /_static/webadmin/tlm_fs03.png
+   :alt: Canales analógicos (A1-A5) — los cinco canales analógicos: nombre, unidad, canal de origen, rango crudo y la calibración a·x²+b·x+c.
+   :align: center
+   :width: 90%
+
+   **Canales analógicos (A1-A5)** — los cinco canales analógicos: nombre, unidad, canal de origen, rango crudo y la calibración a·x²+b·x+c.
+
+.. figure:: /_static/webadmin/tlm_fs04.png
+   :alt: Canales digitales (B1-B8) — los ocho bits digitales: nombre, etiqueta del estado activo, sentido y origen.
+   :align: center
+   :width: 90%
+
+   **Canales digitales (B1-B8)** — los ocho bits digitales: nombre, etiqueta del estado activo, sentido y origen.

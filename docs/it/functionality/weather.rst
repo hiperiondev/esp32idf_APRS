@@ -183,3 +183,38 @@ legge, ogni accesso passa per ``weather_lock()`` / ``weather_unlock()``. Tratta
 
    :ref:`it-sensor-framework` — come collegare un sensore reale (BME280/BMP280,
    DS18B20…) così che le sue letture alimentino questi campi.
+
+.. _it-weather-web:
+
+Nell'amministrazione web
+========================
+
+Le schermate qui sotto sono la pagina esattamente come la genera il firmware, con i valori di fabbrica e una stazione di esempio (``LU3VEA``) impostata.
+
+.. figure:: /_static/webadmin/wx_top.png
+   :alt: La pagina Meteo all'apertura.
+   :align: center
+   :width: 100%
+
+   La pagina *Meteo* all'apertura.
+
+.. figure:: /_static/webadmin/wx_fs00.png
+   :alt: Stazione meteo — abilitazione, sorgenti di posizione, RF/Internet, marca temporale, nominativo, SSID e percorso.
+   :align: center
+   :width: 90%
+
+   **Stazione meteo** — abilitazione, sorgenti di posizione, RF/Internet, marca temporale, nominativo, SSID e percorso.
+
+.. figure:: /_static/webadmin/wx_fs01.png
+   :alt: Posizione — posizione, intervallo del beacon, nome oggetto e commento.
+   :align: center
+   :width: 90%
+
+   **Posizione** — posizione, intervallo del beacon, nome oggetto e commento.
+
+.. figure:: /_static/webadmin/wx_fs02.png
+   :alt: Mappatura sensori (abilita / media / canale sorgente) — una riga per campo WX: abilitazione, media, il canale sensore da cui si legge e il valore dal vivo (qui un BME280 fornisce temperatura, umidità e pressione).
+   :align: center
+   :width: 90%
+
+   **Mappatura sensori (abilita / media / canale sorgente)** — una riga per campo WX: abilitazione, media, il canale sensore da cui si legge e il valore dal vivo (qui un BME280 fornisce temperatura, umidità e pressione).

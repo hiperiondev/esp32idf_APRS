@@ -275,3 +275,73 @@ su di esso proviene da due punti che avanzano indipendentemente dal fatto che
    dispatch, o in uscita verso RF, sono contati a livello di servizio in
    ``aprs_service.c`` e compaiono indipendentemente da quali funzioni siano
    abilitate.
+
+.. _it-digipeater-web:
+
+Nell'amministrazione web
+========================
+
+Le schermate qui sotto sono la pagina esattamente come la genera il firmware, con i valori di fabbrica e una stazione di esempio (``LU3VEA``) impostata.
+
+.. figure:: /_static/webadmin/digi_top.png
+   :alt: La pagina Digipeater all'apertura.
+   :align: center
+   :width: 100%
+
+   La pagina *Digipeater* all'apertura.
+
+.. figure:: /_static/webadmin/digi_fs00.png
+   :alt: Digipeater — abilitazione, sorgenti di posizione e interruttori del beacon via RF/Internet.
+   :align: center
+   :width: 90%
+
+   **Digipeater** — abilitazione, sorgenti di posizione e interruttori del beacon via RF/Internet.
+
+.. figure:: /_static/webadmin/digi_fs01.png
+   :alt: Stazione — nominativo, SSID, simbolo e percorso del beacon.
+   :align: center
+   :width: 90%
+
+   **Stazione** — nominativo, SSID, simbolo e percorso del beacon.
+
+.. figure:: /_static/webadmin/digi_fs02.png
+   :alt: Alias di Percorso n-N — le quattro righe {alias, N max, modo}, solo fill-in, la gestione dei salti intrappolati, digipeat preventivo e instradamento per SSID di destinazione.
+   :align: center
+   :width: 90%
+
+   **Alias di Percorso n-N** — le quattro righe {alias, N max, modo}, solo fill-in, la gestione dei salti intrappolati, digipeat preventivo e instradamento per SSID di destinazione.
+
+.. figure:: /_static/webadmin/digi_fs03.png
+   :alt: Beacon / Posizione — posizione, intervallo e commento del beacon.
+   :align: center
+   :width: 90%
+
+   **Beacon / Posizione** — posizione, intervallo e commento del beacon.
+
+.. figure:: /_static/webadmin/digi_fs04.png
+   :alt: Estensione dati — estensione dati PHG / RNG / DFS / DF.
+   :align: center
+   :width: 90%
+
+   **Estensione dati** — estensione dati PHG / RNG / DFS / DF.
+
+.. figure:: /_static/webadmin/digi_fs05.png
+   :alt: Beacon di stato — beacon di stato.
+   :align: center
+   :width: 90%
+
+   **Beacon di stato** — beacon di stato.
+
+.. figure:: /_static/webadmin/digi_fs06.png
+   :alt: Parametri Radio del Ripetitore — blocco di frequenza.
+   :align: center
+   :width: 90%
+
+   **Parametri Radio del Ripetitore** — blocco di frequenza.
+
+.. figure:: /_static/webadmin/digi_fs07.png
+   :alt: Alias percorso Digipeater — i quattro preset di percorso condivisi path[0..3] tra cui scelgono tutti i servizi che trasmettono.
+   :align: center
+   :width: 90%
+
+   **Alias percorso Digipeater** — i quattro preset di percorso condivisi ``path[0..3]`` tra cui scelgono tutti i servizi che trasmettono.

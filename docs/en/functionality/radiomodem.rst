@@ -1677,3 +1677,45 @@ Troubleshooting
    :ref:`en-dsp-signal-chain` for the receive and transmit signal paths,
    :ref:`en-web-admin` for the admin as a whole, and the *Hardware* chapter for
    the interface schematics the defaults on this page assume.
+
+.. _en-radiomodem-web:
+
+On the web admin
+================
+
+The screenshots below are the page exactly as the firmware renders it, with the factory defaults and a sample station (``LU3VEA``) filled in.
+
+.. figure:: /_static/webadmin/radio_top.png
+   :alt: The Radiomodem page, as it opens.
+   :align: center
+   :width: 100%
+
+   The *Radiomodem* page, as it opens.
+
+.. figure:: /_static/webadmin/radio_fs00.png
+   :alt: Protocol — FX.25 on receive.
+   :align: center
+   :width: 90%
+
+   **Protocol** — FX.25 on receive.
+
+.. figure:: /_static/webadmin/radio_fs01.png
+   :alt: Audio / AFSK — modem enable, the LOOP TEST / RX LEVEL / TX TEST buttons, modulation, the compile-time audio hardware and the channel-access timing.
+   :align: center
+   :width: 90%
+
+   **Audio / AFSK** — modem enable, the LOOP TEST / RX LEVEL / TX TEST buttons, modulation, the compile-time audio hardware and the channel-access timing.
+
+.. figure:: /_static/webadmin/radio_fs02.png
+   :alt: Receive demodulator — the receive demodulator set and its filters, gate, gain, bit repair and impulse blanker.
+   :align: center
+   :width: 90%
+
+   **Receive demodulator** — the receive demodulator set and its filters, gate, gain, bit repair and impulse blanker.
+
+.. figure:: /_static/webadmin/radio_fs03.png
+   :alt: Audio interface — ADC self-bias, over-range warning, transmit swing, transmit sample rate and transmitter time-out.
+   :align: center
+   :width: 90%
+
+   **Audio interface** — ADC self-bias, over-range warning, transmit swing, transmit sample rate and transmitter time-out.

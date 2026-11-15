@@ -145,6 +145,12 @@ Passivo, ~15 parti, senza amplificatori operazionali.
    :align: center
    :width: 70%
 
+I nomi dei contatti stampati su questi schemi generici (``MIC``, ``SPKR``,
+``RING (PTT)``, ``SLEEVE (GND)``) indicano come il connettore della radio
+chiama quei segnali. **Non** descrivono un portatile Kenwood-K1, dove il PTT è
+sulla manica da 3,5 mm e la massa sulla manica da 2,5 mm; per quelle radio usa
+il cablaggio di :ref:`it-hardware-k1`.
+
 Ruoli chiave dei componenti: R1/R2 + C2/C3 formano un passa-basso di
 ricostruzione a due poli (fc ≈ 4,8 kHz) che elimina le immagini del DAC a
 38,4 kHz; C1 blocca il bias di riposo a 1,65 V del DAC dall'ingresso microfono;
@@ -260,34 +266,118 @@ regolarla a 2,5-3,5 kHz.
    portare mai l'uscita altoparlante a GPIO33 con il solo condensatore.
 
 
+.. _it-hardware-k1:
+
 Baofeng UV-5R e HT con connettore K
 -----------------------------------
 
-L'UV-5R (e i cloni a due pin stile Kenwood-K1: UV-82, BF-888, GT-3, RT-5R…)
-espone due spine invece di un jack combinato:
+L'UV-5R e gli altri portatili che usano la presa accessori a due pin **K1** di
+Kenwood (UV-82, BF-888S, BF-F8HP, GT-3, RT-5R, Quansheng UV-K5, Wouxun, TYT e
+molti altri) portano l'audio su due spine separate, una da 3,5 mm e una da
+2,5 mm, entrambe a tre contatti (punta, anello e manica):
+
+.. image:: /_static/k1/k1_pinout_it.png
+   :alt: Piedinatura Kenwood K1 - spina da 3,5 mm: punta +V, anello MIC+, manica MIC-/PTT; spina da 2,5 mm: punta SPK+, anello non usato, manica GND
+   :align: center
+   :width: 85%
 
 .. list-table::
    :header-rows: 1
-   :widths: 22 22 56
+   :widths: 18 14 34 34
 
    * - Spina
-     - Dimensione
-     - Segnale
-   * - Grande
-     - 3,5 mm TS
-     - Punta = uscita audio SPKR, Manica = GND
-   * - Piccola
-     - 2,5 mm TRS
-     - Punta = MIC in, Anello = PTT (cortocircuita alla manica per attivare),
-       Manica = GND
+     - Contatto
+     - Lato radio
+     - Lato interfaccia
+   * - 3,5 mm (MIC / PTT)
+     - Punta (tip)
+     - +V dalla radio (polarizzazione del microfono)
+     - **non collegata**
+   * - 3,5 mm (MIC / PTT)
+     - Anello (ring)
+     - MIC+, ingresso audio di trasmissione
+     - audio TX (cursore di RV1)
+   * - 3,5 mm (MIC / PTT)
+     - Manica (sleeve)
+     - MIC− / rilevamento PTT: la radio trasmette finché questo contatto è
+       portato alla sua massa
+     - interruttore PTT (collettore di Q1 o del fototransistor)
+   * - 2,5 mm (SPK)
+     - Punta (tip)
+     - SPK+, uscita audio di ricezione (dopo il controllo di volume)
+     - audio RX (estremo superiore di RV2)
+   * - 2,5 mm (SPK)
+     - Anello (ring)
+     - non usato (dati seriali di programmazione su alcuni modelli)
+     - **non collegato**
+   * - 2,5 mm (SPK)
+     - Manica (sleeve)
+     - massa della radio
+     - **GND** dell'interfaccia e dell'ESP32
 
-**Non esiste un circuito UV-5R separato** — costruisci lo schema minimo
-esattamente come sopra; cambia solo dove atterrano i tre fili fuori scheda,
-perché l'apparato divide "rig" su due spine. Nota che questi HT **non hanno un
-jack discriminatore**, quindi 9600 Bd G3RUH è irraggiungibile; **AFSK 1200 Bd
-Bell 202 è il tetto realistico** attraverso il connettore a 2 pin di serie.
-Verifica il pinout della spina con un multimetro prima di saldare — i cavi
-economici aftermarket a volte scambiano mic e PTT.
+La radio trasmette quando la **manica da 3,5 mm è collegata alla manica da
+2,5 mm**. Da qui le tre regole del cablaggio:
+
+* La massa dell'interfaccia (GND dell'ESP32, l'estremo inferiore di
+  RV1/RV2/R6/C5/D2 e l'emettitore dell'interruttore PTT) va alla **manica da
+  2,5 mm** e a nessun altro punto della radio.
+* La **manica da 3,5 mm è la linea PTT, non una massa**. Collegarla a GND
+  lascia la radio in trasmissione permanente; va solo al collettore
+  dell'interruttore PTT. Mentre l'interruttore è chiuso il ritorno del
+  microfono è a massa attraverso di esso, ed è questo che rende utilizzabile
+  l'audio di trasmissione sull'anello.
+* La **punta da 3,5 mm resta libera**: porta la polarizzazione del microfono
+  fornita dalla radio, e C1 impedisce già che la continua del DAC arrivi
+  all'anello.
+
+**Non esiste un circuito UV-5R separato**: l'interfaccia di riferimento qui
+sopra si usa così com'è e si assegnano soltanto i suoi quattro fili esterni ai
+contatti delle spine. La figura la mostra cablata in questo modo, con lo stadio
+PTT NPN non invertente che corrisponde al ``MODEM_PTT_ACTIVE_HIGH=1`` di
+fabbrica:
+
+.. image:: /_static/k1/k1_full_it.png
+   :alt: Interfaccia di riferimento cablata alle spine K1 - filtro TX all'anello da 3,5 mm, rete di polarizzazione RX dalla punta da 2,5 mm, interruttore PTT NPN sulla manica da 3,5 mm, massa sulla manica da 2,5 mm
+   :align: center
+   :width: 100%
+
+C4 è disegnato con il terminale positivo verso il nodo R5/R6, il lato che sta
+alla polarizzazione di 1,65 V, mentre l'estremo di RV2 è a 0 V in continua. Lo
+schema generico di ricezione più in alto disegna C4 al contrario; anche lì va
+montato con il positivo verso R5/R6.
+
+Con lo stadio PTT optoisolato (opzione A) la parte di commutazione è la
+stessa: il collettore del fototransistor va alla manica da 3,5 mm e
+l'emettitore alla manica da 2,5 mm. Il LED è alimentato da +3V3 e scarica su
+GPIO26, quindi questo stadio trasmette con livello **basso** e richiede
+``MODEM_PTT_ACTIVE_HIGH=0``:
+
+.. image:: /_static/k1/k1_opto_it.png
+   :alt: PTT optoisolato sulle spine K1 - collettore del PC817 alla manica da 3,5 mm, emettitore alla manica da 2,5 mm
+   :align: center
+   :width: 80%
+
+L'interfaccia ridotta (un condensatore di accoppiamento e un trimmer per
+direzione, vedi la sezione precedente) usa gli stessi contatti. Entrambi i
+condensatori stanno dopo il proprio trimmer, e quello di ricezione è da 10 nF
+perché l'unica uscita audio dell'UV-5R è quella dell'altoparlante, deenfatizzata:
+
+.. image:: /_static/k1/k1_reduced_it.png
+   :alt: Interfaccia ridotta sulle spine K1 - partitore RV1 e C1 all'anello da 3,5 mm, RV2 sulla punta da 2,5 mm con C2 verso GPIO33
+   :align: center
+   :width: 100%
+
+Nella pagina Radiomodem di una stazione così lascia spento l'*Ingresso audio
+piatto / da discriminatore*, e attiva la *Polarizzazione interna
+dell'ingresso ADC* quando si usa l'interfaccia ridotta.
+
+Questi HT **non hanno un jack discriminatore né dati**, quindi 9600 Bd G3RUH è
+irraggiungibile; **AFSK 1200 Bd Bell 202 è il tetto realistico** attraverso la
+presa K1. Abbassa il volume prima del primo collegamento: l'uscita
+altoparlante al massimo volume arriva a diversi volt. Verifica il cablaggio
+delle spine con un multimetro prima di saldare: i cavi aftermarket non sempre
+rispettano i colori, e alcune radio vendute con presa tipo K1 usano
+un'assegnazione diversa.
 
 Ordine di messa in funzione
 ===========================

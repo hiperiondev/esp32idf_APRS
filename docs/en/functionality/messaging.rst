@@ -196,3 +196,38 @@ Optionally (``msg_alarm_enable``), an incoming message can drive a GPIO
 (``msg_alarm_gpio``; ``-1`` = disabled), validated by
 ``message_alarm_gpio_is_valid()`` — useful to light an LED or sound a buzzer on
 message receipt.
+
+.. _en-messaging-web:
+
+On the web admin
+================
+
+The screenshots below are the page exactly as the firmware renders it, with the factory defaults and a sample station (``LU3VEA``) filled in.
+
+.. figure:: /_static/webadmin/msg_top.png
+   :alt: The Message page, as it opens.
+   :align: center
+   :width: 100%
+
+   The *Message* page, as it opens.
+
+.. figure:: /_static/webadmin/msg_fs00.png
+   :alt: APRS Messaging — messaging engine: enable, callsign, paths, RF/Internet, retries and the message alarm GPIO.
+   :align: center
+   :width: 90%
+
+   **APRS Messaging** — messaging engine: enable, callsign, paths, RF/Internet, retries and the message alarm GPIO.
+
+.. figure:: /_static/webadmin/msg_fs01.png
+   :alt: Message Groups — the three operator-defined group addressees.
+   :align: center
+   :width: 90%
+
+   **Message Groups** — the three operator-defined group addressees.
+
+.. figure:: /_static/webadmin/msgchat_fs00.png
+   :alt: Snd/Rcv Msg — the Snd/Rcv Msg page (/msgchat): the thread of received and sent messages and the compose box.
+   :align: center
+   :width: 90%
+
+   **Snd/Rcv Msg** — the *Snd/Rcv Msg* page (``/msgchat``): the thread of received and sent messages and the compose box.

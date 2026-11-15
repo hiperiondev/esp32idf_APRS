@@ -185,3 +185,38 @@ Treat ``weather_telemetry_data`` as read-only outside ``weather.c``.
 
    :ref:`en-sensor-framework` — how to attach a real sensor (BME280/BMP280,
    DS18B20…) so its readings feed these fields.
+
+.. _en-weather-web:
+
+On the web admin
+================
+
+The screenshots below are the page exactly as the firmware renders it, with the factory defaults and a sample station (``LU3VEA``) filled in.
+
+.. figure:: /_static/webadmin/wx_top.png
+   :alt: The Weather page, as it opens.
+   :align: center
+   :width: 100%
+
+   The *Weather* page, as it opens.
+
+.. figure:: /_static/webadmin/wx_fs00.png
+   :alt: Weather Station — enable, position sources, RF/Internet, timestamp, callsign, SSID and path.
+   :align: center
+   :width: 90%
+
+   **Weather Station** — enable, position sources, RF/Internet, timestamp, callsign, SSID and path.
+
+.. figure:: /_static/webadmin/wx_fs01.png
+   :alt: Position — position, beacon interval, object name and comment.
+   :align: center
+   :width: 90%
+
+   **Position** — position, beacon interval, object name and comment.
+
+.. figure:: /_static/webadmin/wx_fs02.png
+   :alt: Sensor Mapping (enable / averaged / source channel) — one row per WX field: enable, averaging, the sensor channel it is read from and the live value (here a BME280 feeds temperature, humidity and pressure).
+   :align: center
+   :width: 90%
+
+   **Sensor Mapping (enable / averaged / source channel)** — one row per WX field: enable, averaging, the sensor channel it is read from and the live value (here a BME280 feeds temperature, humidity and pressure).

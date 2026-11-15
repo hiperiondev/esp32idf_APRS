@@ -201,3 +201,52 @@ What is deliberately not implemented
   return is DMR session metadata and network inventory, not APRS.
 * Any local reproduction of a master's addressee pattern. It is per-master and
   undiscoverable from here.
+
+.. _en-brandmeister-web:
+
+On the web admin
+================
+
+The screenshots below are the page exactly as the firmware renders it, with the factory defaults and a sample station (``LU3VEA``) filled in.
+
+.. figure:: /_static/webadmin/bm_top.png
+   :alt: The BrandMeister page, as it opens.
+   :align: center
+   :width: 100%
+
+   The *BrandMeister* page, as it opens.
+
+.. figure:: /_static/webadmin/bm_fs00.png
+   :alt: BrandMeister Interconnect — interconnect enable.
+   :align: center
+   :width: 90%
+
+   **BrandMeister Interconnect** — interconnect enable.
+
+.. figure:: /_static/webadmin/bm_fs01.png
+   :alt: Worldwide Monitor — the worldwide u/APBM monitor subscription.
+   :align: center
+   :width: 90%
+
+   **Worldwide Monitor** — the worldwide ``u/APBM*`` monitor subscription.
+
+.. figure:: /_static/webadmin/bm_fs02.png
+   :alt: Messaging — Internet-only routing of messages to BrandMeister addressees.
+   :align: center
+   :width: 90%
+
+   **Messaging** — Internet-only routing of messages to BrandMeister addressees.
+
+.. figure:: /_static/webadmin/bm_fs03.png
+   :alt: Gateway Callsigns — the four optional gateway callsigns.
+   :align: center
+   :width: 90%
+
+   **Gateway Callsigns** — the four optional gateway callsigns.
+
+.. figure:: /_static/webadmin/bm_fs04.png
+   :alt: Status — read-only status: interconnect state, filter, range gate and BrandMeister stations heard.
+   :align: center
+   :width: 90%
+
+   **Status** — read-only status: interconnect state, filter, range gate and BrandMeister stations heard.

@@ -207,3 +207,38 @@ Opcionalmente (``msg_alarm_enable``), un mensaje entrante puede accionar un GPIO
 (``msg_alarm_gpio``; ``-1`` = deshabilitado), validado por
 ``message_alarm_gpio_is_valid()`` — útil para encender un LED o hacer sonar un
 zumbador al recibir un mensaje.
+
+.. _es-messaging-web:
+
+En la administración web
+========================
+
+Las capturas de abajo son la página tal como la genera el firmware, con los valores de fábrica y una estación de ejemplo (``LU3VEA``) cargada.
+
+.. figure:: /_static/webadmin/msg_top.png
+   :alt: La página Mensaje al abrirse.
+   :align: center
+   :width: 100%
+
+   La página *Mensaje* al abrirse.
+
+.. figure:: /_static/webadmin/msg_fs00.png
+   :alt: Mensajería APRS — motor de mensajes: activación, indicativo, rutas, RF/Internet, reintentos y GPIO de alarma de mensaje.
+   :align: center
+   :width: 90%
+
+   **Mensajería APRS** — motor de mensajes: activación, indicativo, rutas, RF/Internet, reintentos y GPIO de alarma de mensaje.
+
+.. figure:: /_static/webadmin/msg_fs01.png
+   :alt: Grupos de mensajes — los tres destinatarios de grupo definidos por el operador.
+   :align: center
+   :width: 90%
+
+   **Grupos de mensajes** — los tres destinatarios de grupo definidos por el operador.
+
+.. figure:: /_static/webadmin/msgchat_fs00.png
+   :alt: Env/Rec Msj — la página Env/Rec Msj (/msgchat): el hilo de mensajes recibidos y enviados y el cuadro de redacción.
+   :align: center
+   :width: 90%
+
+   **Env/Rec Msj** — la página *Env/Rec Msj* (``/msgchat``): el hilo de mensajes recibidos y enviados y el cuadro de redacción.

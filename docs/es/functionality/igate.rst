@@ -612,3 +612,108 @@ de recepción cierra el socket en cuanto salta la detección de enlace muerto
 (ver más arriba), esto también da falso durante todo el intervalo entre un
 enlace caído en silencio y el siguiente re-login exitoso, en vez de seguir
 mostrando "conectado" sobre un socket que ya dejó de entregar nada.
+
+.. _es-igate-web:
+
+En la administración web
+========================
+
+Las capturas de abajo son la página tal como la genera el firmware, con los valores de fábrica y una estación de ejemplo (``LU3VEA``) cargada.
+
+.. figure:: /_static/webadmin/igate_top.png
+   :alt: La página IGate al abrirse.
+   :align: center
+   :width: 100%
+
+   La página *IGate* al abrirse.
+
+.. figure:: /_static/webadmin/igate_fs00.png
+   :alt: IGate — interruptor general, las dos direcciones de pasarela y las fuentes de posición (Usar mis datos de estación, Usar GPS).
+   :align: center
+   :width: 90%
+
+   **IGate** — interruptor general, las dos direcciones de pasarela y las fuentes de posición (*Usar mis datos de estación*, *Usar GPS*).
+
+.. figure:: /_static/webadmin/igate_fs01.png
+   :alt: Estación — indicativo propio del IGate, SSID, símbolo de la baliza (con el selector de símbolos) y ruta de digipeat.
+   :align: center
+   :width: 90%
+
+   **Estación** — indicativo propio del IGate, SSID, símbolo de la baliza (con el selector de símbolos) y ruta de digipeat.
+
+.. figure:: /_static/webadmin/igate_fs02.png
+   :alt: Servidor APRS-IS — passcode (con Generar automáticamente), filtro del servidor, Registrar después de los filtros, comentario y marca de tiempo, seguidos de los cuatro servidores de respaldo.
+   :align: center
+   :width: 90%
+
+   **Servidor APRS-IS** — passcode (con *Generar automáticamente*), filtro del servidor, *Registrar después de los filtros*, comentario y marca de tiempo, seguidos de los cuatro servidores de respaldo.
+
+.. figure:: /_static/webadmin/igate_fs07.png
+   :alt: Posición — posición, altitud e intervalo de la baliza.
+   :align: center
+   :width: 90%
+
+   **Posición** — posición, altitud e intervalo de la baliza.
+
+.. figure:: /_static/webadmin/igate_fs08.png
+   :alt: Extension de datos — lo que lleva la baliza de posición después del símbolo: PHG, RNG, DFS o un informe DF.
+   :align: center
+   :width: 90%
+
+   **Extension de datos** — lo que lleva la baliza de posición después del símbolo: PHG, RNG, DFS o un informe DF.
+
+.. figure:: /_static/webadmin/igate_fs09.png
+   :alt: Baliza de estado — texto e intervalo de la baliza de estado.
+   :align: center
+   :width: 90%
+
+   **Baliza de estado** — texto e intervalo de la baliza de estado.
+
+.. figure:: /_static/webadmin/igate_fs10.png
+   :alt: Parámetros de Radio del Repetidor — frecuencia, dúplex, desplazamiento y tono escritos al principio del comentario y del estado de la baliza.
+   :align: center
+   :width: 90%
+
+   **Parámetros de Radio del Repetidor** — frecuencia, dúplex, desplazamiento y tono escritos al principio del comentario y del estado de la baliza.
+
+.. figure:: /_static/webadmin/igate_fs11.png
+   :alt: Filtro RF a Internet — los tipos de carga que pasan de RF a APRS-IS, más los filtros de distancia y de prefijo de indicativo.
+   :align: center
+   :width: 90%
+
+   **Filtro RF a Internet** — los tipos de carga que pasan de RF a APRS-IS, más los filtros de distancia y de prefijo de indicativo.
+
+.. figure:: /_static/webadmin/igate_fs12.png
+   :alt: Filtro Internet a RF — los tipos de carga que pasan de APRS-IS a RF y los filtros de seguridad INET→RF.
+   :align: center
+   :width: 90%
+
+   **Filtro Internet a RF** — los tipos de carga que pasan de APRS-IS a RF y los filtros de seguridad INET→RF.
+
+.. figure:: /_static/webadmin/igate_fs13.png
+   :alt: Filtrado de Mensajes (Internet a RF) — el interruptor de pasarela de mensajes, la ventana de "escuchado localmente" y el límite de saltos del destinatario.
+   :align: center
+   :width: 90%
+
+   **Filtrado de Mensajes (Internet a RF)** — el interruptor de pasarela de mensajes, la ventana de "escuchado localmente" y el límite de saltos del destinatario.
+
+.. figure:: /_static/webadmin/igate_fs14.png
+   :alt: Filtro de Indicativos — la budlist: indicativos permitidos o rechazados en cada dirección.
+   :align: center
+   :width: 90%
+
+   **Filtro de Indicativos** — la budlist: indicativos permitidos o rechazados en cada dirección.
+
+.. figure:: /_static/webadmin/igate_fs15.png
+   :alt: Lista de Satélites Digipetidores — indicativos de satélites cuyas tramas solo pasan cuando llevan la marca de usado.
+   :align: center
+   :width: 90%
+
+   **Lista de Satélites Digipetidores** — indicativos de satélites cuyas tramas solo pasan cuando llevan la marca de usado.
+
+.. figure:: /_static/webadmin/igate_fs16.png
+   :alt: Supresión de Duplicados — la caché de duplicados que comparten el IGate y el digipetidor.
+   :align: center
+   :width: 90%
+
+   **Supresión de Duplicados** — la caché de duplicados que comparten el IGate y el digipetidor.

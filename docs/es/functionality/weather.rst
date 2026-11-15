@@ -182,3 +182,38 @@ mientras la baliza lo lee, todo acceso pasa por ``weather_lock()`` /
 
    :ref:`es-sensor-framework` — cómo conectar un sensor real (BME280/BMP280,
    DS18B20…) para que sus lecturas alimenten estos campos.
+
+.. _es-weather-web:
+
+En la administración web
+========================
+
+Las capturas de abajo son la página tal como la genera el firmware, con los valores de fábrica y una estación de ejemplo (``LU3VEA``) cargada.
+
+.. figure:: /_static/webadmin/wx_top.png
+   :alt: La página Clima al abrirse.
+   :align: center
+   :width: 100%
+
+   La página *Clima* al abrirse.
+
+.. figure:: /_static/webadmin/wx_fs00.png
+   :alt: Estación meteorológica — activación, fuentes de posición, RF/Internet, marca de tiempo, indicativo, SSID y ruta.
+   :align: center
+   :width: 90%
+
+   **Estación meteorológica** — activación, fuentes de posición, RF/Internet, marca de tiempo, indicativo, SSID y ruta.
+
+.. figure:: /_static/webadmin/wx_fs01.png
+   :alt: Posición — posición, intervalo de baliza, nombre de objeto y comentario.
+   :align: center
+   :width: 90%
+
+   **Posición** — posición, intervalo de baliza, nombre de objeto y comentario.
+
+.. figure:: /_static/webadmin/wx_fs02.png
+   :alt: Mapeo de sensores (habilitar / promediado / canal de origen) — una fila por campo WX: activación, promedio, el canal de sensor del que se lee y el valor en vivo (aquí un BME280 entrega temperatura, humedad y presión).
+   :align: center
+   :width: 90%
+
+   **Mapeo de sensores (habilitar / promediado / canal de origen)** — una fila por campo WX: activación, promedio, el canal de sensor del que se lee y el valor en vivo (aquí un BME280 entrega temperatura, humedad y presión).

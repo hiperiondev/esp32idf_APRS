@@ -580,3 +580,108 @@ dead-link detection trips (see above), this also reports false for the whole
 interval between a silently dropped link and the next successful re-login,
 rather than continuing to show "connected" against a socket that has stopped
 delivering anything.
+
+.. _en-igate-web:
+
+On the web admin
+================
+
+The screenshots below are the page exactly as the firmware renders it, with the factory defaults and a sample station (``LU3VEA``) filled in.
+
+.. figure:: /_static/webadmin/igate_top.png
+   :alt: The IGate page, as it opens.
+   :align: center
+   :width: 100%
+
+   The *IGate* page, as it opens.
+
+.. figure:: /_static/webadmin/igate_fs00.png
+   :alt: IGate — master switch, the two gating directions and the position sources (Use My Station Data, Use GPS).
+   :align: center
+   :width: 90%
+
+   **IGate** — master switch, the two gating directions and the position sources (*Use My Station Data*, *Use GPS*).
+
+.. figure:: /_static/webadmin/igate_fs01.png
+   :alt: Station — the IGate's own callsign, SSID, beacon symbol (with the symbol picker) and digipeat path.
+   :align: center
+   :width: 90%
+
+   **Station** — the IGate's own callsign, SSID, beacon symbol (with the symbol picker) and digipeat path.
+
+.. figure:: /_static/webadmin/igate_fs02.png
+   :alt: APRS-IS Server — passcode (with Auto Generate), server-side filter, Log after filters, comment and timestamp, followed by the four failover servers.
+   :align: center
+   :width: 90%
+
+   **APRS-IS Server** — passcode (with *Auto Generate*), server-side filter, *Log after filters*, comment and timestamp, followed by the four failover servers.
+
+.. figure:: /_static/webadmin/igate_fs07.png
+   :alt: Position — beacon position, altitude and interval.
+   :align: center
+   :width: 90%
+
+   **Position** — beacon position, altitude and interval.
+
+.. figure:: /_static/webadmin/igate_fs08.png
+   :alt: Data Extension — what the position beacon carries after the symbol: PHG, RNG, DFS or a DF report.
+   :align: center
+   :width: 90%
+
+   **Data Extension** — what the position beacon carries after the symbol: PHG, RNG, DFS or a DF report.
+
+.. figure:: /_static/webadmin/igate_fs09.png
+   :alt: Status Beacon — status beacon text and interval.
+   :align: center
+   :width: 90%
+
+   **Status Beacon** — status beacon text and interval.
+
+.. figure:: /_static/webadmin/igate_fs10.png
+   :alt: Repeater Radio Parameters — frequency, duplex, offset and tone written at the start of the beacon comment and status.
+   :align: center
+   :width: 90%
+
+   **Repeater Radio Parameters** — frequency, duplex, offset and tone written at the start of the beacon comment and status.
+
+.. figure:: /_static/webadmin/igate_fs11.png
+   :alt: Filter RF to Internet — the payload types gated from RF to APRS-IS, plus the range and callsign-prefix gates.
+   :align: center
+   :width: 90%
+
+   **Filter RF to Internet** — the payload types gated from RF to APRS-IS, plus the range and callsign-prefix gates.
+
+.. figure:: /_static/webadmin/igate_fs12.png
+   :alt: Filter Internet to RF — the payload types gated from APRS-IS to RF and the INET→RF safety gates.
+   :align: center
+   :width: 90%
+
+   **Filter Internet to RF** — the payload types gated from APRS-IS to RF and the INET→RF safety gates.
+
+.. figure:: /_static/webadmin/igate_fs13.png
+   :alt: Message Gating (Internet to RF) — the message-gating switch, the heard-locally window and the addressee hop limit.
+   :align: center
+   :width: 90%
+
+   **Message Gating (Internet to RF)** — the message-gating switch, the heard-locally window and the addressee hop limit.
+
+.. figure:: /_static/webadmin/igate_fs14.png
+   :alt: Callsign Filter — the budlist: callsigns allowed or refused in each direction.
+   :align: center
+   :width: 90%
+
+   **Callsign Filter** — the budlist: callsigns allowed or refused in each direction.
+
+.. figure:: /_static/webadmin/igate_fs15.png
+   :alt: Satellite Gate List — satellite gate callsigns whose frames are gated only once they carry the used flag.
+   :align: center
+   :width: 90%
+
+   **Satellite Gate List** — satellite gate callsigns whose frames are gated only once they carry the used flag.
+
+.. figure:: /_static/webadmin/igate_fs16.png
+   :alt: Duplicate Suppression — the duplicate cache shared by the IGate and the digipeater.
+   :align: center
+   :width: 90%
+
+   **Duplicate Suppression** — the duplicate cache shared by the IGate and the digipeater.

@@ -116,11 +116,14 @@ Questa documentazione è organizzata in tre parti, ciascuna con il proprio
 insieme di capitoli:
 
 * **Funzionalità** — ciò che la stazione *fa* dal punto di vista dell'operatore:
-  gateway, l'interconnessione BrandMeister, digipeating, beacon, messaggistica,
-  il risponditore di interrogazioni, meteo, telemetria, bollettini, oggetti, il
-  bot Telegram opzionale, la posta radio Winlink, la pagina del radiomodem e
-  l'amministrazione web — che
-  ospita anche la vista live del ricevitore GNSS.
+  il pannello e il traffico dal vivo, l'identità della stazione, gateway,
+  l'interconnessione BrandMeister, digipeating, beacon, il tracker,
+  messaggistica, il risponditore di interrogazioni, meteo, telemetria, sensori
+  locali, bollettini, oggetti, il bot Telegram opzionale, la posta radio
+  Winlink, il ricevitore GNSS, la pagina del radiomodem, l'amministrazione
+  della stazione (Wi-Fi, sistema, archiviazione, firmware e registri) e
+  l'amministrazione web stessa. Ogni capitolo mostra la pagina corrispondente
+  dell'amministrazione web.
 * **Capacità** — le *proprietà* del firmware trasversali alle funzioni: i
   profili del modem, il filtraggio, la localizzazione, l'archiviazione, OTA, la
   rete e il supporto hardware.
@@ -140,18 +143,24 @@ insieme di capitoli:
    :maxdepth: 2
    :caption: Funzionalità
 
+   functionality/dashboard
+   functionality/station
    functionality/igate
    functionality/brandmeister
    functionality/digipeater
    functionality/beacons
+   functionality/tracker
    functionality/messaging
    functionality/query
    functionality/weather
    functionality/telemetry
+   functionality/sensors
    functionality/bulletins-objects
    functionality/telegram
    functionality/winlink
+   functionality/gps
    functionality/radiomodem
+   functionality/administration
    functionality/web-admin
 
 .. toctree::

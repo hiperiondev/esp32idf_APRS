@@ -1772,3 +1772,45 @@ Risoluzione dei problemi
    trasmissione, :ref:`it-web-admin` per l'amministrazione nel suo complesso, e
    il capitolo *Hardware* per gli schemi di interfaccia che i valori predefiniti
    di questa pagina presuppongono.
+
+.. _it-radiomodem-web:
+
+Nell'amministrazione web
+========================
+
+Le schermate qui sotto sono la pagina esattamente come la genera il firmware, con i valori di fabbrica e una stazione di esempio (``LU3VEA``) impostata.
+
+.. figure:: /_static/webadmin/radio_top.png
+   :alt: La pagina Radiomodem all'apertura.
+   :align: center
+   :width: 100%
+
+   La pagina *Radiomodem* all'apertura.
+
+.. figure:: /_static/webadmin/radio_fs00.png
+   :alt: Protocollo — FX.25 in ricezione.
+   :align: center
+   :width: 90%
+
+   **Protocollo** — FX.25 in ricezione.
+
+.. figure:: /_static/webadmin/radio_fs01.png
+   :alt: Audio / AFSK — abilitazione del modem, i pulsanti TEST LOOP / LIVELLO RX / TEST TX, modulazione, l'hardware audio di compilazione e le temporizzazioni di accesso al canale.
+   :align: center
+   :width: 90%
+
+   **Audio / AFSK** — abilitazione del modem, i pulsanti TEST LOOP / LIVELLO RX / TEST TX, modulazione, l'hardware audio di compilazione e le temporizzazioni di accesso al canale.
+
+.. figure:: /_static/webadmin/radio_fs02.png
+   :alt: Demodulatore di ricezione — l'insieme dei demodulatori di ricezione e i loro filtri, soglia, guadagno, riparazione dei bit e soppressore di impulsi.
+   :align: center
+   :width: 90%
+
+   **Demodulatore di ricezione** — l'insieme dei demodulatori di ricezione e i loro filtri, soglia, guadagno, riparazione dei bit e soppressore di impulsi.
+
+.. figure:: /_static/webadmin/radio_fs03.png
+   :alt: Interfaccia audio — polarizzazione interna dell'ADC, avviso di fuori scala, ampiezza e frequenza di campionamento di trasmissione e time-out del trasmettitore.
+   :align: center
+   :width: 90%
+
+   **Interfaccia audio** — polarizzazione interna dell'ADC, avviso di fuori scala, ampiezza e frequenza di campionamento di trasmissione e time-out del trasmettitore.

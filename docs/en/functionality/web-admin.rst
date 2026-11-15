@@ -80,6 +80,14 @@ own inline rules rather than linking ``/style.css``: it has to render the same
 way when the stylesheet cannot be served, which is exactly what some of these
 responses are reporting.
 
+.. figure:: /_static/webadmin/mobile_dashboard.png
+   :alt: The dashboard on a 390-pixel-wide phone screen: the navigation becomes a drawer behind the menu button and the content takes the whole width.
+   :align: center
+   :width: 40%
+
+   The dashboard on a 390-pixel-wide phone screen: the navigation becomes a drawer behind the menu button and the content takes the whole width.
+
+
 Why per-field helpers
 =====================
 
@@ -151,6 +159,14 @@ Adding an option therefore means adding its ``TR_H_xxx`` string to all three
 ``lang_*.h`` files and one row to ``web_help.c``. Leaving the row out is not a
 build error — the option renders with no question mark — so the table is worth
 a glance whenever a page grows a field.
+
+
+.. figure:: /_static/webadmin/help_open.png
+   :alt: A contextual help box open on the IGate page: the question mark after the label shows the explanation on hover, focus or tap.
+   :align: center
+   :width: 80%
+
+   A contextual help box open on the *IGate* page: the question mark after the label shows the explanation on hover, focus or tap.
 
 
 The pages
@@ -423,6 +439,58 @@ The pages
    own scope. With the switch off, no frame is ever treated as a duplicate by
    either service, and the two numeric fields are greyed out and keep their
    stored values.
+
+Where each page is documented
+-----------------------------
+
+Every page is shown, fieldset by fieldset, in the chapter of the function it configures:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 50 50
+
+   * - Page
+     - Chapter
+   * - Dashboard
+     - :ref:`en-dashboard`
+   * - Station, APRS Symbols
+     - :ref:`en-station`
+   * - IGate
+     - :ref:`en-igate`
+   * - BrandMeister
+     - :ref:`en-brandmeister`
+   * - Digipeater
+     - :ref:`en-digipeater`
+   * - Tracker
+     - :ref:`en-tracker`
+   * - Message, Snd/Rcv Msg
+     - :ref:`en-messaging`
+   * - Query
+     - :ref:`en-query`
+   * - Weather
+     - :ref:`en-weather`
+   * - Telemetry
+     - :ref:`en-telemetry`
+   * - Bulletins, Objects and Items
+     - :ref:`en-bulletins-objects`
+   * - Telegram
+     - :ref:`en-telegram`
+   * - Winlink
+     - :ref:`en-winlink`
+   * - GPS
+     - :ref:`en-gps`
+   * - Radiomodem
+     - :ref:`en-radiomodem`
+   * - Wireless, System, File Storage, Firmware, Logs
+     - :ref:`en-administration`
+
+.. figure:: /_static/webadmin/dashboard_top.png
+   :alt: The web admin on a desktop browser: navigation on the left, the selected page on the right.
+   :align: center
+   :width: 100%
+
+   The web admin on a desktop browser: navigation on the left, the selected page on the right.
+
 
 The dashboard statistics
 ========================

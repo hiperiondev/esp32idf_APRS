@@ -341,3 +341,31 @@ L'intera pagina è condizionata dall'interruttore di compilazione ``ENABLE_QUERY
    ``query_init()`` deve essere eseguita dopo ``message_init()``/``igate_start()``
    e prima che ``aprs_service_start()`` finisca di cablare la catena di dispatch
    RX, che è esattamente dove la chiama ``aprs_service.c``.
+
+.. _it-query-web:
+
+Nell'amministrazione web
+========================
+
+Le schermate qui sotto sono la pagina esattamente come la genera il firmware, con i valori di fabbrica e una stazione di esempio (``LU3VEA``) impostata.
+
+.. figure:: /_static/webadmin/query_top.png
+   :alt: La pagina Interrogazione all'apertura.
+   :align: center
+   :width: 100%
+
+   La pagina *Interrogazione* all'apertura.
+
+.. figure:: /_static/webadmin/query_fs00.png
+   :alt: Interrogazione — abilitazione del risponditore, sorgenti, tipi di interrogazioni generali e dirette e intervallo minimo tra le risposte.
+   :align: center
+   :width: 90%
+
+   **Interrogazione** — abilitazione del risponditore, sorgenti, tipi di interrogazioni generali e dirette e intervallo minimo tra le risposte.
+
+.. figure:: /_static/webadmin/query_fs01.png
+   :alt: Beacon delle capacità della stazione — il beacon periodico delle capacità della stazione.
+   :align: center
+   :width: 90%
+
+   **Beacon delle capacità della stazione** — il beacon periodico delle capacità della stazione.

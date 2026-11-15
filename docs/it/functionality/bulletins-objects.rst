@@ -172,3 +172,73 @@ propri dati. Ogni file è scritto con lo stesso scrittore JSON a flusso, byte pe
 byte, usato dalla configurazione principale, sotto il proprio mutex, con un
 ``setvbuf()`` esplicito così che newlib non allochi pigramente un grande buffer
 stdio a metà scrittura su un heap frammentato.
+
+.. _it-bulletins-objects-web:
+
+Nell'amministrazione web
+========================
+
+Le schermate qui sotto sono la pagina esattamente come la genera il firmware, con i valori di fabbrica e una stazione di esempio (``LU3VEA``) impostata.
+
+.. figure:: /_static/webadmin/bulletins_top.png
+   :alt: La pagina Bollettini all'apertura.
+   :align: center
+   :width: 100%
+
+   La pagina *Bollettini* all'apertura.
+
+.. figure:: /_static/webadmin/bulletins_main.png
+   :alt: I cinque slot di bollettino a fisarmonica; il primo è aperto.
+   :align: center
+   :width: 90%
+
+   I cinque slot di bollettino a fisarmonica; il primo è aperto.
+
+.. figure:: /_static/webadmin/objects_top.png
+   :alt: La pagina Oggetti e Item all'apertura.
+   :align: center
+   :width: 100%
+
+   La pagina *Oggetti e Item* all'apertura.
+
+.. figure:: /_static/webadmin/objects_fs00.png
+   :alt: Controllo Trasmissione — abilitazione, RF/Internet e ambito del primo oggetto.
+   :align: center
+   :width: 90%
+
+   **Controllo Trasmissione** — abilitazione, RF/Internet e ambito del primo oggetto.
+
+.. figure:: /_static/webadmin/objects_fs01.png
+   :alt: Identità e Stato — nome, oggetto/item, attivo/eliminato e il flag permanente.
+   :align: center
+   :width: 90%
+
+   **Identità e Stato** — nome, oggetto/item, attivo/eliminato e il flag permanente.
+
+.. figure:: /_static/webadmin/objects_fs02.png
+   :alt: Posizione e Simbolo — posizione, simbolo, rotta e velocità.
+   :align: center
+   :width: 90%
+
+   **Posizione e Simbolo** — posizione, simbolo, rotta e velocità.
+
+.. figure:: /_static/webadmin/objects_fs04.png
+   :alt: Oggetto Area — forma, colore e dimensione dell'oggetto area.
+   :align: center
+   :width: 90%
+
+   **Oggetto Area** — forma, colore e dimensione dell'oggetto area.
+
+.. figure:: /_static/webadmin/objects_fs06.png
+   :alt: Parametri Radio del Ripetitore — blocco di frequenza del ripetitore, tono/DCS, portata e frequenza di ricezione.
+   :align: center
+   :width: 90%
+
+   **Parametri Radio del Ripetitore** — blocco di frequenza del ripetitore, tono/DCS, portata e frequenza di ricezione.
+
+.. figure:: /_static/webadmin/objects_fs07.png
+   :alt: Temporizzazione Beacon — intervallo iniziale, decadimento e scadenza.
+   :align: center
+   :width: 90%
+
+   **Temporizzazione Beacon** — intervallo iniziale, decadimento e scadenza.

@@ -613,3 +613,108 @@ sopra), questo restituisce falso anche per l'intero intervallo tra una caduta
 silenziosa del collegamento e il successivo re-login riuscito, invece di
 continuare a mostrare "connesso" su un socket che ha già smesso di consegnare
 qualsiasi cosa.
+
+.. _it-igate-web:
+
+Nell'amministrazione web
+========================
+
+Le schermate qui sotto sono la pagina esattamente come la genera il firmware, con i valori di fabbrica e una stazione di esempio (``LU3VEA``) impostata.
+
+.. figure:: /_static/webadmin/igate_top.png
+   :alt: La pagina IGate all'apertura.
+   :align: center
+   :width: 100%
+
+   La pagina *IGate* all'apertura.
+
+.. figure:: /_static/webadmin/igate_fs00.png
+   :alt: IGate — interruttore generale, le due direzioni di gateway e le sorgenti di posizione (Usa i dati della mia stazione, Usa GPS).
+   :align: center
+   :width: 90%
+
+   **IGate** — interruttore generale, le due direzioni di gateway e le sorgenti di posizione (*Usa i dati della mia stazione*, *Usa GPS*).
+
+.. figure:: /_static/webadmin/igate_fs01.png
+   :alt: Stazione — nominativo dell'IGate, SSID, simbolo del beacon (con il selettore di simboli) e percorso di digipeat.
+   :align: center
+   :width: 90%
+
+   **Stazione** — nominativo dell'IGate, SSID, simbolo del beacon (con il selettore di simboli) e percorso di digipeat.
+
+.. figure:: /_static/webadmin/igate_fs02.png
+   :alt: Server APRS-IS — passcode (con Genera automaticamente), filtro lato server, Registra dopo i filtri, commento e marca temporale, seguiti dai quattro server di failover.
+   :align: center
+   :width: 90%
+
+   **Server APRS-IS** — passcode (con *Genera automaticamente*), filtro lato server, *Registra dopo i filtri*, commento e marca temporale, seguiti dai quattro server di failover.
+
+.. figure:: /_static/webadmin/igate_fs07.png
+   :alt: Posizione — posizione, altitudine e intervallo del beacon.
+   :align: center
+   :width: 90%
+
+   **Posizione** — posizione, altitudine e intervallo del beacon.
+
+.. figure:: /_static/webadmin/igate_fs08.png
+   :alt: Estensione dati — ciò che il beacon di posizione porta dopo il simbolo: PHG, RNG, DFS o un rapporto DF.
+   :align: center
+   :width: 90%
+
+   **Estensione dati** — ciò che il beacon di posizione porta dopo il simbolo: PHG, RNG, DFS o un rapporto DF.
+
+.. figure:: /_static/webadmin/igate_fs09.png
+   :alt: Beacon di stato — testo e intervallo del beacon di stato.
+   :align: center
+   :width: 90%
+
+   **Beacon di stato** — testo e intervallo del beacon di stato.
+
+.. figure:: /_static/webadmin/igate_fs10.png
+   :alt: Parametri Radio del Ripetitore — frequenza, duplex, offset e tono scritti all'inizio del commento e dello stato del beacon.
+   :align: center
+   :width: 90%
+
+   **Parametri Radio del Ripetitore** — frequenza, duplex, offset e tono scritti all'inizio del commento e dello stato del beacon.
+
+.. figure:: /_static/webadmin/igate_fs11.png
+   :alt: Filtro RF verso Internet — i tipi di payload inoltrati da RF ad APRS-IS, più i filtri di distanza e di prefisso del nominativo.
+   :align: center
+   :width: 90%
+
+   **Filtro RF verso Internet** — i tipi di payload inoltrati da RF ad APRS-IS, più i filtri di distanza e di prefisso del nominativo.
+
+.. figure:: /_static/webadmin/igate_fs12.png
+   :alt: Filtro Internet verso RF — i tipi di payload inoltrati da APRS-IS a RF e i filtri di sicurezza INET→RF.
+   :align: center
+   :width: 90%
+
+   **Filtro Internet verso RF** — i tipi di payload inoltrati da APRS-IS a RF e i filtri di sicurezza INET→RF.
+
+.. figure:: /_static/webadmin/igate_fs13.png
+   :alt: Filtraggio Messaggi (Internet verso RF) — l'interruttore del gateway dei messaggi, la finestra "sentito localmente" e il limite di salti del destinatario.
+   :align: center
+   :width: 90%
+
+   **Filtraggio Messaggi (Internet verso RF)** — l'interruttore del gateway dei messaggi, la finestra "sentito localmente" e il limite di salti del destinatario.
+
+.. figure:: /_static/webadmin/igate_fs14.png
+   :alt: Filtro Nominativi — la budlist: nominativi ammessi o rifiutati in ciascuna direzione.
+   :align: center
+   :width: 90%
+
+   **Filtro Nominativi** — la budlist: nominativi ammessi o rifiutati in ciascuna direzione.
+
+.. figure:: /_static/webadmin/igate_fs15.png
+   :alt: Elenco Digipeater Satellitari — nominativi dei satelliti le cui trame passano solo quando portano il flag di usato.
+   :align: center
+   :width: 90%
+
+   **Elenco Digipeater Satellitari** — nominativi dei satelliti le cui trame passano solo quando portano il flag di usato.
+
+.. figure:: /_static/webadmin/igate_fs16.png
+   :alt: Soppressione Duplicati — la cache dei duplicati condivisa da IGate e digipeater.
+   :align: center
+   :width: 90%
+
+   **Soppressione Duplicati** — la cache dei duplicati condivisa da IGate e digipeater.

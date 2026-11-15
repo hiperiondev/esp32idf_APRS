@@ -217,3 +217,52 @@ Ciò che deliberatamente non è implementato
   di rete, non APRS.
 * Qualsiasi riproduzione locale del modello di destinatario di un master. È
   proprio di ogni master e non è scopribile da qui.
+
+.. _it-brandmeister-web:
+
+Nell'amministrazione web
+========================
+
+Le schermate qui sotto sono la pagina esattamente come la genera il firmware, con i valori di fabbrica e una stazione di esempio (``LU3VEA``) impostata.
+
+.. figure:: /_static/webadmin/bm_top.png
+   :alt: La pagina BrandMeister all'apertura.
+   :align: center
+   :width: 100%
+
+   La pagina *BrandMeister* all'apertura.
+
+.. figure:: /_static/webadmin/bm_fs00.png
+   :alt: Interconnessione BrandMeister — abilitazione dell'interconnessione.
+   :align: center
+   :width: 90%
+
+   **Interconnessione BrandMeister** — abilitazione dell'interconnessione.
+
+.. figure:: /_static/webadmin/bm_fs01.png
+   :alt: Monitor mondiale — la sottoscrizione al monitor mondiale u/APBM.
+   :align: center
+   :width: 90%
+
+   **Monitor mondiale** — la sottoscrizione al monitor mondiale ``u/APBM*``.
+
+.. figure:: /_static/webadmin/bm_fs02.png
+   :alt: Messaggistica — instradamento solo via Internet dei messaggi verso destinatari BrandMeister.
+   :align: center
+   :width: 90%
+
+   **Messaggistica** — instradamento solo via Internet dei messaggi verso destinatari BrandMeister.
+
+.. figure:: /_static/webadmin/bm_fs03.png
+   :alt: Nominativi dei gateway — i quattro nominativi di gateway opzionali.
+   :align: center
+   :width: 90%
+
+   **Nominativi dei gateway** — i quattro nominativi di gateway opzionali.
+
+.. figure:: /_static/webadmin/bm_fs04.png
+   :alt: Stato — stato in sola lettura: interconnessione, filtro, filtro di distanza e stazioni BrandMeister ascoltate.
+   :align: center
+   :width: 90%
+
+   **Stato** — stato in sola lettura: interconnessione, filtro, filtro di distanza e stazioni BrandMeister ascoltate.

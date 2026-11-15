@@ -267,3 +267,73 @@ sobre él viene de dos lugares que avanzan estén o no activos ``digi_en`` e
    solo avanzan mientras el digipeater corre. Las tramas descartadas antes del
    despacho, o de salida hacia RF, se cuentan a nivel de servicio en
    ``aprs_service.c`` y aparecen esté o no habilitada cualquier función.
+
+.. _es-digipeater-web:
+
+En la administración web
+========================
+
+Las capturas de abajo son la página tal como la genera el firmware, con los valores de fábrica y una estación de ejemplo (``LU3VEA``) cargada.
+
+.. figure:: /_static/webadmin/digi_top.png
+   :alt: La página Digipeater al abrirse.
+   :align: center
+   :width: 100%
+
+   La página *Digipeater* al abrirse.
+
+.. figure:: /_static/webadmin/digi_fs00.png
+   :alt: Digipeater — activación, fuentes de posición e interruptores de baliza por RF/Internet.
+   :align: center
+   :width: 90%
+
+   **Digipeater** — activación, fuentes de posición e interruptores de baliza por RF/Internet.
+
+.. figure:: /_static/webadmin/digi_fs01.png
+   :alt: Estación — indicativo, SSID, símbolo y ruta de la baliza.
+   :align: center
+   :width: 90%
+
+   **Estación** — indicativo, SSID, símbolo y ruta de la baliza.
+
+.. figure:: /_static/webadmin/digi_fs02.png
+   :alt: Alias de Ruta n-N — las cuatro filas {alias, N máx., modo}, solo relleno, el tratamiento de saltos atrapados, digipeat preventivo y enrutado por SSID de destino.
+   :align: center
+   :width: 90%
+
+   **Alias de Ruta n-N** — las cuatro filas {alias, N máx., modo}, solo relleno, el tratamiento de saltos atrapados, digipeat preventivo y enrutado por SSID de destino.
+
+.. figure:: /_static/webadmin/digi_fs03.png
+   :alt: Baliza / Posición — posición, intervalo y comentario de la baliza.
+   :align: center
+   :width: 90%
+
+   **Baliza / Posición** — posición, intervalo y comentario de la baliza.
+
+.. figure:: /_static/webadmin/digi_fs04.png
+   :alt: Extension de datos — extensión de datos PHG / RNG / DFS / DF.
+   :align: center
+   :width: 90%
+
+   **Extension de datos** — extensión de datos PHG / RNG / DFS / DF.
+
+.. figure:: /_static/webadmin/digi_fs05.png
+   :alt: Baliza de estado — baliza de estado.
+   :align: center
+   :width: 90%
+
+   **Baliza de estado** — baliza de estado.
+
+.. figure:: /_static/webadmin/digi_fs06.png
+   :alt: Parámetros de Radio del Repetidor — bloque de frecuencia.
+   :align: center
+   :width: 90%
+
+   **Parámetros de Radio del Repetidor** — bloque de frecuencia.
+
+.. figure:: /_static/webadmin/digi_fs07.png
+   :alt: Alias de ruta del Digipeater — los cuatro presets de ruta compartidos path[0..3] que eligen todos los servicios que transmiten.
+   :align: center
+   :width: 90%
+
+   **Alias de ruta del Digipeater** — los cuatro presets de ruta compartidos ``path[0..3]`` que eligen todos los servicios que transmiten.

@@ -556,3 +556,59 @@ restoring a known-good configuration.
    :ref:`en-storage-ota` — how ``telegram.json`` and the certificate file are
    stored and how the File Storage page's upload/download lets an operator
    edit the parts the Telegram page does not.
+
+.. _en-telegram-web:
+
+On the web admin
+================
+
+The screenshots below are the page exactly as the firmware renders it, with the factory defaults and a sample station (``LU3VEA``) filled in.
+
+.. figure:: /_static/webadmin/telegram_top.png
+   :alt: The Telegram Bot page, as it opens.
+   :align: center
+   :width: 100%
+
+   The *Telegram Bot* page, as it opens.
+
+.. figure:: /_static/webadmin/telegram_fs00.png
+   :alt: Telegram Bot — enable and the routing of station messages and bulletins.
+   :align: center
+   :width: 90%
+
+   **Telegram Bot** — enable and the routing of station messages and bulletins.
+
+.. figure:: /_static/webadmin/telegram_fs01.png
+   :alt: Credentials — bot token and administrator identifier.
+   :align: center
+   :width: 90%
+
+   **Credentials** — bot token and administrator identifier.
+
+.. figure:: /_static/webadmin/telegram_fs02.png
+   :alt: Mini App — Mini App address.
+   :align: center
+   :width: 90%
+
+   **Mini App** — Mini App address.
+
+.. figure:: /_static/webadmin/telegram_fs03.png
+   :alt: Authorized Users — authorized users with their callsigns.
+   :align: center
+   :width: 90%
+
+   **Authorized Users** — authorized users with their callsigns.
+
+.. figure:: /_static/webadmin/telegram_fs04.png
+   :alt: Allowed Group Chats — allowed group chats.
+   :align: center
+   :width: 90%
+
+   **Allowed Group Chats** — allowed group chats.
+
+.. figure:: /_static/webadmin/telegram_fs05.png
+   :alt: Connection Status — live connection status and diagnosis.
+   :align: center
+   :width: 90%
+
+   **Connection Status** — live connection status and diagnosis.

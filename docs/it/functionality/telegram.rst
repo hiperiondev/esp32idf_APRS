@@ -601,3 +601,59 @@ per ripristinare una configurazione nota e funzionante.
    file del certificato, e come l'upload/download della pagina File Storage
    permetta a un operatore di modificare le parti che la pagina Telegram non
    mostra.
+
+.. _it-telegram-web:
+
+Nell'amministrazione web
+========================
+
+Le schermate qui sotto sono la pagina esattamente come la genera il firmware, con i valori di fabbrica e una stazione di esempio (``LU3VEA``) impostata.
+
+.. figure:: /_static/webadmin/telegram_top.png
+   :alt: La pagina Bot Telegram all'apertura.
+   :align: center
+   :width: 100%
+
+   La pagina *Bot Telegram* all'apertura.
+
+.. figure:: /_static/webadmin/telegram_fs00.png
+   :alt: Bot Telegram — abilitazione e l'instradamento dei messaggi della stazione e dei bollettini.
+   :align: center
+   :width: 90%
+
+   **Bot Telegram** — abilitazione e l'instradamento dei messaggi della stazione e dei bollettini.
+
+.. figure:: /_static/webadmin/telegram_fs01.png
+   :alt: Credenziali — token del bot e identificativo dell'amministratore.
+   :align: center
+   :width: 90%
+
+   **Credenziali** — token del bot e identificativo dell'amministratore.
+
+.. figure:: /_static/webadmin/telegram_fs02.png
+   :alt: Mini App — indirizzo della Mini App.
+   :align: center
+   :width: 90%
+
+   **Mini App** — indirizzo della Mini App.
+
+.. figure:: /_static/webadmin/telegram_fs03.png
+   :alt: Utenti autorizzati — utenti autorizzati con i loro nominativi.
+   :align: center
+   :width: 90%
+
+   **Utenti autorizzati** — utenti autorizzati con i loro nominativi.
+
+.. figure:: /_static/webadmin/telegram_fs04.png
+   :alt: Chat di gruppo consentite — chat di gruppo consentite.
+   :align: center
+   :width: 90%
+
+   **Chat di gruppo consentite** — chat di gruppo consentite.
+
+.. figure:: /_static/webadmin/telegram_fs05.png
+   :alt: Stato della connessione — stato della connessione dal vivo e diagnosi.
+   :align: center
+   :width: 90%
+
+   **Stato della connessione** — stato della connessione dal vivo e diagnosi.

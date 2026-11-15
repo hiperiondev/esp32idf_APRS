@@ -89,6 +89,14 @@ propia declaración de viewport y sus propias reglas en línea en vez de enlazar
 puede servir, que es justamente lo que algunas de esas respuestas están
 informando.
 
+.. figure:: /_static/webadmin/mobile_dashboard.png
+   :alt: El panel en la pantalla de 390 píxeles de ancho de un teléfono: la navegación pasa a un cajón detrás del botón de menú y el contenido ocupa todo el ancho.
+   :align: center
+   :width: 40%
+
+   El panel en la pantalla de 390 píxeles de ancho de un teléfono: la navegación pasa a un cajón detrás del botón de menú y el contenido ocupa todo el ancho.
+
+
 Por qué ayudantes por campo
 ===========================
 
@@ -166,6 +174,14 @@ Añadir una opción implica, por tanto, añadir su cadena ``TR_H_xxx`` a los tre
 archivos ``lang_*.h`` y una fila a ``web_help.c``. Omitir la fila no es un error
 de compilación — la opción se representa sin signo de interrogación —, así que
 conviene revisar la tabla siempre que una página gane un campo.
+
+
+.. figure:: /_static/webadmin/help_open.png
+   :alt: Un cuadro de ayuda contextual abierto en la página IGate: el signo de pregunta después de la etiqueta muestra la explicación al pasar el puntero, enfocar o tocar.
+   :align: center
+   :width: 80%
+
+   Un cuadro de ayuda contextual abierto en la página *IGate*: el signo de pregunta después de la etiqueta muestra la explicación al pasar el puntero, enfocar o tocar.
 
 
 Las páginas
@@ -465,6 +481,58 @@ Las páginas
    cada uno con su propio ámbito. Con el interruptor apagado, ningún servicio
    trata nunca una trama como duplicada, y los dos campos numéricos quedan en
    gris y conservan sus valores guardados.
+
+Dónde se documenta cada página
+------------------------------
+
+Cada página se muestra, grupo por grupo, en el capítulo de la función que configura:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 50 50
+
+   * - Página
+     - Capítulo
+   * - Panel
+     - :ref:`es-dashboard`
+   * - Estación, Símbolos APRS
+     - :ref:`es-station`
+   * - IGate
+     - :ref:`es-igate`
+   * - BrandMeister
+     - :ref:`es-brandmeister`
+   * - Digirepetidor
+     - :ref:`es-digipeater`
+   * - Rastreador
+     - :ref:`es-tracker`
+   * - Mensaje, Env/Rec Msj
+     - :ref:`es-messaging`
+   * - Consulta
+     - :ref:`es-query`
+   * - Meteorología
+     - :ref:`es-weather`
+   * - Telemetría
+     - :ref:`es-telemetry`
+   * - Boletines, Objetos e Ítems
+     - :ref:`es-bulletins-objects`
+   * - Telegram
+     - :ref:`es-telegram`
+   * - Winlink
+     - :ref:`es-winlink`
+   * - GPS
+     - :ref:`es-gps`
+   * - Radiomodem
+     - :ref:`es-radiomodem`
+   * - Inalámbrico, Sistema, Almacenamiento de archivos, Firmware, Registros
+     - :ref:`es-administration`
+
+.. figure:: /_static/webadmin/dashboard_top.png
+   :alt: La administración web en un navegador de escritorio: la navegación a la izquierda, la página elegida a la derecha.
+   :align: center
+   :width: 100%
+
+   La administración web en un navegador de escritorio: la navegación a la izquierda, la página elegida a la derecha.
+
 
 Las estadísticas del panel
 ==========================

@@ -215,3 +215,38 @@ Opzionalmente (``msg_alarm_enable``), un messaggio entrante può attivare un GPI
 (``msg_alarm_gpio``; ``-1`` = disabilitato), validato da
 ``message_alarm_gpio_is_valid()`` — utile per accendere un LED o far suonare un
 cicalino alla ricezione di un messaggio.
+
+.. _it-messaging-web:
+
+Nell'amministrazione web
+========================
+
+Le schermate qui sotto sono la pagina esattamente come la genera il firmware, con i valori di fabbrica e una stazione di esempio (``LU3VEA``) impostata.
+
+.. figure:: /_static/webadmin/msg_top.png
+   :alt: La pagina Messaggio all'apertura.
+   :align: center
+   :width: 100%
+
+   La pagina *Messaggio* all'apertura.
+
+.. figure:: /_static/webadmin/msg_fs00.png
+   :alt: Messaggistica APRS — motore dei messaggi: abilitazione, nominativo, percorsi, RF/Internet, ritentativi e GPIO di allarme messaggio.
+   :align: center
+   :width: 90%
+
+   **Messaggistica APRS** — motore dei messaggi: abilitazione, nominativo, percorsi, RF/Internet, ritentativi e GPIO di allarme messaggio.
+
+.. figure:: /_static/webadmin/msg_fs01.png
+   :alt: Gruppi messaggi — i tre destinatari di gruppo definiti dall'operatore.
+   :align: center
+   :width: 90%
+
+   **Gruppi messaggi** — i tre destinatari di gruppo definiti dall'operatore.
+
+.. figure:: /_static/webadmin/msgchat_fs00.png
+   :alt: Inv/Ric Msg — la pagina Inv/Ric Msg (/msgchat): la conversazione dei messaggi ricevuti e inviati e la casella di composizione.
+   :align: center
+   :width: 90%
+
+   **Inv/Ric Msg** — la pagina *Inv/Ric Msg* (``/msgchat``): la conversazione dei messaggi ricevuti e inviati e la casella di composizione.

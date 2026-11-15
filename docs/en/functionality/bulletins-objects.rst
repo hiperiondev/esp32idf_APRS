@@ -174,3 +174,73 @@ subsystem's save touches only its own data. Each file is written with the same
 streaming, byte-at-a-time JSON writer the main config uses, under its own mutex,
 with an explicit ``setvbuf()`` so newlib does not lazily allocate a large stdio
 buffer mid-write on a fragmented heap.
+
+.. _en-bulletins-objects-web:
+
+On the web admin
+================
+
+The screenshots below are the page exactly as the firmware renders it, with the factory defaults and a sample station (``LU3VEA``) filled in.
+
+.. figure:: /_static/webadmin/bulletins_top.png
+   :alt: The Bulletins page, as it opens.
+   :align: center
+   :width: 100%
+
+   The *Bulletins* page, as it opens.
+
+.. figure:: /_static/webadmin/bulletins_main.png
+   :alt: The five bulletin slots as an accordion; the first is open.
+   :align: center
+   :width: 90%
+
+   The five bulletin slots as an accordion; the first is open.
+
+.. figure:: /_static/webadmin/objects_top.png
+   :alt: The Objects and Items page, as it opens.
+   :align: center
+   :width: 100%
+
+   The *Objects and Items* page, as it opens.
+
+.. figure:: /_static/webadmin/objects_fs00.png
+   :alt: Transmission Control — enable, RF/Internet and scope of the first object.
+   :align: center
+   :width: 90%
+
+   **Transmission Control** — enable, RF/Internet and scope of the first object.
+
+.. figure:: /_static/webadmin/objects_fs01.png
+   :alt: Identity & State — name, object/item, live/kill and the permanent flag.
+   :align: center
+   :width: 90%
+
+   **Identity & State** — name, object/item, live/kill and the permanent flag.
+
+.. figure:: /_static/webadmin/objects_fs02.png
+   :alt: Position & Symbol — position, symbol, course and speed.
+   :align: center
+   :width: 90%
+
+   **Position & Symbol** — position, symbol, course and speed.
+
+.. figure:: /_static/webadmin/objects_fs04.png
+   :alt: Area Object — area-object shape, colour and size.
+   :align: center
+   :width: 90%
+
+   **Area Object** — area-object shape, colour and size.
+
+.. figure:: /_static/webadmin/objects_fs06.png
+   :alt: Repeater Radio Parameters — repeater frequency block, tone/DCS, range and receive frequency.
+   :align: center
+   :width: 90%
+
+   **Repeater Radio Parameters** — repeater frequency block, tone/DCS, range and receive frequency.
+
+.. figure:: /_static/webadmin/objects_fs07.png
+   :alt: Beacon Timing — initial interval, decay and expiry.
+   :align: center
+   :width: 90%
+
+   **Beacon Timing** — initial interval, decay and expiry.

@@ -256,3 +256,73 @@ about it comes from two places that both move regardless of whether
    only move while the digipeater is running. Frames discarded before dispatch,
    or on the way out to RF, are counted at the service level in
    ``aprs_service.c`` and appear whether or not any feature is enabled.
+
+.. _en-digipeater-web:
+
+On the web admin
+================
+
+The screenshots below are the page exactly as the firmware renders it, with the factory defaults and a sample station (``LU3VEA``) filled in.
+
+.. figure:: /_static/webadmin/digi_top.png
+   :alt: The Digipeater page, as it opens.
+   :align: center
+   :width: 100%
+
+   The *Digipeater* page, as it opens.
+
+.. figure:: /_static/webadmin/digi_fs00.png
+   :alt: Digipeater — enable, position sources and the beacon RF/Internet switches.
+   :align: center
+   :width: 90%
+
+   **Digipeater** — enable, position sources and the beacon RF/Internet switches.
+
+.. figure:: /_static/webadmin/digi_fs01.png
+   :alt: Station — callsign, SSID, symbol and beacon path.
+   :align: center
+   :width: 90%
+
+   **Station** — callsign, SSID, symbol and beacon path.
+
+.. figure:: /_static/webadmin/digi_fs02.png
+   :alt: n-N Path Aliases — the four {alias, max N, mode} rows, fill-in-only, the trapped-hop choice, preemptive digipeating and destination-SSID routing.
+   :align: center
+   :width: 90%
+
+   **n-N Path Aliases** — the four {alias, max N, mode} rows, fill-in-only, the trapped-hop choice, preemptive digipeating and destination-SSID routing.
+
+.. figure:: /_static/webadmin/digi_fs03.png
+   :alt: Beacon / Position — beacon position, interval and comment.
+   :align: center
+   :width: 90%
+
+   **Beacon / Position** — beacon position, interval and comment.
+
+.. figure:: /_static/webadmin/digi_fs04.png
+   :alt: Data Extension — PHG / RNG / DFS / DF data extension.
+   :align: center
+   :width: 90%
+
+   **Data Extension** — PHG / RNG / DFS / DF data extension.
+
+.. figure:: /_static/webadmin/digi_fs05.png
+   :alt: Status Beacon — status beacon.
+   :align: center
+   :width: 90%
+
+   **Status Beacon** — status beacon.
+
+.. figure:: /_static/webadmin/digi_fs06.png
+   :alt: Repeater Radio Parameters — frequency block.
+   :align: center
+   :width: 90%
+
+   **Repeater Radio Parameters** — frequency block.
+
+.. figure:: /_static/webadmin/digi_fs07.png
+   :alt: Digipeater Path Aliases — the four shared path presets path[0..3] every transmitting service selects from.
+   :align: center
+   :width: 90%
+
+   **Digipeater Path Aliases** — the four shared path presets ``path[0..3]`` every transmitting service selects from.

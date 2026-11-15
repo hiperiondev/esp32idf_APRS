@@ -212,3 +212,52 @@ Lo que deliberadamente no se implementa
   red, no APRS.
 * Ninguna reproducción local del patrón de destinatario de un máster. Es propio
   de cada máster y no se puede descubrir desde aquí.
+
+.. _es-brandmeister-web:
+
+En la administración web
+========================
+
+Las capturas de abajo son la página tal como la genera el firmware, con los valores de fábrica y una estación de ejemplo (``LU3VEA``) cargada.
+
+.. figure:: /_static/webadmin/bm_top.png
+   :alt: La página BrandMeister al abrirse.
+   :align: center
+   :width: 100%
+
+   La página *BrandMeister* al abrirse.
+
+.. figure:: /_static/webadmin/bm_fs00.png
+   :alt: Interconexion BrandMeister — activación de la interconexión.
+   :align: center
+   :width: 90%
+
+   **Interconexion BrandMeister** — activación de la interconexión.
+
+.. figure:: /_static/webadmin/bm_fs01.png
+   :alt: Monitor mundial — la suscripción al monitor mundial u/APBM.
+   :align: center
+   :width: 90%
+
+   **Monitor mundial** — la suscripción al monitor mundial ``u/APBM*``.
+
+.. figure:: /_static/webadmin/bm_fs02.png
+   :alt: Mensajeria — envío solo por Internet de los mensajes a destinatarios BrandMeister.
+   :align: center
+   :width: 90%
+
+   **Mensajeria** — envío solo por Internet de los mensajes a destinatarios BrandMeister.
+
+.. figure:: /_static/webadmin/bm_fs03.png
+   :alt: Indicativos de pasarela — los cuatro indicativos de pasarela opcionales.
+   :align: center
+   :width: 90%
+
+   **Indicativos de pasarela** — los cuatro indicativos de pasarela opcionales.
+
+.. figure:: /_static/webadmin/bm_fs04.png
+   :alt: Estado — estado de solo lectura: interconexión, filtro, filtro de distancia y estaciones BrandMeister escuchadas.
+   :align: center
+   :width: 90%
+
+   **Estado** — estado de solo lectura: interconexión, filtro, filtro de distancia y estaciones BrandMeister escuchadas.

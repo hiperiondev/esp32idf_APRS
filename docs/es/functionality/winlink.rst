@@ -234,3 +234,38 @@ Cada ajuste es una clave ``wl*`` de ``/storage/winlink.json`` — véase
 :ref:`es-config-json`. La contraseña se guarda allí en claro, exactamente igual
 que ya ocurre con el passcode de APRS-IS; quien pueda leer la partición de
 almacenamiento puede leer las dos.
+
+.. _es-winlink-web:
+
+En la administración web
+========================
+
+Las capturas de abajo son la página tal como la genera el firmware, con los valores de fábrica y una estación de ejemplo (``LU3VEA``) cargada.
+
+.. figure:: /_static/webadmin/winlink_top.png
+   :alt: La página Winlink al abrirse.
+   :align: center
+   :width: 100%
+
+   La página *Winlink* al abrirse.
+
+.. figure:: /_static/webadmin/winlink_fs00.png
+   :alt: Cuenta Winlink — la cuenta Winlink de la estación y los ajustes de sesión.
+   :align: center
+   :width: 90%
+
+   **Cuenta Winlink** — la cuenta Winlink de la estación y los ajustes de sesión.
+
+.. figure:: /_static/webadmin/winlink_fs01.png
+   :alt: Pasarela para estaciones locales — el rol de pasarela y los ajustes del IGate de los que depende.
+   :align: center
+   :width: 90%
+
+   **Pasarela para estaciones locales** — el rol de pasarela y los ajustes del IGate de los que depende.
+
+.. figure:: /_static/webadmin/winlink_fs02.png
+   :alt: Sesión — la terminal de sesión: estado, comandos, el asistente de mensajes y el buzón.
+   :align: center
+   :width: 90%
+
+   **Sesión** — la terminal de sesión: estado, comandos, el asistente de mensajes y el buzón.

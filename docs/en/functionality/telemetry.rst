@@ -206,3 +206,52 @@ analog channel and a *Channel* dropdown for each digital bit from the live
 ``sensors_local`` registry, filtered by each driver's advertised telemetry
 channels. Live per-channel values are shown via ``/tlm/values``. See
 :ref:`en-sensor-framework`.
+
+.. _en-telemetry-web:
+
+On the web admin
+================
+
+The screenshots below are the page exactly as the firmware renders it, with the factory defaults and a sample station (``LU3VEA``) filled in.
+
+.. figure:: /_static/webadmin/tlm_top.png
+   :alt: The Telemetry page, as it opens.
+   :align: center
+   :width: 100%
+
+   The *Telemetry* page, as it opens.
+
+.. figure:: /_static/webadmin/tlm_fs00.png
+   :alt: Beacon — telemetry beacon: enable, identity, RF/Internet, path and interval.
+   :align: center
+   :width: 90%
+
+   **Beacon** — telemetry beacon: enable, identity, RF/Internet, path and interval.
+
+.. figure:: /_static/webadmin/tlm_fs01.png
+   :alt: Report Parameters — report parameters: sequence, field width, comment and the station the report is sent for.
+   :align: center
+   :width: 90%
+
+   **Report Parameters** — report parameters: sequence, field width, comment and the station the report is sent for.
+
+.. figure:: /_static/webadmin/tlm_fs02.png
+   :alt: Definition Messages — which PARM / UNIT / EQNS / BITS definition messages are sent.
+   :align: center
+   :width: 90%
+
+   **Definition Messages** — which PARM / UNIT / EQNS / BITS definition messages are sent.
+
+.. figure:: /_static/webadmin/tlm_fs03.png
+   :alt: Analog Channels (A1-A5) — the five analog channels: name, unit, source channel, raw range and the a·x²+b·x+c calibration.
+   :align: center
+   :width: 90%
+
+   **Analog Channels (A1-A5)** — the five analog channels: name, unit, source channel, raw range and the a·x²+b·x+c calibration.
+
+.. figure:: /_static/webadmin/tlm_fs04.png
+   :alt: Digital Channels (B1-B8) — the eight digital bits: name, on-state label, sense and source.
+   :align: center
+   :width: 90%
+
+   **Digital Channels (B1-B8)** — the eight digital bits: name, on-state label, sense and source.

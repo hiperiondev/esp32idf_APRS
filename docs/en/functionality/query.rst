@@ -322,3 +322,31 @@ The whole page is gated by the ``ENABLE_QUERY`` compile-time switch.
    ``query_init()`` must run after ``message_init()``/``igate_start()`` and
    before ``aprs_service_start()`` finishes wiring the RX dispatch chain, which
    is exactly where ``aprs_service.c`` calls it.
+
+.. _en-query-web:
+
+On the web admin
+================
+
+The screenshots below are the page exactly as the firmware renders it, with the factory defaults and a sample station (``LU3VEA``) filled in.
+
+.. figure:: /_static/webadmin/query_top.png
+   :alt: The Query page, as it opens.
+   :align: center
+   :width: 100%
+
+   The *Query* page, as it opens.
+
+.. figure:: /_static/webadmin/query_fs00.png
+   :alt: Query — responder enable, sources, general and directed query types and the minimum reply interval.
+   :align: center
+   :width: 90%
+
+   **Query** — responder enable, sources, general and directed query types and the minimum reply interval.
+
+.. figure:: /_static/webadmin/query_fs01.png
+   :alt: Station capabilities beacon — the periodic station-capabilities beacon.
+   :align: center
+   :width: 90%
+
+   **Station capabilities beacon** — the periodic station-capabilities beacon.

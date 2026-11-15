@@ -344,3 +344,31 @@ Toda la página está condicionada por el interruptor de compilación
    ``query_init()`` debe ejecutarse después de ``message_init()``/``igate_start()``
    y antes de que ``aprs_service_start()`` termine de cablear la cadena de
    despacho de RX, que es exactamente donde lo llama ``aprs_service.c``.
+
+.. _es-query-web:
+
+En la administración web
+========================
+
+Las capturas de abajo son la página tal como la genera el firmware, con los valores de fábrica y una estación de ejemplo (``LU3VEA``) cargada.
+
+.. figure:: /_static/webadmin/query_top.png
+   :alt: La página Consulta al abrirse.
+   :align: center
+   :width: 100%
+
+   La página *Consulta* al abrirse.
+
+.. figure:: /_static/webadmin/query_fs00.png
+   :alt: Consulta — activación del respondedor, fuentes, tipos de consultas generales y dirigidas e intervalo mínimo entre respuestas.
+   :align: center
+   :width: 90%
+
+   **Consulta** — activación del respondedor, fuentes, tipos de consultas generales y dirigidas e intervalo mínimo entre respuestas.
+
+.. figure:: /_static/webadmin/query_fs01.png
+   :alt: Baliza de capacidades de estación — la baliza periódica de capacidades de la estación.
+   :align: center
+   :width: 90%
+
+   **Baliza de capacidades de estación** — la baliza periódica de capacidades de la estación.

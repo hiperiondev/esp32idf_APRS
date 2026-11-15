@@ -587,3 +587,59 @@ entradas a la vez, o para restaurar una configuración conocida.
    :ref:`es-storage-ota` — cómo se almacenan ``telegram.json`` y el archivo de
    certificado, y cómo el subir/descargar de la página File Storage permite a
    un operador editar las partes que la página Telegram no muestra.
+
+.. _es-telegram-web:
+
+En la administración web
+========================
+
+Las capturas de abajo son la página tal como la genera el firmware, con los valores de fábrica y una estación de ejemplo (``LU3VEA``) cargada.
+
+.. figure:: /_static/webadmin/telegram_top.png
+   :alt: La página Bot de Telegram al abrirse.
+   :align: center
+   :width: 100%
+
+   La página *Bot de Telegram* al abrirse.
+
+.. figure:: /_static/webadmin/telegram_fs00.png
+   :alt: Bot de Telegram — activación y el envío de mensajes de la estación y boletines.
+   :align: center
+   :width: 90%
+
+   **Bot de Telegram** — activación y el envío de mensajes de la estación y boletines.
+
+.. figure:: /_static/webadmin/telegram_fs01.png
+   :alt: Credenciales — token del bot e identificador del administrador.
+   :align: center
+   :width: 90%
+
+   **Credenciales** — token del bot e identificador del administrador.
+
+.. figure:: /_static/webadmin/telegram_fs02.png
+   :alt: Mini App — dirección de la Mini App.
+   :align: center
+   :width: 90%
+
+   **Mini App** — dirección de la Mini App.
+
+.. figure:: /_static/webadmin/telegram_fs03.png
+   :alt: Usuarios autorizados — usuarios autorizados con sus indicativos.
+   :align: center
+   :width: 90%
+
+   **Usuarios autorizados** — usuarios autorizados con sus indicativos.
+
+.. figure:: /_static/webadmin/telegram_fs04.png
+   :alt: Chats de grupo permitidos — chats de grupo permitidos.
+   :align: center
+   :width: 90%
+
+   **Chats de grupo permitidos** — chats de grupo permitidos.
+
+.. figure:: /_static/webadmin/telegram_fs05.png
+   :alt: Estado de la conexion — estado de la conexión en vivo y diagnóstico.
+   :align: center
+   :width: 90%
+
+   **Estado de la conexion** — estado de la conexión en vivo y diagnóstico.

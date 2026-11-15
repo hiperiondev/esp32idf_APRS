@@ -1764,3 +1764,45 @@ Resolución de problemas
    transmisión, :ref:`es-web-admin` para la administración en su conjunto, y el
    capítulo *Hardware* para los esquemáticos de interfaz que asumen los valores
    por omisión de esta página.
+
+.. _es-radiomodem-web:
+
+En la administración web
+========================
+
+Las capturas de abajo son la página tal como la genera el firmware, con los valores de fábrica y una estación de ejemplo (``LU3VEA``) cargada.
+
+.. figure:: /_static/webadmin/radio_top.png
+   :alt: La página Radiomódem al abrirse.
+   :align: center
+   :width: 100%
+
+   La página *Radiomódem* al abrirse.
+
+.. figure:: /_static/webadmin/radio_fs00.png
+   :alt: Protocolo — FX.25 en recepción.
+   :align: center
+   :width: 90%
+
+   **Protocolo** — FX.25 en recepción.
+
+.. figure:: /_static/webadmin/radio_fs01.png
+   :alt: Audio / AFSK — activación del módem, los botones PRUEBA DE BUCLE / NIVEL RX / PRUEBA TX, modulación, el hardware de audio de compilación y los tiempos de acceso al canal.
+   :align: center
+   :width: 90%
+
+   **Audio / AFSK** — activación del módem, los botones PRUEBA DE BUCLE / NIVEL RX / PRUEBA TX, modulación, el hardware de audio de compilación y los tiempos de acceso al canal.
+
+.. figure:: /_static/webadmin/radio_fs02.png
+   :alt: Demodulador de recepción — el juego de demoduladores de recepción y sus filtros, umbral, ganancia, reparación de bits y supresor de impulsos.
+   :align: center
+   :width: 90%
+
+   **Demodulador de recepción** — el juego de demoduladores de recepción y sus filtros, umbral, ganancia, reparación de bits y supresor de impulsos.
+
+.. figure:: /_static/webadmin/radio_fs03.png
+   :alt: Interfaz de audio — polarización interna del ADC, aviso de fuera de rango, amplitud y frecuencia de muestreo de transmisión y tiempo máximo de transmisión.
+   :align: center
+   :width: 90%
+
+   **Interfaz de audio** — polarización interna del ADC, aviso de fuera de rango, amplitud y frecuencia de muestreo de transmisión y tiempo máximo de transmisión.
