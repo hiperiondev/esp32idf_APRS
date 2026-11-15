@@ -49,6 +49,8 @@
 #include <stdint.h>
 #include <time.h>
 
+#include "app_config.h" // ENABLE_DASHBOARD: the JSON dump is built only for the Dashboard feed
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -328,6 +330,7 @@ int lastheard_directs(char *out, size_t out_size);
  */
 bool lastheard_heard_history(const char *callsign, uint16_t out[LASTHEARD_HEARD_HOURS]);
 
+#ifdef ENABLE_DASHBOARD
 /**
  * @brief Serialize the table (one element per station, most recent first) as a
  * JSON array.
@@ -344,6 +347,7 @@ bool lastheard_heard_history(const char *callsign, uint16_t out[LASTHEARD_HEARD_
  * @return Number of bytes written (excluding the NUL), or 0 on error.
  */
 size_t lastheard_dump_json(char *out, size_t out_size);
+#endif
 
 #ifdef __cplusplus
 }

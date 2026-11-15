@@ -159,11 +159,16 @@ trasmissione o altro lock. I campi scalari (a singola parola) sono atomici a
 livello di parola su questo MCU e possono essere letti senza lock. È distinto dal
 mutex di salvataggio interno (mantenuto per tutta la serializzazione su flash).
 
+.. _it-config-module-switches:
+
 Interruttori di modulo in compilazione
 ======================================
 
 ``app_config.h`` definisce un insieme di macro ``ENABLE_*``; commentarne una
-rimuove la sua voce di barra laterale e la sua pagina dall'immagine:
+rimuove il modulo dall'immagine — la sua voce di barra laterale e la sua pagina,
+le rotte servite dalla pagina e tutto il codice firmware che implementa il
+modulo: i suoi task, i suoi passaggi di servizio, la sua gestione nel percorso
+di ricezione, i suoi beacon e le sue risposte agli altri moduli:
 
 .. code-block:: c
 
@@ -173,6 +178,79 @@ rimuove la sua voce di barra laterale e la sua pagina dall'immagine:
    ENABLE_WEATHER      ENABLE_TELEMETRY    ENABLE_GPS          ENABLE_TELEGRAM
    ENABLE_WINLINK      ENABLE_LOGS         ENABLE_SYSTEM       ENABLE_WIRELESS
    ENABLE_FILE_STORAGE ENABLE_ABOUT_FIRMWARE
+
+Cosa lascia dietro di sé un modulo disabilitato:
+
+- **Le sue impostazioni.** ``app_config_t`` conserva ogni campo e lo strato di
+  persistenza ogni sezione, quindi il file salvato del modulo resta intatto in
+  flash e viene ritrovato da una compilazione successiva che lo riabilita.
+  Niente al di fuori del modulo agisce su quelle impostazioni mentre è escluso,
+  e ogni pagina che ne scrive anche una (per esempio My Station, che replica
+  l'identità della stazione in ogni servizio) scrive solo quelle dei moduli
+  compilati.
+- **Codice che un altro modulo abilitato usa ancora.** Se ne va solo la parte
+  del modulo disabilitato. I pezzi condivisi sono selezionati da macro derivate
+  ``BUILD_*``, mai impostate a mano, ognuna definita finché almeno uno dei suoi
+  utenti è nella compilazione:
+
+  ======================== ====================================================
+  ``BUILD_APRS_IS``        Client APRS-IS (connessione, login, failover dei
+                           server, pompa delle righe ricevute,
+                           ``igate_send_raw()``). Utenti: IGate, BrandMeister,
+                           Message, Query, Digipeater, Tracker, Weather,
+                           Telemetry, Bulletins, Objects/Items.
+  ``BUILD_DUP_CACHE``      Cache di soppressione dei duplicati. Utenti: IGate,
+                           Digipeater.
+  ``BUILD_PATH_PRESETS``   I quattro percorsi predefiniti condivisi. Utenti:
+                           ogni modulo che trasmette attraverso di essi.
+  ``BUILD_MSG_PARSER``     Il parser di ricezione ``:ADDRESSEE:``. Utenti:
+                           Message, Query (query dirette), Telegram
+                           (instradamento).
+  ``BUILD_SENSORS``        Avvio del registro dei sensori locali. Utenti:
+                           Weather, Telemetry.
+  ``BUILD_BEACONS``        Costruttori dei beacon di posizione e di stato.
+                           Utenti: IGate, Digipeater, Tracker.
+  ======================== ====================================================
+
+- **Impostazioni che un altro modulo abilitato usa ancora.** Una pagina che
+  modifica anche un'impostazione condivisa resta, ridotta a quell'impostazione:
+  senza ``ENABLE_IGATE`` la pagina IGate diventa la pagina *APRS-IS*
+  (nominativo/SSID di login, passcode, filtro, server e, con il digipeater,
+  soppressione dei duplicati); senza ``ENABLE_DIGIPEATER`` la pagina
+  Digipeater diventa la pagina *Percorsi* (i quattro percorsi predefiniti).
+
+Due interruttori dipendono da un altro, e la compilazione si ferma con un
+``#error`` che nomina la coppia se la dipendenza è rotta: ``ENABLE_MSG_CHAT`` e
+``ENABLE_WINLINK`` richiedono entrambi ``ENABLE_MESSAGE``.
+
+I moduli solo pagina — ``ENABLE_DASHBOARD``, ``ENABLE_STATION``,
+``ENABLE_RADIO_MODEM``, ``ENABLE_LOGS``, ``ENABLE_SYSTEM``,
+``ENABLE_WIRELESS``, ``ENABLE_FILE_STORAGE`` e ``ENABLE_ABOUT_FIRMWARE`` —
+tolgono uno strumento di amministrazione, non una funzione della stazione: il
+modem, il WiFi, la sincronizzazione oraria e il file system che configurano
+funzionano sempre con le impostazioni salvate. Con ogni pagina se ne va lo
+strumento che c'è dietro: il log del traffico RX/TX e le statistiche dal vivo
+(Dashboard), i test di loop, livello, cattura e TX (Radiomodem), la cattura dei
+log (Logs), il ripristino di fabbrica (System), la scansione WiFi (Wireless), il
+gestore di file (File Storage) e il caricamento OTA (About).
+
+Altri effetti da conoscere:
+
+- Senza ``ENABLE_IGATE`` ogni riga APRS-IS è passata al gestore di righe (non
+  c'è un interruttore Internet→RF da consultare), quindi la messaggistica, il
+  risponditore di query, l'instradamento Telegram e last heard continuano a
+  leggere il feed.
+- La sessione APRS-IS si apre quando la gamba Internet di qualsiasi modulo
+  compilato la richiede, non solo per l'IGate: telemetria, bollettini e
+  oggetti/item, le cui impostazioni vivono in file propri, comunicano il loro
+  bisogno con ``igate_uplink_demand()``.
+- Un beacon annuncia "capace di messaggistica" solo con ``ENABLE_MESSAGE``
+  compilato e attivo; il risponditore risponde a ``?APRS?``, ``?IGATE?``,
+  ``?APRSS`` e ``?APRSP`` solo con ``ENABLE_IGATE`` e a ``?WX?`` solo con
+  ``ENABLE_WEATHER``; SmartBeaconing e ogni controllo "Usa GPS" esistono solo
+  con ``ENABLE_GPS``.
+- I pin della UART GNSS restano riservati nei selettori GPIO senza
+  ``ENABLE_GPS``: sono cablaggio della scheda, come i pin I2C dei sensori.
 
 **Non** c'è interruttore ``ENABLE_SENSORS``: il framework ``sensors_local`` non ha
 disabilitazione in compilazione ed è sempre compilato (i suoi singoli driver sono

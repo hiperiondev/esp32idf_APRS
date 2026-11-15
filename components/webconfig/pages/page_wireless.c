@@ -30,6 +30,8 @@
 #include "web_common.h"
 #include "web_help.h"
 
+#ifdef ENABLE_WIRELESS
+
 static const char *TAG = "page_wireless";
 
 esp_err_t page_wireless_get(httpd_req_t *req) {
@@ -374,3 +376,5 @@ esp_err_t page_wifi_scan_post(httpd_req_t *req) {
     HEAP_MONITOR_BRACKET("after", "wifi scan");
     return ESP_OK;
 }
+
+#endif // ENABLE_WIRELESS

@@ -66,7 +66,7 @@
  * @{
  */
 #define LANG_EN 0 /**< English. */
-#define LANG_ES 1 /**< Espanol (Spanish). */
+#define LANG_ES 1 /**< Español (Spanish). */
 #define LANG_IT 2 /**< Italiano (Italian). */
 
 #ifndef LANGUAGE
@@ -77,32 +77,141 @@
 /**
  * @name Compile-time module enables
  *
- * Each of these selects one web admin page / firmware feature into the build.
+ * Each of these selects one firmware module into the build: its web admin
+ * page, the routes that page serves, and every piece of firmware code that
+ * implements the module - its tasks, its service passes, its receive-path
+ * handling, its beacons and its answers to other modules. Commenting a line
+ * out removes all of that from the image, not only the sidebar entry.
+ *
+ * What a disabled module leaves behind:
+ *
+ * - Its settings. ::app_config_t keeps every field and the persistence layer
+ *   keeps every section, so the module's stored file is left on flash as it is
+ *   and the settings are found again by a later build that re-enables it.
+ *   Nothing outside the module acts on those settings while it is out.
+ * - Code another enabled module still needs. Where two modules share code,
+ *   only the part that belongs to the disabled one goes; the derived
+ *   @c BUILD_* switches below name each shared piece and the modules that
+ *   keep it in.
+ * - Settings another enabled module still needs. A page that also edits a
+ *   shared setting stays reachable for that setting alone: without
+ *   ::ENABLE_IGATE the IGate page becomes the APRS-IS client page (login,
+ *   servers and, for the digipeater, duplicate suppression) whenever
+ *   ::BUILD_APRS_IS is defined, and without ::ENABLE_DIGIPEATER the
+ *   Digipeater page becomes the path preset page whenever
+ *   ::BUILD_PATH_PRESETS is defined.
+ *
+ * The page-only modules - ::ENABLE_DASHBOARD, ::ENABLE_STATION,
+ * ::ENABLE_RADIO_MODEM, ::ENABLE_LOGS, ::ENABLE_SYSTEM, ::ENABLE_WIRELESS,
+ * ::ENABLE_FILE_STORAGE and ::ENABLE_ABOUT_FIRMWARE - select an
+ * administration tool rather than a station function: the firmware they
+ * configure (the modem, the WiFi bring-up, time sync, the file system) is
+ * always built and runs from the stored settings, and what goes with the page
+ * is the tool behind it (the traffic log and live statistics, the modem test
+ * and level tools, the log capture, the file manager, the OTA upload, the
+ * factory reset, the WiFi scan).
+ *
  * Modules that are not implemented are simply not defined here.
  * @{
  */
-#define ENABLE_DASHBOARD      /**< Dashboard page. */
-#define ENABLE_MSG_CHAT       /**< "Snd/Rcv Msg" chat page. */
-#define ENABLE_BULLETINS      /**< APRS bulletins page. */
-#define ENABLE_OBJECTS_ITEMS  /**< APRS Objects/Items page. */
+#define ENABLE_DASHBOARD      /**< Dashboard page, its live status feeds and the RX/TX traffic log behind it. */
+#define ENABLE_MSG_CHAT       /**< "Snd/Rcv Msg" chat page. Requires ::ENABLE_MESSAGE. */
+#define ENABLE_BULLETINS      /**< APRS bulletins page and the bulletin transmitter. */
+#define ENABLE_OBJECTS_ITEMS  /**< APRS Objects/Items page and the object/item transmitter. */
 #define ENABLE_STATION        /**< "My Station" page. */
-#define ENABLE_RADIO_MODEM    /**< Radiomodem page. */
-#define ENABLE_MESSAGE        /**< APRS Message service page. */
-#define ENABLE_IGATE          /**< IGate page. */
-#define ENABLE_BRANDMEISTER   /**< BrandMeister interconnect page. */
-#define ENABLE_QUERY          /**< Query responder page. */
-#define ENABLE_DIGIPEATER     /**< Digipeater page. */
-#define ENABLE_TRACKER        /**< Tracker page. */
-#define ENABLE_WEATHER        /**< Weather page. */
-#define ENABLE_TELEMETRY      /**< Telemetry page. */
-#define ENABLE_GPS            /**< GPS receiver page. */
-#define ENABLE_TELEGRAM       /**< Telegram bot page. */
-#define ENABLE_WINLINK        /**< Winlink (APRSLink) radio e-mail page. */
-#define ENABLE_LOGS           /**< Console Logs page. */
-#define ENABLE_SYSTEM         /**< System page. */
-#define ENABLE_WIRELESS       /**< Wireless page. */
-#define ENABLE_FILE_STORAGE   /**< File Storage page. */
-#define ENABLE_ABOUT_FIRMWARE /**< About / Firmware page. */
+#define ENABLE_RADIO_MODEM    /**< Radiomodem page and its loop, level, capture and TX test tools. */
+#define ENABLE_MESSAGE        /**< APRS Message service: its page, the outgoing queue, retries, acknowledgements, chat history and alarm. */
+#define ENABLE_IGATE          /**< IGate: its page, RF->INET and INET->RF gating, and the IGate position and status beacons. */
+#define ENABLE_BRANDMEISTER   /**< BrandMeister interconnect page and the BrandMeister traffic handling. */
+#define ENABLE_QUERY          /**< Query responder page and the query responder. */
+#define ENABLE_DIGIPEATER     /**< Digipeater: its page, the RF->RF repeater, and the digipeater position and status beacons. */
+#define ENABLE_TRACKER        /**< Tracker page and the tracker position and status beacons, SmartBeaconing included. */
+#define ENABLE_WEATHER        /**< Weather page, the weather report and the weather report beacon. */
+#define ENABLE_TELEMETRY      /**< Telemetry page, the telemetry reports and the comment telemetry. */
+#define ENABLE_GPS            /**< GPS receiver page and the GNSS receiver driver. */
+#define ENABLE_TELEGRAM       /**< Telegram bot page and the Telegram bot. */
+#define ENABLE_WINLINK        /**< Winlink (APRSLink) radio e-mail page and client. Requires ::ENABLE_MESSAGE. */
+#define ENABLE_LOGS           /**< Console Logs page and the log capture behind it. */
+#define ENABLE_SYSTEM         /**< System page and the factory reset route. */
+#define ENABLE_WIRELESS       /**< Wireless page and the WiFi scan route. */
+#define ENABLE_FILE_STORAGE   /**< File Storage page and its download, upload, delete and format routes. */
+#define ENABLE_ABOUT_FIRMWARE /**< About / Firmware page and the OTA update route. */
+/** @} */
+
+#if defined(ENABLE_MSG_CHAT) && !defined(ENABLE_MESSAGE)
+#error "ENABLE_MSG_CHAT requires ENABLE_MESSAGE: the chat page sends and lists messages through the APRS Message service."
+#endif
+
+#if defined(ENABLE_WINLINK) && !defined(ENABLE_MESSAGE)
+#error "ENABLE_WINLINK requires ENABLE_MESSAGE: the Winlink client talks to the service through the APRS Message service."
+#endif
+
+/**
+ * @name Shared code selection
+ *
+ * Derived from the module enables above, never set by hand: each one is
+ * defined while at least one module that uses the shared piece it names is in
+ * the build, so that piece leaves the image only together with its last user.
+ * @{
+ */
+
+#if defined(ENABLE_IGATE) || defined(ENABLE_BRANDMEISTER) || defined(ENABLE_MESSAGE) || defined(ENABLE_QUERY) || defined(ENABLE_DIGIPEATER) ||                 \
+    defined(ENABLE_TRACKER) || defined(ENABLE_WEATHER) || defined(ENABLE_TELEMETRY) || defined(ENABLE_BULLETINS) || defined(ENABLE_OBJECTS_ITEMS)
+/**
+ * @brief The APRS-IS client is built: the connection task, the login, the
+ * server failover, the receive-line handling and igate_send_raw().
+ *
+ * It is the IGate's uplink, and also the Internet leg of every module that
+ * offers one: the digipeater and tracker beacons, weather, telemetry,
+ * bulletins, objects/items, messaging, the query responder and the
+ * BrandMeister interconnect.
+ */
+#define BUILD_APRS_IS
+#endif
+
+#if defined(ENABLE_IGATE) || defined(ENABLE_DIGIPEATER)
+/**
+ * @brief The duplicate-suppression cache is built: shared by the IGate's
+ * RF->INET gate and the digipeater's RF->RF repeat window.
+ */
+#define BUILD_DUP_CACHE
+#endif
+
+#if defined(ENABLE_IGATE) || defined(ENABLE_DIGIPEATER) || defined(ENABLE_TRACKER) || defined(ENABLE_WEATHER) || defined(ENABLE_TELEMETRY) ||                  \
+    defined(ENABLE_MESSAGE) || defined(ENABLE_QUERY) || defined(ENABLE_OBJECTS_ITEMS)
+/**
+ * @brief The four shared digipeater path presets (::app_config_t::path) have
+ * a user: some built module transmits on RF through a path selected from them.
+ */
+#define BUILD_PATH_PRESETS
+#endif
+
+#if defined(ENABLE_MESSAGE) || defined(ENABLE_QUERY) || defined(ENABLE_TELEGRAM)
+/**
+ * @brief The ":ADDRESSEE:" receive parser handleIncomingAPRS() is built: it
+ * feeds the APRS Message service, the directed queries of the query responder
+ * and the Telegram routing of messages and bulletins.
+ */
+#define BUILD_MSG_PARSER
+#endif
+
+#if defined(ENABLE_WEATHER) || defined(ENABLE_TELEMETRY)
+/**
+ * @brief The local sensor registry is brought up at boot and refreshed: the
+ * weather report and the telemetry channels both read it.
+ */
+#define BUILD_SENSORS
+#endif
+
+#if defined(ENABLE_IGATE) || defined(ENABLE_DIGIPEATER) || defined(ENABLE_TRACKER)
+/**
+ * @brief The position and status beacon builders are built: the IGate,
+ * digipeater and tracker beacons all go through them.
+ */
+#define BUILD_BEACONS
+#endif
+
+/** @} */
 
 /**
  * @brief Whether the web admin may hand a stored secret back to the browser in
@@ -130,7 +239,6 @@
  * from an untouched field.
  */
 #define ALLOW_SHOW_PASSWORD 0
-/** @} */
 
 /**
  * @name Winlink (APRSLink) accepted ranges

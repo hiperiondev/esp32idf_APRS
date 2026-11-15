@@ -82,8 +82,15 @@ Il task client APRS-IS
   essere ``<lettera>/<argomenti>`` con il numero di argomenti corretto per quella
   lettera di filtro.
 * **Uplink condiviso.** Il task è sempre in esecuzione, perché lo stesso socket è
-  usato dal componente di messaggistica (``igate_send_raw()``) e dal "beacon a
-  internet". Resta inattivo a basso costo quando niente lo richiede.
+  la gamba Internet di ogni modulo che ne ha una — beacon, meteo, telemetria,
+  bollettini, oggetti/item, messaggistica, il risponditore di query e
+  BrandMeister — tramite ``igate_send_raw()``. Resta inattivo a basso costo
+  quando niente lo richiede, e apre la sessione appena l'interruttore Internet
+  di un qualsiasi modulo compilato lo chiede (telemetria, bollettini e
+  oggetti/item lo comunicano con ``igate_uplink_demand()``). Il client è
+  compilato quando lo è uno qualsiasi di quei moduli (``BUILD_APRS_IS``), quindi
+  una compilazione senza ``ENABLE_IGATE`` lo conserva, senza il gating nelle due
+  direzioni; vedi :ref:`it-config-module-switches`.
 * **Rilevamento del collegamento morto.** ``net_state_is_connected()`` rileva
   solo la caduta del Wi-Fi della stazione stessa; non dice nulla sul fatto che
   l'altro capo di un socket APRS-IS già aperto sia rimasto muto — una voce

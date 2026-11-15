@@ -48,7 +48,18 @@
 #include "weather_telemetry.h" // aprs_mice_encode()
 #include "winlink.h"           // winlink_comment_active(), WL_BEACON_COMMENT_MARKER
 
+#ifdef BUILD_BEACONS
+
 static const char *TAG = "beacon";
+
+// Whether this station accepts APRS messages, as every position report states
+// in its data type identifier: true only while the APRS Message service is
+// built and switched on.
+#ifdef ENABLE_MESSAGE
+#define BEACON_MSG_CAPABLE() (g_config.msg_enable)
+#else
+#define BEACON_MSG_CAPABLE() (false)
+#endif
 
 // Same software-identifier destination call used by the message component
 // (components/message/message.c) for consistency across the firmware.
@@ -153,7 +164,7 @@ typedef struct {
     // own data type identifier has to state: '!' and '/' mean it does not,
     // '=' and '@' mean it does (APRS101 ch.6). Receiving clients read that bit
     // to decide whether to offer their operator a reply path, so it is not
-    // decorative. Sourced from g_config.msg_enable by each per-service
+    // decorative. Sourced from BEACON_MSG_CAPABLE() by each per-service
     // function below, in the same snapshot as every other field here.
     bool msgCapable;
     // When set, the WGS-84 human-readable "!DAO!" precision/datum extension
@@ -272,6 +283,7 @@ static void buildHgdCodes(float gain, uint16_t height, uint8_t dir, char *out, s
     snprintf(out, outMax, "%c%c%c", '0' + H, '0' + G, '0' + D);
 }
 
+#ifdef ENABLE_TELEMETRY
 // Case-insensitive exact-length compare of two NUL-terminated base callsigns,
 // same rule aprs_service.c's base_call_equals() applies to APRS-IS echo
 // detection: callsigns are conventionally uppercase on air, but the two
@@ -293,6 +305,7 @@ static bool call_equals_ci(const char *a, const char *b) {
     }
     return a[i] == b[i]; // both NUL at the same position
 }
+#endif
 
 // Fills dst with the on-air form of one of this station's free-text fields:
 // reserved characters removed, and the APRS-IS no-archive marker prefixed
@@ -315,6 +328,7 @@ static bool call_equals_ci(const char *a, const char *b) {
 static void buildCommentField(const char *src, char *dst, size_t dst_size) {
     aprs_free_text_build(src, g_config.my_no_archive, dst, dst_size);
 
+#ifdef ENABLE_WINLINK
     if (!winlink_comment_active())
         return;
 
@@ -323,6 +337,7 @@ static void buildCommentField(const char *src, char *dst, size_t dst_size) {
         str_append(dst, dst_size, &used, "%s", WL_BEACON_COMMENT_MARKER);
     else
         ESP_LOGW(TAG, "Comment leaves no room for the Winlink marker - shorten it to have this station announced as a Winlink reader");
+#endif
 }
 
 // Resolves the optional APRS 1.2 base-91 comment telemetry group
@@ -340,15 +355,20 @@ static void buildCommentField(const char *src, char *dst, size_t dst_size) {
 // silently dropped (telemetry_build_comment_tlm() logs why) rather than
 // truncated, since a truncated base-91 pair decodes to a wrong value instead
 // of a missing one.
+//
+// Without ::ENABLE_TELEMETRY there is no telemetry station, so no beacon
+// carries a group.
 static void appendCommentTelemetry(beacon_params_t *p) {
     p->cmtTlm[0] = 0;
 
+#ifdef ENABLE_TELEMETRY
     telemetry_config_t tlmCfg;
     telemetry_config_load(&tlmCfg);
     if (!tlmCfg.mycall[0] || !call_equals_ci(tlmCfg.mycall, p->call) || tlmCfg.ssid != p->ssid)
         return;
 
     telemetry_build_comment_tlm(p->cmtTlm, sizeof(p->cmtTlm));
+#endif
 }
 
 // Builds the 7-byte "RNGrrrr" Pre-Calculated Radio Range data extension
@@ -1196,10 +1216,17 @@ static void txStatusBeacon(const status_params_t *p, bool toRf, bool toInet, con
 // position beacon and sent over the same RF/INET legs (_loc2rf, _loc2inet)
 // as that page's position beacon, at its own independent schedule.
 // ---------------------------------------------------------------------------
+#ifdef ENABLE_TRACKER
 static int64_t s_trk_sts_next_due = 0;
+#endif
+#ifdef ENABLE_IGATE
 static int64_t s_igate_sts_next_due = 0;
+#endif
+#ifdef ENABLE_DIGIPEATER
 static int64_t s_digi_sts_next_due = 0;
+#endif
 
+#ifdef ENABLE_TRACKER
 static uint32_t trackerStatusService(void) {
     if (!g_config.trk_en || g_config.trk_sts_interval == 0 || (!g_config.trk_loc2rf && !g_config.trk_loc2inet)) {
         s_trk_sts_next_due = 0;
@@ -1242,7 +1269,9 @@ static uint32_t trackerStatusService(void) {
         rem = 1;
     return (uint32_t)rem;
 }
+#endif
 
+#ifdef ENABLE_IGATE
 static uint32_t igateStatusService(void) {
     if (!g_config.igate_en || g_config.igate_sts_interval == 0 || (!g_config.igate_loc2rf && !g_config.igate_loc2inet)) {
         s_igate_sts_next_due = 0;
@@ -1283,7 +1312,9 @@ static uint32_t igateStatusService(void) {
         rem = 1;
     return (uint32_t)rem;
 }
+#endif
 
+#ifdef ENABLE_DIGIPEATER
 static uint32_t digiStatusService(void) {
     if (!g_config.digi_en || g_config.digi_sts_interval == 0 || (!g_config.digi_loc2rf && !g_config.digi_loc2inet)) {
         s_digi_sts_next_due = 0;
@@ -1326,7 +1357,9 @@ static uint32_t digiStatusService(void) {
         rem = 1;
     return (uint32_t)rem;
 }
+#endif
 
+#ifdef ENABLE_TRACKER
 // ---------------------------------------------------------------------------
 // Tracker beacon (Tracker web admin page: g_config.trk_*)
 // ---------------------------------------------------------------------------
@@ -1335,6 +1368,10 @@ static uint32_t digiStatusService(void) {
 // begins counting out its interval.
 static int64_t s_trk_next_due = 0;
 
+// SmartBeaconing rates and pegs corners on the live GPS fix, so it exists only
+// with the GNSS receiver in the build; without it the tracker beacons its
+// fixed position at its fixed interval.
+#ifdef ENABLE_GPS
 // ---------------------------------------------------------------------------
 // SmartBeaconing (Hans-Gunnar Lundahl / HamHUD algorithm)
 //
@@ -1477,6 +1514,7 @@ static bool smartBeaconingCornerPegged(double headingDeg, double speedKmh, int64
 // without perturbing the scheduler's own sleep budget (::BEACON_SCHED_POLL_CAP_S
 // already bounds every service's own re-check interval to 30 s).
 #define TRK_SB_CORNER_POLL_S 5
+#endif // ENABLE_GPS
 
 // One serviced pass of the tracker beacon. Called by the shared beacon
 // scheduler (beacon_scheduler.c) via beacon_service(); returns the number of
@@ -1491,13 +1529,16 @@ static bool smartBeaconingCornerPegged(double headingDeg, double speedKmh, int64
 // before the rate interval alone would have.
 static uint32_t trackerBeaconService(void) {
     if (!g_config.trk_en || (!g_config.trk_loc2rf && !g_config.trk_loc2inet)) {
-        s_trk_next_due = 0;     // reset so (re-)enabling the beacon fires an immediate TX
+        s_trk_next_due = 0; // reset so (re-)enabling the beacon fires an immediate TX
+#ifdef ENABLE_GPS
         s_sb_have_last = false; // corner-pegging has no baseline to resume from once the beacon has been off
-        return 5;               // idle re-check cadence while the beacon is off
+#endif
+        return 5; // idle re-check cadence while the beacon is off
     }
 
     int64_t now = sched_mono_seconds();
 
+#ifdef ENABLE_GPS
     bool useLiveGps, sbEnable;
     app_config_lock();
     useLiveGps = g_config.trk_use_live_gps;
@@ -1521,6 +1562,7 @@ static uint32_t trackerBeaconService(void) {
             }
         }
     }
+#endif
 
     if (now >= s_trk_next_due) {
         beacon_params_t p = { 0 };
@@ -1538,7 +1580,7 @@ static uint32_t trackerBeaconService(void) {
             p.compress = g_config.trk_compress;
             p.mice = g_config.trk_mice;
             p.miceMsg = g_config.trk_mice_msg;
-            p.msgCapable = g_config.msg_enable;
+            p.msgCapable = BEACON_MSG_CAPABLE();
             p.ambiguity = g_config.pos_ambiguity;
             p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.trk_symbol, sizeof(p.symbol));
@@ -1584,6 +1626,7 @@ static uint32_t trackerBeaconService(void) {
         // trk_interval alone.
         uint32_t sbIntervalSec = 0;
 
+#ifdef ENABLE_GPS
         if (useLiveGps) {
             gps_data_t g;
             if (gps_snapshot(&g) && g.valid && g.has_position) {
@@ -1630,6 +1673,7 @@ static uint32_t trackerBeaconService(void) {
                 }
             }
         }
+#endif
 
         appendCommentTelemetry(&p);
 
@@ -1648,13 +1692,18 @@ static uint32_t trackerBeaconService(void) {
     // interval can be tens of minutes) would otherwise leave a heading change
     // undetected until that whole interval elapses, which is exactly the
     // latency corner-pegging exists to avoid.
+#ifdef ENABLE_GPS
     if (useLiveGps && sbEnable && rem > TRK_SB_CORNER_POLL_S)
         rem = TRK_SB_CORNER_POLL_S;
+#endif
     if (rem < 1)
         rem = 1;
     return (uint32_t)rem;
 }
 
+#endif // ENABLE_TRACKER
+
+#ifdef ENABLE_IGATE
 // ---------------------------------------------------------------------------
 // IGate beacon (IGate web admin page: g_config.igate_*)
 // ---------------------------------------------------------------------------
@@ -1680,7 +1729,7 @@ static uint32_t igateBeaconService(void) {
             p.alt = g_config.igate_alt;
             p.sendAltitude = g_config.igate_alt != 0.0f;
             p.compress = g_config.igate_compress;
-            p.msgCapable = g_config.msg_enable;
+            p.msgCapable = BEACON_MSG_CAPABLE();
             p.ambiguity = g_config.pos_ambiguity;
             p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.igate_symbol, sizeof(p.symbol));
@@ -1739,7 +1788,7 @@ static void fillIgatePositionParams(beacon_params_t *p) {
         p->alt = g_config.igate_alt;
         p->sendAltitude = g_config.igate_alt != 0.0f;
         p->compress = g_config.igate_compress;
-        p->msgCapable = g_config.msg_enable;
+        p->msgCapable = BEACON_MSG_CAPABLE();
         memcpy(p->symbol, g_config.igate_symbol, sizeof(p->symbol));
         char igateCommentStripped[COMMENT_SIZE];
         buildCommentField(g_config.igate_comment, igateCommentStripped, sizeof(igateCommentStripped));
@@ -1801,6 +1850,9 @@ int beacon_build_igate_status_packet(const char *path, char *out, size_t out_max
     return buildStatusPacket(&p, path, out, out_max);
 }
 
+#endif // ENABLE_IGATE
+
+#ifdef ENABLE_DIGIPEATER
 // ---------------------------------------------------------------------------
 // Digipeater beacon (Digipeater web admin page: g_config.digi_*)
 // ---------------------------------------------------------------------------
@@ -1827,7 +1879,7 @@ static uint32_t digiBeaconService(void) {
             p.alt = g_config.digi_alt;
             p.sendAltitude = g_config.digi_alt != 0.0f;
             p.compress = g_config.digi_compress;
-            p.msgCapable = g_config.msg_enable;
+            p.msgCapable = BEACON_MSG_CAPABLE();
             p.ambiguity = g_config.pos_ambiguity;
             p.daoEnable = g_config.pos_dao_en;
             memcpy(p.symbol, g_config.digi_symbol, sizeof(p.symbol));
@@ -1874,45 +1926,67 @@ static uint32_t digiBeaconService(void) {
     return (uint32_t)rem;
 }
 
-// Service all three position beacons in one pass and return the number of
-// seconds until the soonest of them next wants servicing. Called from the
+#endif // ENABLE_DIGIPEATER
+
+// Service the position and status beacons of every module in the build in one
+// pass and return the number of seconds until the soonest of them next wants
+// servicing. Called from the
 // shared beacon scheduler task (beacon_scheduler.c) so the tracker/igate/digi
 // beacons do not each need their own FreeRTOS task and 12 KB stack - they
 // share the scheduler's single stack, run sequentially (the half-duplex modem
 // serialises them anyway), and keep their independent enable flags/intervals
 // via the per-beacon s_*_next_due timers above.
 uint32_t beacon_service(void) {
-    uint32_t soonest = trackerBeaconService();
+    // Only the beacons of the modules in the build are serviced.
+    uint32_t soonest = UINT32_MAX;
     uint32_t s;
-    s = igateBeaconService();
-    if (s < soonest)
-        soonest = s;
-    s = digiBeaconService();
+#ifdef ENABLE_TRACKER
+    s = trackerBeaconService();
     if (s < soonest)
         soonest = s;
     s = trackerStatusService();
     if (s < soonest)
         soonest = s;
+#endif
+#ifdef ENABLE_IGATE
+    s = igateBeaconService();
+    if (s < soonest)
+        soonest = s;
     s = igateStatusService();
+    if (s < soonest)
+        soonest = s;
+#endif
+#ifdef ENABLE_DIGIPEATER
+    s = digiBeaconService();
     if (s < soonest)
         soonest = s;
     s = digiStatusService();
     if (s < soonest)
         soonest = s;
+#endif
     return soonest;
 }
 
 void beacon_start(void) {
     // No task creation here: the tracker/igate/digi beacons are driven by the
     // shared beacon scheduler (beacon_scheduler_start()), which calls
-    // beacon_service() above. This just logs the configured state.
+    // beacon_service() above. This just logs the configured state of the
+    // beacons this build carries.
+#ifdef ENABLE_TRACKER
     ESP_LOGI(TAG, "Tracker beacon configured (en=%d rf=%d inet=%d interval=%us)", g_config.trk_en, g_config.trk_loc2rf, g_config.trk_loc2inet,
              (unsigned)g_config.trk_interval);
+    ESP_LOGI(TAG, "Tracker status beacon configured (en=%d interval=%us)", g_config.trk_en, (unsigned)g_config.trk_sts_interval);
+#endif
+#ifdef ENABLE_IGATE
     ESP_LOGI(TAG, "IGate beacon configured (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.igate_en, g_config.igate_bcn, g_config.igate_loc2rf,
              g_config.igate_loc2inet, (unsigned)g_config.igate_interval);
+    ESP_LOGI(TAG, "IGate status beacon configured (en=%d interval=%us)", g_config.igate_en, (unsigned)g_config.igate_sts_interval);
+#endif
+#ifdef ENABLE_DIGIPEATER
     ESP_LOGI(TAG, "Digipeater beacon configured (en=%d bcn=%d rf=%d inet=%d interval=%us)", g_config.digi_en, g_config.digi_bcn, g_config.digi_loc2rf,
              g_config.digi_loc2inet, (unsigned)g_config.digi_interval);
-    ESP_LOGI(TAG, "Tracker status beacon configured (en=%d interval=%us)", g_config.trk_en, (unsigned)g_config.trk_sts_interval);
-    ESP_LOGI(TAG, "IGate status beacon configured (en=%d interval=%us)", g_config.igate_en, (unsigned)g_config.igate_sts_interval);
     ESP_LOGI(TAG, "Digipeater status beacon configured (en=%d interval=%us)", g_config.digi_en, (unsigned)g_config.digi_sts_interval);
+#endif
 }
+
+#endif // BUILD_BEACONS

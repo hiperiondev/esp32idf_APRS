@@ -79,8 +79,15 @@ La tarea cliente de APRS-IS
   cada término separado por espacios debe ser ``<letra>/<args>`` con el número de
   argumentos correcto para esa letra de filtro.
 * **Enlace de subida compartido.** La tarea siempre se ejecuta, porque el mismo
-  socket lo usan el componente de mensajería (``igate_send_raw()``) y la "baliza
-  a internet". Queda en reposo de forma barata cuando nada lo necesita.
+  socket es la pata de Internet de todo módulo que tiene una — balizas, meteo,
+  telemetría, boletines, objetos/ítems, mensajería, el respondedor de consultas
+  y BrandMeister — a través de ``igate_send_raw()``. Queda en reposo de forma
+  barata cuando nada lo necesita, y abre la sesión en cuanto el interruptor de
+  Internet de cualquier módulo compilado lo pide (telemetría, boletines y
+  objetos/ítems lo informan con ``igate_uplink_demand()``). El cliente se
+  compila siempre que lo esté alguno de esos módulos (``BUILD_APRS_IS``), así que
+  una compilación sin ``ENABLE_IGATE`` lo conserva, sin el gating en ambos
+  sentidos; ver :ref:`es-config-module-switches`.
 * **Detección de enlace muerto.** ``net_state_is_connected()`` solo detecta que
   el propio Wi-Fi de la estación se cayó; no dice nada de que el otro extremo
   de un socket APRS-IS ya abierto se quede callado — una entrada NAT/firewall

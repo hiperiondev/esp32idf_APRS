@@ -15,13 +15,15 @@ APRS-IS from the fields the operator mapped on the *Weather* web-admin page
 The three moving parts
 ======================
 
+``aprs_service_start()`` first brings up **the registry** —
+``sensors_local_init()`` creates the registry mutex and
+``sensors_local_init_all()`` runs each auto-registered driver's ``init()`` —
+whenever weather or telemetry is in the build, since both read it. Then
 ``weather_start()`` (called once at boot) sets up:
 
 #. **The shared container.** ``weather_telemetry_data`` is wired to static
    backing storage for one ``aprs_weather_report_t`` and one
    ``aprs_telemetry_report_t``.
-#. **The registry.** ``sensors_local_init()`` creates the registry mutex and
-   ``sensors_local_init_all()`` runs each auto-registered driver's ``init()``.
 #. **Two service callbacks.** ``weather_service_1hz()`` (run at 1 Hz by the
    APRS service tick) and ``weather_beacon_service()`` (run by the shared
    beacon scheduler).

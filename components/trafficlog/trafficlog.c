@@ -30,6 +30,8 @@
 #include "freertos/semphr.h"
 #include "json_escape.h" // json_escape()
 
+#ifdef ENABLE_DASHBOARD
+
 // Number of lines kept in RAM. The ring is a backlog, not the history the
 // operator reads: the dashboard keeps its own much longer list of rows in the
 // browser and only asks the firmware for what it has not seen yet, since
@@ -313,3 +315,5 @@ size_t trafficlog_next_json(uint32_t after_seq, uint32_t max_seq, char *out, siz
         *out_seq = e.seq;
     return (size_t)n;
 }
+
+#endif // ENABLE_DASHBOARD

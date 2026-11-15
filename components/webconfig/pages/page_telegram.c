@@ -37,6 +37,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "app_config.h"
 #include "esp_log.h"
 #include "heap_monitor.h" // HEAP_MONITOR_BRACKET() - each form buffer below is a single multi-kilobyte block
 #include "json_escape.h"  // json_escape()
@@ -46,6 +47,8 @@
 #include "translations.h"
 #include "web_common.h"
 #include "web_help.h"
+
+#ifdef ENABLE_TELEGRAM
 
 static const char *TAG = "page_telegram";
 
@@ -612,3 +615,5 @@ esp_err_t page_telegram_post(httpd_req_t *req) {
     web_send_save_result(req, ok, "/telegram");
     return ESP_OK;
 }
+
+#endif // ENABLE_TELEGRAM

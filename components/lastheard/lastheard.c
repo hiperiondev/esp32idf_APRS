@@ -490,6 +490,7 @@ bool lastheard_heard_history(const char *callsign, uint16_t out[LASTHEARD_HEARD_
     return found;
 }
 
+#ifdef ENABLE_DASHBOARD
 size_t lastheard_dump_json(char *out, size_t out_size) {
     if (!s_inited || out == NULL || out_size < 4)
         return 0;
@@ -555,3 +556,4 @@ size_t lastheard_dump_json(char *out, size_t out_size) {
         pos += (size_t)n;
     return pos;
 }
+#endif

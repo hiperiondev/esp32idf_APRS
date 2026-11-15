@@ -25,7 +25,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "app_config.h"   // ENABLE_BULLETINS / ENABLE_OBJECTS_ITEMS
+#include "app_config.h"   // module enables: which services the scheduler polls
 #include "aprs_service.h" // aprs_service_set_beacon_context()
 #include "beacon.h"
 #include "beacon_scheduler.h"
@@ -105,7 +105,7 @@ uint32_t beacon_scheduler_jitter(uint32_t interval_s) {
     return (uint32_t)v;
 }
 
-static uint32_t min_u32(uint32_t a, uint32_t b) {
+static inline uint32_t min_u32(uint32_t a, uint32_t b) {
     return a < b ? a : b;
 }
 
@@ -171,15 +171,26 @@ static void beacon_scheduler_task(void *arg) {
         // a "?APRSO" answer works by asking objitems_service() - further down
         // this same pass - to re-announce every element, so serving the queue
         // here is what puts those on the air without a pass of latency.
+#ifdef ENABLE_QUERY
         query_service();
+#endif
 
         // Each service transmits whatever is due and returns seconds-until-next.
+        // Only the services of the modules in the build are polled.
         uint32_t soonest = BEACON_SCHED_POLL_CAP_S;
 
-        soonest = min_u32(soonest, beacon_service());             // tracker + igate + digi
-        soonest = min_u32(soonest, weather_beacon_service());     // WX report
-        soonest = min_u32(soonest, telemetry_beacon_service());   // Telemetry (Binary B1-B8) report
+#ifdef BUILD_BEACONS
+        soonest = min_u32(soonest, beacon_service()); // tracker + igate + digi
+#endif
+#ifdef ENABLE_WEATHER
+        soonest = min_u32(soonest, weather_beacon_service()); // WX report
+#endif
+#ifdef ENABLE_TELEMETRY
+        soonest = min_u32(soonest, telemetry_beacon_service()); // Telemetry (Binary B1-B8) report
+#endif
+#ifdef ENABLE_QUERY
         soonest = min_u32(soonest, query_capabilities_service()); // Station Capabilities line
+#endif
 #ifdef ENABLE_BULLETINS
         soonest = min_u32(soonest, bulletins_service()); // BLN1..BLNn
 #endif

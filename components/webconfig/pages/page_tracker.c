@@ -37,6 +37,8 @@
 #include "translations.h"
 #include "web_common.h"
 
+#ifdef ENABLE_TRACKER
+
 static const char *TAG = "page_tracker";
 
 // Duplex-direction <select>. UI values 0=simplex, 1=+, 2=- (converted to the
@@ -93,7 +95,9 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     web_field_text(req, TR_F_MY_CALLSIGN, "trkMycall", g_config.trk_mycall, 9);
     web_field_int(req, TR_F_SSID, "trkSSID", g_config.trk_ssid, WEB_RANGE_SSID_MIN, WEB_RANGE_SSID_MAX);
     web_field_path_checkboxes(req, "trkPath", g_config.trk_path);
+#ifdef ENABLE_GPS
     web_field_use_gps_data(req, "trkUseGps", g_config.trk_use_gps, "trkUseStation", "trkLAT", "trkLON", "trkALT", NULL, NULL);
+#endif
     web_field_float(req, TR_F_FIXED_LATITUDE, "trkLAT", g_config.trk_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
     web_field_float(req, TR_F_FIXED_LONGITUDE, "trkLON", g_config.trk_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
     web_field_float(req, TR_F_FIXED_ALTITUDE_M, "trkALT", g_config.trk_alt, "0.1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
@@ -103,9 +107,12 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     // main/beacon.c), carrying live course and speed alongside position. The
     // fixed fields stay in effect whenever the receiver is off or has no
     // current fix.
+#ifdef ENABLE_GPS
     web_field_checkbox(req, TR_F_TRACKER_USE_LIVE_GPS, "trkUseLiveGps", g_config.trk_use_live_gps);
+#endif
     web_fieldset_close(req);
 
+#ifdef ENABLE_GPS
     // SMARTBEACONING -----------------------------------------------------
     // Dynamic beacon interval driven by live GPS speed/course (Hans-Gunnar
     // Lundahl / HamHUD algorithm, see trackerBeaconService() in
@@ -125,6 +132,7 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     web_field_int(req, TR_F_SMARTBEACONING_MIN_TURN_TIME_S, "trkSbMinTurnTime", g_config.trk_sb_min_turn_time, TRK_SB_MIN_TURN_TIME_S_MIN,
                   TRK_SB_MIN_TURN_TIME_S_MAX);
     web_fieldset_close(req);
+#endif
 
     web_fieldset_open(req, TR_F_OPTIONS);
     web_field_checkbox(req, TR_F_COMPRESS_POSITION, "trkCompress", g_config.trk_compress);
@@ -166,6 +174,7 @@ esp_err_t page_tracker_get(httpd_req_t *req) {
     return ESP_OK;
 }
 
+#ifdef ENABLE_GPS
 // Reads an integer form field and clamps it into [min, max], the same
 // two-layer policy every other bounded field on this page applies: the
 // browser's own min/max attributes are the first line of defence, this is
@@ -179,6 +188,7 @@ static long web_form_get_clamped_int(const char *body, const char *key, long def
         v = max;
     return v;
 }
+#endif
 
 esp_err_t page_tracker_post(httpd_req_t *req) {
     if (!web_check_auth_admin(req))
@@ -195,12 +205,13 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
     app_config_lock();
     g_config.trk_en = web_form_get_bool(body, "trkEn");
     g_config.trk_use_station = web_form_get_bool(body, "trkUseStation");
-    g_config.trk_use_gps = web_form_get_bool(body, "trkUseGps");
-    g_config.trk_use_live_gps = web_form_get_bool(body, "trkUseLiveGps");
     g_config.trk_loc2rf = web_form_get_bool(body, "trkPos2rf");
     g_config.trk_loc2inet = web_form_get_bool(body, "trkPos2inet");
     g_config.trk_timestamp = web_form_get_bool(body, "trkTime");
 
+#ifdef ENABLE_GPS
+    g_config.trk_use_gps = web_form_get_bool(body, "trkUseGps");
+    g_config.trk_use_live_gps = web_form_get_bool(body, "trkUseLiveGps");
     if (g_config.trk_use_gps) {
         web_form_get_call(body, "trkMycall", g_config.trk_mycall, sizeof(g_config.trk_mycall));
         gps_data_t g;
@@ -212,7 +223,9 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
             if (g.has_altitude)
                 g_config.trk_alt = (float)g.altitude_m;
         }
-    } else if (g_config.trk_use_station) {
+    } else
+#endif
+        if (g_config.trk_use_station) {
         strncpy(g_config.trk_mycall, g_config.my_callsign, sizeof(g_config.trk_mycall) - 1);
         g_config.trk_mycall[sizeof(g_config.trk_mycall) - 1] = 0;
         g_config.trk_lat = g_config.my_lat;
@@ -233,6 +246,9 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
     // this page. High speed is additionally floored at low speed, since
     // smartBeaconingInterval() (main/beacon.c) treats a high threshold below
     // the low one as degenerate and falls back to the slow rate outright.
+    // It runs on the live GPS fix, so it is on the page only with the
+    // receiver in the build.
+#ifdef ENABLE_GPS
     g_config.trk_sb_enable = web_form_get_bool(body, "trkSbEn");
     g_config.trk_sb_slow_interval =
         (uint16_t)web_form_get_clamped_int(body, "trkSbSlowIntv", g_config.trk_sb_slow_interval, TRK_SB_SLOW_INTERVAL_S_MIN, TRK_SB_SLOW_INTERVAL_S_MAX);
@@ -250,6 +266,7 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
         (uint16_t)web_form_get_clamped_int(body, "trkSbTurnSlope", g_config.trk_sb_turn_slope, TRK_SB_TURN_SLOPE_MIN, TRK_SB_TURN_SLOPE_MAX);
     g_config.trk_sb_min_turn_time =
         (uint16_t)web_form_get_clamped_int(body, "trkSbMinTurnTime", g_config.trk_sb_min_turn_time, TRK_SB_MIN_TURN_TIME_S_MIN, TRK_SB_MIN_TURN_TIME_S_MAX);
+#endif
 
     g_config.trk_compress = web_form_get_bool(body, "trkCompress");
     g_config.trk_phg_enable = web_form_get_bool(body, "trkPHG");
@@ -320,3 +337,5 @@ esp_err_t page_tracker_post(httpd_req_t *req) {
     web_send_save_result(req, ok, "/tracker");
     return ESP_OK;
 }
+
+#endif // ENABLE_TRACKER

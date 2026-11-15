@@ -436,7 +436,9 @@ static void app_task(void *arg) {
     // instead of "no data". The GPS page's save handler calls this again
     // whenever the switch moves, so enabling or disabling the receiver needs
     // no reboot.
+#ifdef ENABLE_GPS
     gps_apply_config();
+#endif
 
     // If this boot is running an image that the web admin's OTA Update
     // (About / Firmware page) just flashed, CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE
@@ -512,7 +514,9 @@ static void app_task(void *arg) {
     // never blocks the boot behind a TLS handshake. The Telegram page's save
     // handler calls this again whenever a setting moves, so the bot needs no
     // reboot.
+#ifdef ENABLE_TELEGRAM
     telegram_app_apply_config();
+#endif
 
     // The web admin server is started last, once every other service above
     // has already made its allocations: esp_http_server's own buffers and

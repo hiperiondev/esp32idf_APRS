@@ -62,6 +62,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "app_config.h" // ENABLE_TELEMETRY: the entry points below are declared only when the subsystem is built
 #include "must_check.h" // APRS_MUST_CHECK: the persistence entry points below may not have their result discarded
 
 /**
@@ -179,6 +180,7 @@ typedef struct {
                                never replaces, the "T#..." report. */
 } telemetry_config_t;
 
+#ifdef ENABLE_TELEMETRY
 /**
  * @brief Load the telemetry configuration from /storage/telemetry.json into
  * @p out.
@@ -217,10 +219,10 @@ void telemetry_config_set_defaults(telemetry_config_t *out);
  *        per-bit resolved state, and make sure /storage/telemetry.json
  *        exists (creating it with defaults if this is the first boot).
  *
- * Safe to call once from application start-up (after config load and after
- * ::weather_start, which already brings up the shared ::sensors_local
- * registry via sensors_local_init()/sensors_local_init_all() - this module
- * only reads that registry, it does not initialise it again).
+ * Safe to call once from application start-up, after config load and after
+ * aprs_service_start() has brought up the shared ::sensors_local registry via
+ * sensors_local_init()/sensors_local_init_all() - this module only reads that
+ * registry, it does not initialise it again.
  */
 void telemetry_start(void);
 
@@ -296,6 +298,7 @@ void telemetry_get_mycall(char *out, size_t out_size);
  *         to hold the group.
  */
 size_t telemetry_build_comment_tlm(char *out, size_t out_max);
+#endif
 
 /**
  * @brief The readings the 1 Hz refresh resolved for every analog channel and
@@ -315,6 +318,7 @@ typedef struct {
     bool digital_value[TLM_BIT_NUM];   /**< Raw state of B1-B8, before @c bit_sense is applied. */
 } telemetry_values_t;
 
+#ifdef ENABLE_TELEMETRY
 /**
  * @brief Copy the latest resolved readings into @p out.
  *
@@ -327,5 +331,6 @@ typedef struct {
  *            mapping for the refresh to work from.
  */
 void telemetry_get_values(telemetry_values_t *out);
+#endif
 
 #endif // TELEMETRY_H

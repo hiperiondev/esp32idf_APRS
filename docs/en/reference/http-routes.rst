@@ -25,6 +25,14 @@ Storage page. The three exceptions are ``/logs/start``, ``/logs/stop`` and
 what they switch is a mirror of the station's own console output and nothing on
 the station changes with it.
 
+The table lists every route of a build with all modules enabled. Each module's
+routes are registered only when that module is in the build (see
+:ref:`en-config-module-switches`), so a route of a module left out answers
+``404``. ``GET /`` redirects to the first page of the sidebar — the Dashboard
+when it is built. Two pages outlive their module because they also edit a
+shared setting: ``/igate`` stays as the APRS-IS client page without the IGate,
+and ``/digi`` stays as the path preset page without the digipeater.
+
 .. list-table::
    :header-rows: 1
    :widths: 16 34 50

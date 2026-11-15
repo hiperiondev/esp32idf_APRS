@@ -31,6 +31,12 @@
  * timestamped with esp_timer_get_time() (microseconds since boot) and tagged with
  * an ever-increasing sequence number so a web client can long-poll only the lines
  * it hasn't seen yet ("?since=<seq>").
+ *
+ * The ring exists only to feed the Dashboard's traffic table, so it is built
+ * only with ::ENABLE_DASHBOARD. Without it trafficlog_init(), trafficlog_add()
+ * and trafficlog_add_pkt() are inline no-ops - every call site that records a
+ * line keeps compiling and records nothing, at no RAM cost - and the two
+ * readers are not declared at all.
  */
 
 #ifndef TRAFFICLOG_H
@@ -39,9 +45,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "app_config.h" // ENABLE_DASHBOARD: the ring and its readers are built only with the Dashboard
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#ifdef ENABLE_DASHBOARD
 
 /**
  * @brief Initialise the traffic-log ring buffer. Must be called once (e.g.
@@ -156,6 +166,44 @@ uint32_t trafficlog_latest_seq(void);
  *         not be taken in time.
  */
 size_t trafficlog_next_json(uint32_t after_seq, uint32_t max_seq, char *out, size_t out_size, uint32_t *out_seq);
+
+#else
+
+/**
+ * @brief Without the Dashboard there is no ring: initialising it is a no-op.
+ */
+static inline void trafficlog_init(void) {
+}
+
+/**
+ * @brief Without the Dashboard there is no ring: the line is discarded.
+ * @param fmt printf-style format string, still checked against its arguments.
+ */
+static inline __attribute__((format(printf, 1, 2))) void trafficlog_add(const char *fmt, ...) {
+    (void)fmt;
+}
+
+/**
+ * @brief Without the Dashboard there is no ring: the entry is discarded.
+ * @param dir       Direction/type tag.
+ * @param dx        Associated station.
+ * @param packet    Raw TNC2 packet text.
+ * @param decoded   Decoded summary.
+ * @param audio_mv  Audio level in mV RMS, or -1.
+ * @param sym_table Symbol table character.
+ * @param sym_code  Symbol code character.
+ */
+static inline void trafficlog_add_pkt(const char *dir, const char *dx, const char *packet, const char *decoded, int audio_mv, char sym_table, char sym_code) {
+    (void)dir;
+    (void)dx;
+    (void)packet;
+    (void)decoded;
+    (void)audio_mv;
+    (void)sym_table;
+    (void)sym_code;
+}
+
+#endif // ENABLE_DASHBOARD
 
 #ifdef __cplusplus
 }

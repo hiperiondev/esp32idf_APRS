@@ -34,6 +34,8 @@
 #include "translations.h"
 #include "web_common.h"
 
+#ifdef ENABLE_QUERY
+
 static const char *TAG = "page_query";
 
 esp_err_t page_query_get(httpd_req_t *req) {
@@ -46,7 +48,11 @@ esp_err_t page_query_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_ENABLE_QUERY, "queryEn", g_config.query_en);
     web_field_checkbox(req, TR_F_QUERY_RF, "queryRf", g_config.query_rf);
     web_field_checkbox(req, TR_F_QUERY_INET, "queryInet", g_config.query_inet);
+    // "?APRS?" and "?IGATE?" are answered from the IGate beacon and "?WX?" from
+    // the weather report, so each switch is drawn only with its source built.
+#ifdef ENABLE_IGATE
     web_field_checkbox(req, TR_F_QUERY_APRS, "queryAprsEn", g_config.query_aprs_en);
+#endif
 #ifdef ENABLE_WEATHER
     web_field_checkbox(req, TR_F_QUERY_WX, "queryWxEn", g_config.query_wx_en);
 #endif
@@ -63,7 +69,9 @@ esp_err_t page_query_get(httpd_req_t *req) {
     // transmitter rather than a responder: it keys the radio on a timer of its
     // own, so it gets its own channel selection instead of inheriting the
     // source switches, which say where a question is listened for. Left off,
-    // the line is still sent in reply to "?IGATE?".
+    // the line is still sent in reply to "?IGATE?". The line announces the
+    // IGate, so the fieldset is drawn only with the IGate built.
+#ifdef ENABLE_IGATE
     web_fieldset_open(req, TR_F_QUERY_CAP_SECTION);
     web_field_checkbox(req, TR_F_QUERY_CAP_ENABLE, "queryCapEn", g_config.query_cap_beacon_en);
     web_field_int(req, TR_F_QUERY_CAP_INTERVAL, "queryCapIntv", (long)g_config.query_cap_interval_sec, QUERY_CAP_INTERVAL_S_MIN, QUERY_CAP_INTERVAL_S_MAX);
@@ -71,6 +79,7 @@ esp_err_t page_query_get(httpd_req_t *req) {
     web_field_checkbox(req, TR_F_BEACON_VIA_INTERNET, "queryCapInet", g_config.query_cap_inet);
     web_field_text(req, TR_F_QUERY_CAP_EXTRA, "queryCapExtra", g_config.query_cap_extra, sizeof(g_config.query_cap_extra) - 1);
     web_fieldset_close(req);
+#endif
 
     httpd_resp_sendstr_chunk(req, "<button type='submit'>" TR_BTN_SAVE "</button></form>");
     web_send_footer(req);
@@ -92,13 +101,15 @@ esp_err_t page_query_post(httpd_req_t *req) {
     g_config.query_en = web_form_get_bool(body, "queryEn");
     g_config.query_rf = web_form_get_bool(body, "queryRf");
     g_config.query_inet = web_form_get_bool(body, "queryInet");
-    g_config.query_aprs_en = web_form_get_bool(body, "queryAprsEn");
-    // These two mirror the feature gates the GET renders them under. A form
+    // These mirror the feature gates the GET renders them under. A form
     // only carries the controls that were drawn, and an absent checkbox reads
     // as false, so a build without the feature would otherwise clear the
     // stored value on every save of this page - discarding a setting the
     // operator never saw and cannot restore until the feature is compiled
     // back in.
+#ifdef ENABLE_IGATE
+    g_config.query_aprs_en = web_form_get_bool(body, "queryAprsEn");
+#endif
 #ifdef ENABLE_WEATHER
     g_config.query_wx_en = web_form_get_bool(body, "queryWxEn");
 #endif
@@ -111,10 +122,11 @@ esp_err_t page_query_post(httpd_req_t *req) {
     if (g_config.query_min_interval_sec < 5) // floor: airtime/loop safety
         g_config.query_min_interval_sec = 5;
 
-    // Capabilities beacon. The interval is clamped here and again in
-    // config_from_json(), the two-layer pattern the rest of the pages use, and
-    // the free-form tokens go through the shared sanitizer so a ',' or '>'
-    // typed into the box cannot invent a token or close the line early.
+        // Capabilities beacon. The interval is clamped here and again in
+        // config_from_json(), the two-layer pattern the rest of the pages use, and
+        // the free-form tokens go through the shared sanitizer so a ',' or '>'
+        // typed into the box cannot invent a token or close the line early.
+#ifdef ENABLE_IGATE
     g_config.query_cap_beacon_en = web_form_get_bool(body, "queryCapEn");
     {
         int iv = web_form_get_int(body, "queryCapIntv", (int)g_config.query_cap_interval_sec);
@@ -128,6 +140,7 @@ esp_err_t page_query_post(httpd_req_t *req) {
     g_config.query_cap_inet = web_form_get_bool(body, "queryCapInet");
     web_form_get(body, "queryCapExtra", g_config.query_cap_extra, sizeof(g_config.query_cap_extra));
     app_config_query_cap_extra_sanitize(g_config.query_cap_extra);
+#endif
     app_config_unlock();
 
     // The page rendered next is built from the live settings, so the save
@@ -138,3 +151,5 @@ esp_err_t page_query_post(httpd_req_t *req) {
     web_send_save_result(req, ok, "/query");
     return ESP_OK;
 }
+
+#endif // ENABLE_QUERY

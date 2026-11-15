@@ -26,6 +26,15 @@ tre eccezioni sono ``/logs/start``, ``/logs/stop`` e ``/logs/read``: sono route
 uno specchio dell'output di console della stazione stessa e nulla della
 stazione cambia con esso.
 
+La tabella elenca tutte le route di una compilazione con tutti i moduli
+abilitati. Le route di ogni modulo sono registrate solo quando quel modulo è
+nella compilazione (vedi :ref:`it-config-module-switches`), quindi una route di
+un modulo escluso risponde ``404``. ``GET /`` reindirizza alla prima pagina della
+barra laterale — la Dashboard quando è compilata. Due pagine sopravvivono al loro
+modulo perché modificano anche un'impostazione condivisa: ``/igate`` resta come
+pagina del client APRS-IS senza l'IGate, e ``/digi`` resta come pagina dei
+percorsi predefiniti senza il digipeater.
+
 .. list-table::
    :header-rows: 1
    :widths: 16 34 50

@@ -71,6 +71,9 @@
  * finds no moment with room for a session is dropped rather than kept
  * indefinitely: it describes a boot, so a late copy says nothing
  * ::telegram_app_status does not already say.
+ *
+ * Everything this header declares is declared only when ::ENABLE_TELEGRAM is defined:
+ * the bot is not built without it.
  */
 
 #ifndef TELEGRAM_APP_H
@@ -80,7 +83,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "app_config.h" // ENABLE_TELEGRAM: everything below is declared only when the bot is built
 #include "must_check.h" // APRS_MUST_CHECK: the save entry point below may not have its result discarded
+
+#ifdef ENABLE_TELEGRAM
 
 /** @brief Path of the bot's JSON store on the LittleFS storage partition. */
 #define TELEGRAM_APP_PATH "/storage/telegram.json"
@@ -500,5 +506,7 @@ void telegram_app_notify_station_message(const char *from_call, const char *to_c
  * @param[in] text       Bulletin text, decoded and trimmed.
  */
 void telegram_app_notify_bulletin(const char *from_call, const char *to_call, const char *text);
+
+#endif // ENABLE_TELEGRAM
 
 #endif // TELEGRAM_APP_H

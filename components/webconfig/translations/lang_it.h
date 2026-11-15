@@ -81,6 +81,12 @@
 #define TR_MENU_IGATE "IGate"
 /** Italian text for the sidebar navigation entry for the Digipeater page, rendered on the sidebar. English: "Digipeater". */
 #define TR_MENU_DIGI "Digipeater"
+/** Italian text for the sidebar navigation entry for the IGate page when the build carries the APRS-IS client without the IGate, rendered on the sidebar.
+ * English: "APRS-IS". */
+#define TR_MENU_APRS_IS "APRS-IS"
+/** Italian text for the sidebar navigation entry for the Digipeater page when the build carries the shared path presets without the digipeater, rendered on the
+ * sidebar. English: "Paths". */
+#define TR_MENU_PATHS "Percorsi"
 /** Italian text for the sidebar navigation entry for the Tracker page, rendered on the sidebar. English: "Tracker". */
 #define TR_MENU_TRACKER "Tracker"
 /** Italian text for the sidebar navigation entry for the Weather page, rendered on the sidebar. English: "Weather". */

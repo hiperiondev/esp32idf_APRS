@@ -36,8 +36,19 @@
 #include "web_common.h"
 #include "web_help.h"
 
+#ifdef BUILD_APRS_IS
+
 static const char *TAG = "page_igate";
 
+// Without the IGate the page carries the APRS-IS client settings alone, and is
+// titled after them.
+#ifdef ENABLE_IGATE
+#define IGATE_PAGE_TITLE TR_F_IGATE
+#else
+#define IGATE_PAGE_TITLE TR_MENU_APRS_IS
+#endif
+
+#ifdef ENABLE_IGATE
 // Bounds a range-gate radius submitted by the form. The browser already
 // carries min/max on the input, so this is the second layer: a POST does not
 // have to come from that form, and the same bounds are applied a third time on
@@ -63,6 +74,7 @@ static void render_duplex_select(httpd_req_t *req, const char *name, int8_t dupl
     web_select_option(req, 2, TR_F_OBJITEM_DUPLEX_MINUS, cur == 2);
     web_select_close(req);
 }
+#endif
 
 // Warning banner for the APRS-IS filter field, set at save time (grammar
 // error and/or truncation) and shown once on the next GET of this page.
@@ -73,9 +85,10 @@ static char s_filterWarning[160] = { 0 };
 esp_err_t page_igate_get(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
-    web_send_header(req, TR_F_IGATE, "igate");
+    web_send_header(req, IGATE_PAGE_TITLE, "igate");
     httpd_resp_sendstr_chunk(req, "<form method='POST' action='/igate'>");
 
+#ifdef ENABLE_IGATE
     // IGATE ------------------------------------------------------------
     // Enable/direction toggles only; callsign/SSID/symbol/object/path now
     // live in their own independent "Station" fieldset below, matching the
@@ -83,15 +96,25 @@ esp_err_t page_igate_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_F_IGATE);
     web_field_checkbox(req, TR_F_ENABLE_IGATE, "igateEn", g_config.igate_en);
     web_field_use_station_data(req, "igateUseStation", g_config.igate_use_station, "igateMycall", "igateLAT", "igateLON", "igateALT");
+#ifdef ENABLE_GPS
     web_field_use_gps_data(req, "igateUseGps", g_config.igate_use_gps, "igateUseStation", "igateLAT", "igateLON", "igateALT", NULL, NULL);
+#endif
     web_field_checkbox(req, TR_F_RF_TO_INTERNET, "rf2inet", g_config.rf2inet);
     web_field_checkbox(req, TR_F_INTERNET_TO_RF, "inet2rf", g_config.inet2rf);
     web_fieldset_close(req);
+#endif
 
     // STATION ------------------------------------------------------------
+    // The callsign and SSID are the APRS-IS login identity, so they are on
+    // the page in every build that carries the client; the symbol and the
+    // path belong to the IGate beacon.
     web_fieldset_open(req, TR_F_STATION);
+#ifndef ENABLE_IGATE
+    web_field_use_station_data(req, "igateUseStation", g_config.igate_use_station, "igateMycall", NULL, NULL, NULL);
+#endif
     web_field_text(req, TR_F_MY_CALLSIGN, "igateMycall", g_config.aprs_mycall, 9);
     web_field_int(req, TR_F_SSID, "igateSSID", g_config.aprs_ssid, WEB_RANGE_SSID_MIN, WEB_RANGE_SSID_MAX);
+#ifdef ENABLE_IGATE
 
     // Station Symbol: Table char + Symbol char shown as two separate 1-char
     // inputs, plus a live graphical icon of the currently selected symbol
@@ -121,6 +144,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         web_select_option(req, 5 + i, lbl, g_config.igate_path == (uint8_t)(5 + i));
     }
     web_select_close(req);
+#endif
     web_fieldset_close(req);
 
     web_fieldset_open(req, TR_F_APRS_IS_SERVER);
@@ -150,6 +174,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         s_filterWarning[0] = 0; // shown once
     }
 
+#ifdef ENABLE_IGATE
     // Traffic-log display gate, placed right under the server-side filter it
     // is most easily confused with: that string decides what the server sends
     // this station, this checkbox decides how much of what arrives - and of
@@ -159,6 +184,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
 
     web_field_text(req, TR_F_COMMENT, "igateComment", g_config.igate_comment, COMMENT_SIZE - 1);
     web_field_checkbox(req, TR_F_TIME_STAMP, "igateTime", g_config.igate_timestamp);
+#endif
     web_fieldset_close(req);
 
     // APRS-IS SERVERS ----------------------------------------------------
@@ -199,6 +225,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
                  "}"
                  "</script>");
 
+#ifdef ENABLE_IGATE
     // POSITION -----------------------------------------------------------
     web_fieldset_open(req, TR_F_POSITION);
     web_field_checkbox(req, TR_F_BEACON_POSITION_2, "igateBcn", g_config.igate_bcn);
@@ -605,12 +632,16 @@ esp_err_t page_igate_get(httpd_req_t *req) {
         web_fieldset_close(req);
     }
 
+#endif // ENABLE_IGATE
+
     // Duplicate Suppression ---------------------------------------------------
     // Shared by the IGate RF->INET gate and the digipeater RF->RF repeat
     // window (see ::dup_scope_t). The switch turns suppression on or off for
     // both services at once. A busy digipeater on a congested frequency or a
     // very sparse rural IGate are different regimes, so both the cache size
     // and the window are web-configurable rather than fixed at compile time.
+    // Built whenever either of the two is.
+#ifdef BUILD_DUP_CACHE
     web_raw(req, "<h2 style='margin-top:24px'>" TR_F_DUP_CACHE "</h2>");
     {
         web_fieldset_open(req, TR_F_DUP_CACHE);
@@ -631,6 +662,7 @@ esp_err_t page_igate_get(httpd_req_t *req) {
                  "document.addEventListener('DOMContentLoaded',function(){"
                  "var en=q('dupCacheEn');if(en)en.addEventListener('change',apply);apply();});"
                  "})();</script>");
+#endif
 
     web_raw(req, "<button type='submit'>" TR_BTN_SAVE "</button></form>");
 
@@ -675,15 +707,21 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     memcpy(prevFilter, g_config.aprs_filter, sizeof(prevFilter));
     memcpy(prevServer, g_config.aprs_server, sizeof(prevServer));
 
-    g_config.igate_en = web_form_get_bool(body, "igateEn");
+    // Only the fields this build renders are read back: one the page did not
+    // carry is absent from the POST and keeps its stored value.
     g_config.igate_use_station = web_form_get_bool(body, "igateUseStation");
+#ifdef ENABLE_IGATE
+    g_config.igate_en = web_form_get_bool(body, "igateEn");
+#ifdef ENABLE_GPS
     g_config.igate_use_gps = web_form_get_bool(body, "igateUseGps");
+#endif
     g_config.rf2inet = web_form_get_bool(body, "rf2inet");
     g_config.inet2rf = web_form_get_bool(body, "inet2rf");
     g_config.igate_bcn = web_form_get_bool(body, "igateBcn");
     g_config.igate_loc2rf = web_form_get_bool(body, "igatePos2rf");
     g_config.igate_loc2inet = web_form_get_bool(body, "igatePos2inet");
     g_config.igate_timestamp = web_form_get_bool(body, "igateTime");
+#endif
 
     if (g_config.igate_use_station) {
         strncpy(g_config.aprs_mycall, g_config.my_callsign, sizeof(g_config.aprs_mycall) - 1);
@@ -748,7 +786,9 @@ esp_err_t page_igate_post(httpd_req_t *req) {
 
     // Traffic-log display gate. Nothing to push to the running session: it is
     // read straight from g_config every time an entry is about to be added.
+#ifdef ENABLE_IGATE
     g_config.igate_log_after_filters = web_form_get_bool(body, "igateLogAfterFilters");
+#endif
 
     // Decide which of the two live-update paths (if any) the running IGate
     // session needs, by comparing against the pre-save snapshot taken above.
@@ -764,10 +804,12 @@ esp_err_t page_igate_post(httpd_req_t *req) {
                                    memcmp(prevServer, g_config.aprs_server, sizeof(prevServer)) != 0;
     bool filterChanged = memcmp(prevFilter, g_config.aprs_filter, sizeof(prevFilter)) != 0;
 
+#ifdef ENABLE_IGATE
     // Station Symbol: prefer the separate Table+Symbol fields (top of page);
     // fall back to the legacy combined 2-char field if those aren't present.
     web_form_get_symbol(body, "igateSym", "igateSymbol", g_config.igate_symbol, sizeof(g_config.igate_symbol));
 
+#ifdef ENABLE_GPS
     if (g_config.igate_use_gps) {
         // Same rationale as the Station page's own "Use GPS": trust the
         // receiver's current snapshot, not whatever the disabled fields
@@ -782,7 +824,9 @@ esp_err_t page_igate_post(httpd_req_t *req) {
             if (g.has_altitude)
                 g_config.igate_alt = (float)g.altitude_m;
         }
-    } else {
+    } else
+#endif
+    {
         g_config.igate_lat = g_config.igate_use_station ? g_config.my_lat : web_form_get_float(body, "igateLAT", g_config.igate_lat);
         g_config.igate_lon = g_config.igate_use_station ? g_config.my_lon : web_form_get_float(body, "igateLON", g_config.igate_lon);
         g_config.igate_alt = g_config.igate_use_station ? g_config.my_alt : web_form_get_float(body, "igateALT", g_config.igate_alt);
@@ -954,10 +998,12 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     // it rather than being left on with nothing between a worldwide feed and
     // the transmitter. The same rule is enforced on the BrandMeister page and
     // again on load; this is the third place it can be reached from.
+#ifdef ENABLE_BRANDMEISTER
     if (g_config.bm_monitor && g_config.inet2rf && !g_config.inet2rf_range_en) {
         ESP_LOGW(TAG, "INET->RF range gate turned off - BrandMeister monitor subscription disabled with it");
         g_config.bm_monitor = false;
     }
+#endif
 
     // Selective third-party ('}') unwrap (INET->RF): off by default; only
     // actually takes effect when inet2rf_budlist_mode is BUDLIST_WHITELIST
@@ -1006,12 +1052,15 @@ esp_err_t page_igate_post(httpd_req_t *req) {
         web_form_get_call(body, name, g_config.satgate[i], sizeof(g_config.satgate[i]));
     }
 
+#endif // ENABLE_IGATE
+
     // Duplicate Suppression: the on/off switch, then the cache size and
     // window, clamped to the same DUP_CACHE_SIZE_*/DUP_CACHE_TIMEOUT_MS_*
     // bounds the web form itself advertises, so a malformed POST can never
     // push either value out of range. While the switch is off the two
     // numeric inputs are disabled and absent from the POST, so each falls
     // back to its stored value.
+#ifdef BUILD_DUP_CACHE
     {
         g_config.dup_cache_en = web_form_get_bool(body, "dupCacheEn");
 
@@ -1029,6 +1078,7 @@ esp_err_t page_igate_post(httpd_req_t *req) {
             cacheTimeoutMs = DUP_CACHE_TIMEOUT_MS_MAX;
         g_config.dup_cache_timeout_ms = (uint32_t)cacheTimeoutMs;
     }
+#endif
 
     app_config_unlock();
 
@@ -1052,3 +1102,5 @@ esp_err_t page_igate_post(httpd_req_t *req) {
     web_send_save_result(req, ok, "/igate");
     return ESP_OK;
 }
+
+#endif // BUILD_APRS_IS

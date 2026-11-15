@@ -29,6 +29,8 @@
 #include "web_common.h"
 #include "web_help.h"
 
+#ifdef ENABLE_MESSAGE
+
 static const char *TAG = "page_msg";
 
 // Renders the Message Alarm GPIO field as a <select>. The pin list itself is
@@ -47,7 +49,9 @@ static void web_field_msg_alarm_gpio(httpd_req_t *req, int8_t current) {
         if (!afsk_gpio_is_output_capable((int8_t)gpio))
             continue;
         const char *owner = web_gpio_owner_tag(gpio, "Message Alarm");
-        char label[48];
+        // Sized from the format of the active language: the format text,
+        // the widest pin number and the owner tag capped at 30 characters.
+        char label[sizeof(TR_GPIO_USED_BY) + 11 + 30];
         if (owner)
             snprintf(label, sizeof(label), TR_GPIO_USED_BY, gpio, owner);
         else
@@ -161,3 +165,5 @@ esp_err_t page_msg_post(httpd_req_t *req) {
     web_send_save_result(req, ok, "/msg");
     return ESP_OK;
 }
+
+#endif // ENABLE_MESSAGE

@@ -48,13 +48,23 @@
 #include "translations.h"
 #include "web_common.h"
 
+#ifdef ENABLE_DASHBOARD
 static const char *TAG = "page_common";
+#endif
 
 esp_err_t page_root(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
+    // The landing page is the first one the sidebar lists, so the redirect
+    // always reaches a page this build serves whichever modules it carries.
+    const char *home = web_home_uri();
+    if (home == NULL) {
+        httpd_resp_set_type(req, "text/html");
+        web_send_standalone_page(req, "<h1>" APRS_SOFTWARE_NAME "</h1>");
+        return ESP_OK;
+    }
     httpd_resp_set_status(req, "302 Found");
-    httpd_resp_set_hdr(req, "Location", "/dashboard");
+    httpd_resp_set_hdr(req, "Location", home);
     httpd_resp_send(req, NULL, 0);
     return ESP_OK;
 }
@@ -68,6 +78,7 @@ esp_err_t page_logout(httpd_req_t *req) {
     return ESP_OK;
 }
 
+#ifdef ENABLE_DASHBOARD
 esp_err_t page_dashboard(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
@@ -97,7 +108,15 @@ esp_err_t page_dashboard(httpd_req_t *req) {
     httpd_resp_sendstr_chunk(req, buf);
 
     // -- APRS-IS SERVER ---------------------------------------------------
+    // Shown while the uplink is in use: whenever the IGate is switched on,
+    // or, in a build without the IGate, whenever another module's Internet
+    // leg holds the session open.
+#ifdef BUILD_APRS_IS
+#ifdef ENABLE_IGATE
     if (g_config.igate_en) {
+#else
+    if (igate_is_connected()) {
+#endif
         char host[20];
         uint16_t port;
         igate_get_current_server(host, sizeof(host), &port);
@@ -109,6 +128,7 @@ esp_err_t page_dashboard(httpd_req_t *req) {
                    host, port);
         httpd_resp_sendstr_chunk(req, buf);
     }
+#endif
 
     // -- WiFi --------------------------------------------------------------
     // Indexed by the WIFI_MODE_CFG_OFF .. WIFI_MODE_CFG_APSTA selectors, so
@@ -301,6 +321,8 @@ esp_err_t page_dashinfo(httpd_req_t *req) {
     return ESP_OK;
 }
 
+#endif // ENABLE_DASHBOARD
+
 // GET /heapinfo -> tiny JSON {free, minFree} carrying just the Free Heap and
 // Min Free Heap figures.
 //
@@ -331,6 +353,7 @@ esp_err_t page_heapinfo(httpd_req_t *req) {
     return ESP_OK;
 }
 
+#ifdef ENABLE_DASHBOARD
 // GET /lastheard -> JSON array of recently-heard stations (see
 // components/lastheard). Not rendered on the dashboard (the IGate Traffic
 // table below covers that), kept available for other UI / future use.
@@ -369,14 +392,22 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     // -- Modes Enabled ------------------------------------------------------
     // Wrapped in the same <fieldset><legend> card used by Radio Info /
     // APRS-IS SERVER / WiFi so all dashboard boxes share one look and feel.
-    str_append(buf, sizeof(buf), &n,
-               "<fieldset><legend>" TR_DASH_MODES_ENABLED "</legend><div class='table-wrap'><table><tr>"
-               "<th class='badge %s'>" TR_F_IGATE "</th>"
-               "<th class='badge %s'>" TR_DASH_DIGI_SHORT "</th>"
-               "<th class='badge %s'>" TR_F_TRACKER "</th>"
-               "<th class='badge %s'>" TR_DASH_WX_SHORT "</th>"
-               "</tr></table></div></fieldset>",
-               g_config.igate_en ? "ok" : "off", g_config.digi_en ? "ok" : "off", g_config.trk_en ? "ok" : "off", g_config.wx_en ? "ok" : "off");
+    // One badge per service module in the build: a module left out has no
+    // switch to report, so it gets no badge rather than a permanent "off".
+    str_append(buf, sizeof(buf), &n, "<fieldset><legend>" TR_DASH_MODES_ENABLED "</legend><div class='table-wrap'><table><tr>");
+#ifdef ENABLE_IGATE
+    str_append(buf, sizeof(buf), &n, "<th class='badge %s'>" TR_F_IGATE "</th>", g_config.igate_en ? "ok" : "off");
+#endif
+#ifdef ENABLE_DIGIPEATER
+    str_append(buf, sizeof(buf), &n, "<th class='badge %s'>" TR_DASH_DIGI_SHORT "</th>", g_config.digi_en ? "ok" : "off");
+#endif
+#ifdef ENABLE_TRACKER
+    str_append(buf, sizeof(buf), &n, "<th class='badge %s'>" TR_F_TRACKER "</th>", g_config.trk_en ? "ok" : "off");
+#endif
+#ifdef ENABLE_WEATHER
+    str_append(buf, sizeof(buf), &n, "<th class='badge %s'>" TR_DASH_WX_SHORT "</th>", g_config.wx_en ? "ok" : "off");
+#endif
+    str_append(buf, sizeof(buf), &n, "</tr></table></div></fieldset>");
 
     // -- Network Status -------------------------------------------------------
     // WIFI reflects the STA link state (connected to an AP), the same check
@@ -386,11 +417,12 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     bool wifi_connected = (esp_wifi_sta_get_ap_info(&sidebar_ap_info) == ESP_OK);
     str_append(buf, sizeof(buf), &n,
                "<fieldset><legend>" TR_DASH_NETWORK_STATUS "</legend><div class='table-wrap'><table><tr>"
-               "<th class='badge %s'>" TR_DASH_WIFI "</th>"
-               "<th class='badge %s'>APRS-IS</th>"
-               "<th class='badge %s'>" TR_DASH_FX25 "</th>"
-               "</tr></table></div></fieldset>",
-               wifi_connected ? "ok" : "off", igate_is_connected() ? "ok" : "off", (g_config.fx25_mode > 0) ? "ok" : "off");
+               "<th class='badge %s'>" TR_DASH_WIFI "</th>",
+               wifi_connected ? "ok" : "off");
+#ifdef BUILD_APRS_IS
+    str_append(buf, sizeof(buf), &n, "<th class='badge %s'>APRS-IS</th>", igate_is_connected() ? "ok" : "off");
+#endif
+    str_append(buf, sizeof(buf), &n, "<th class='badge %s'>" TR_DASH_FX25 "</th></tr></table></div></fieldset>", (g_config.fx25_mode > 0) ? "ok" : "off");
 
     // -- STATISTICS -----------------------------------------------------
     // radio_rx/radio_tx/rf2inet/inet2rf/digi come from aprs_service's own
@@ -412,16 +444,30 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
     // service-level drop and push the DROP/ERR total ahead of the Drop
     // Breakdown table's sum. igate_stats_total_drop(&igs) alone is the
     // complete, correct total.
+    // The relay and APRS-IS rows belong to the IGate, the APRS-IS client and
+    // the digipeater, and are only listed while those are in the build.
     aprs_service_stats_t svcStats = aprs_service_get_stats();
     str_append(buf, sizeof(buf), &n,
                "<fieldset><legend>" TR_DASH_STATISTICS "</legend><div class='table-wrap'><table>"
                "<tr><td>" TR_DASH_RADIO_RX "</td><td>%lu</td></tr>"
-               "<tr><td>" TR_DASH_PACKET_TX "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_PACKET_TX "</td><td>%lu</td></tr>",
+               (unsigned long)svcStats.radio_rx, (unsigned long)svcStats.radio_tx);
+#ifdef ENABLE_IGATE
+    str_append(buf, sizeof(buf), &n,
                "<tr><td>" TR_DASH_RF2INET "</td><td>%lu</td></tr>"
-               "<tr><td>" TR_DASH_INET2RF "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_INET2RF "</td><td>%lu</td></tr>",
+               (unsigned long)svcStats.rf2inet, (unsigned long)svcStats.inet2rf);
+#endif
+#ifdef BUILD_APRS_IS
+    str_append(buf, sizeof(buf), &n,
                "<tr><td>" TR_DASH_IGATE_RX "</td><td>%lu</td></tr>"
-               "<tr><td>" TR_DASH_IGATE_TX "</td><td>%lu</td></tr>"
-               "<tr><td>" TR_DASH_DIGI_STAT "</td><td>%lu</td></tr>"
+               "<tr><td>" TR_DASH_IGATE_TX "</td><td>%lu</td></tr>",
+               (unsigned long)igs.isRxCount, (unsigned long)igs.isTxCount);
+#endif
+#ifdef ENABLE_DIGIPEATER
+    str_append(buf, sizeof(buf), &n, "<tr><td>" TR_DASH_DIGI_STAT "</td><td>%lu</td></tr>", (unsigned long)svcStats.digi);
+#endif
+    str_append(buf, sizeof(buf), &n,
                "<tr><td>" TR_DASH_DROP_ERR "</td><td>%lu/%lu</td></tr>"
                // Current RF TX ring backlog vs the "TX buffers" cap, so an
                // operator can see beacons queueing up (and, read together
@@ -445,11 +491,9 @@ esp_err_t page_sidebar_info(httpd_req_t *req) {
                // the limiter on.
                "<tr><td>" TR_DASH_TX_DUTY_CYCLE "</td><td>%lu%%/%lu%%</td></tr>"
                "</table></div></fieldset>",
-               (unsigned long)svcStats.radio_rx, (unsigned long)svcStats.radio_tx, (unsigned long)svcStats.rf2inet, (unsigned long)svcStats.inet2rf,
-               (unsigned long)igs.isRxCount, (unsigned long)igs.isTxCount, (unsigned long)svcStats.digi, (unsigned long)igate_stats_total_drop(&igs),
-               (unsigned long)igate_stats_total_err(&igs), (unsigned long)svcStats.tx_queue_depth, (unsigned long)svcStats.tx_queue_limit,
-               (unsigned long)svcStats.csma_busy_forced, (unsigned long)svcStats.csma_persist_forced, (unsigned long)svcStats.tx_duty_cycle_pct,
-               (unsigned long)svcStats.duty_cycle_limit_pct);
+               (unsigned long)igate_stats_total_drop(&igs), (unsigned long)igate_stats_total_err(&igs), (unsigned long)svcStats.tx_queue_depth,
+               (unsigned long)svcStats.tx_queue_limit, (unsigned long)svcStats.csma_busy_forced, (unsigned long)svcStats.csma_persist_forced,
+               (unsigned long)svcStats.tx_duty_cycle_pct, (unsigned long)svcStats.duty_cycle_limit_pct);
 
     // -- Drop breakdown -------------------------------------------------
     // Per-reason detail behind the aggregate DROP/ERR tile above: lets an
@@ -538,3 +582,5 @@ esp_err_t page_igate_traffic(httpd_req_t *req) {
     httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
 }
+
+#endif // ENABLE_DASHBOARD

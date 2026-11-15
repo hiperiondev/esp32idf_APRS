@@ -72,6 +72,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "app_config.h" // module enables: the entry points below are declared only when their module is built
 #include "must_check.h" // APRS_MUST_CHECK: the persistence entry points below may not have their result discarded
 
 /**
@@ -389,6 +390,7 @@ typedef struct {
     objitem_t item[OBJITEM_COUNT]; /**< The ::OBJITEM_COUNT configured Objects/Items. */
 } objitems_t;
 
+#ifdef ENABLE_OBJECTS_ITEMS
 /**
  * @brief Load the Object/Item set from /storage/objitems.json into @p out.
  *
@@ -470,11 +472,17 @@ uint32_t objitems_service(void);
  * into one round whose mask is the union of theirs.
  */
 void objitems_request_transmit_all(uint8_t channels);
+#endif
 
+#if defined(BUILD_BEACONS) || defined(ENABLE_OBJECTS_ITEMS)
 /**
  * @brief Build the standard APRS repeater frequency block ("FFF.FFFMHz Tnnn
  * +/-nnn Rxxm") into @p out, or the empty string when @p freq_mhz is not
  * positive or has no representation in the fixed field.
+ *
+ * Shared by the objects/items transmitter and the IGate, digipeater and
+ * tracker beacons, so it is declared whenever ::BUILD_BEACONS or
+ * ::ENABLE_OBJECTS_ITEMS is defined.
  *
  * This is the exact wire format freqspec.txt defines and objitem_t's
  * @c freq_mhz/@c tone_tenths/@c duplex/@c offset_khz/@c range/@c range_km/
@@ -558,5 +566,6 @@ void objitems_request_transmit_all(uint8_t channels);
  */
 void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duplex, uint16_t offset_khz, uint16_t range, bool range_km, bool dcs_enable,
                               uint16_t dcs_code, bool narrow, bool rx_freq_enable, float rx_freq_mhz, char *out, size_t out_size);
+#endif
 
 #endif // OBJECTS_ITEMS_H

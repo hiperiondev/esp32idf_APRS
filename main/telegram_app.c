@@ -59,6 +59,8 @@
 #include "telemetry.h" // telemetry_config_load(), telemetry_get_values()
 #include "weather.h"   // weather_field_label()/_snapshot()/_format()
 
+#ifdef ENABLE_TELEGRAM
+
 static const char *TAG = "telegram_app";
 
 #define TELEGRAM_APP_TMP_PATH "/storage/telegram.json.tmp"
@@ -1254,31 +1256,49 @@ static telegram_app_reason_t cert_precheck(char *detail, size_t detail_size) {
 // station rather than only the board it runs on. Called from the service task
 // with a buffer it owns.
 //
-// Every service that has a master switch is listed, whether it is on or off:
-// an absent line would be indistinguishable from a service this firmware does
-// not carry, and the whole point of the answer is to say what this station is
-// doing right now. The telemetry switch is the one that does not live in
-// g_config - the telemetry subsystem keeps its settings in their own file -
-// so it is read through its own loader.
+// Every service this build carries that has a master switch is listed,
+// whether it is on or off, and a service the build does not carry is not
+// listed at all: an absent line is exactly how a service this firmware does
+// not carry reads, and the whole point of the answer is to say what this
+// station is doing right now. The telemetry switch is the one that does not
+// live in g_config - the telemetry subsystem keeps its settings in their own
+// file - so it is read through its own loader.
 static void telegram_status_lines(char *buffer, size_t size, void *ctx) {
     (void)ctx;
 
     app_config_lock();
     char call[sizeof(g_config.aprs_mycall)];
     snprintf(call, sizeof(call), "%s", g_config.aprs_mycall);
+#ifdef ENABLE_IGATE
     bool igate = g_config.igate_en;
+#endif
+#ifdef ENABLE_DIGIPEATER
     bool digi = g_config.digi_en;
+#endif
+#ifdef ENABLE_TRACKER
     bool trk = g_config.trk_en;
+#endif
+#ifdef ENABLE_WEATHER
     bool wx = g_config.wx_en;
+#endif
+#ifdef ENABLE_MESSAGE
     bool msg = g_config.msg_enable;
+#endif
+#ifdef ENABLE_QUERY
     bool query = g_config.query_en;
+#endif
+#ifdef ENABLE_BRANDMEISTER
     bool bm = g_config.bm_en;
+#endif
+#ifdef ENABLE_GPS
     bool gps = g_config.gps_en;
+#endif
     bool modem = g_config.audio_modem_en;
     bool duty = g_config.duty_cycle_en;
     bool ntp = g_config.synctime;
     app_config_unlock();
 
+#ifdef ENABLE_TELEMETRY
     // Loaded on the heap: the telemetry settings are a large structure and
     // this runs on the service task, whose stack is sized for a TLS handshake
     // rather than for a copy of it.
@@ -1289,18 +1309,37 @@ static void telegram_status_lines(char *buffer, size_t size, void *ctx) {
         tlm = tcfg->en;
         free(tcfg);
     }
+#endif
 
     size_t used = 0;
     str_append(buffer, size, &used, "Callsign: %s\n", call);
+#ifdef ENABLE_IGATE
     str_append(buffer, size, &used, "IGate: %s\n", TELEGRAM_ON_OFF(igate));
+#endif
+#ifdef ENABLE_DIGIPEATER
     str_append(buffer, size, &used, "Digipeater: %s\n", TELEGRAM_ON_OFF(digi));
+#endif
+#ifdef ENABLE_TRACKER
     str_append(buffer, size, &used, "Tracker: %s\n", TELEGRAM_ON_OFF(trk));
+#endif
+#ifdef ENABLE_WEATHER
     str_append(buffer, size, &used, "Weather: %s\n", TELEGRAM_ON_OFF(wx));
+#endif
+#ifdef ENABLE_TELEMETRY
     str_append(buffer, size, &used, "Telemetry: %s\n", TELEGRAM_ON_OFF(tlm));
+#endif
+#ifdef ENABLE_MESSAGE
     str_append(buffer, size, &used, "Messaging: %s\n", TELEGRAM_ON_OFF(msg));
+#endif
+#ifdef ENABLE_QUERY
     str_append(buffer, size, &used, "Query responder: %s\n", TELEGRAM_ON_OFF(query));
+#endif
+#ifdef ENABLE_BRANDMEISTER
     str_append(buffer, size, &used, "BrandMeister: %s\n", TELEGRAM_ON_OFF(bm));
+#endif
+#ifdef ENABLE_GPS
     str_append(buffer, size, &used, "GNSS receiver: %s\n", TELEGRAM_ON_OFF(gps));
+#endif
     str_append(buffer, size, &used, "AFSK modem: %s\n", TELEGRAM_ON_OFF(modem));
     str_append(buffer, size, &used, "TX duty-cycle limiter: %s\n", TELEGRAM_ON_OFF(duty));
     str_append(buffer, size, &used, "SNTP time sync: %s\n", TELEGRAM_ON_OFF(ntp));
@@ -1326,7 +1365,11 @@ static void telegram_sensor_lines(char *buffer, size_t size, void *ctx) {
     (void)ctx;
 
     size_t used = 0;
+#ifdef BUILD_SENSORS
+    bool header = false;
+#endif
 
+#ifdef ENABLE_WEATHER
     // Weather: the per-field enable and channel mapping live in g_config,
     // snapshotted here so no configuration lock is held while the weather
     // container's own lock is taken below.
@@ -1337,7 +1380,6 @@ static void telegram_sensor_lines(char *buffer, size_t size, void *ctx) {
     memcpy(wx_channel, g_config.wx_sensor_ch, sizeof(wx_channel));
     app_config_unlock();
 
-    bool header = false;
     for (int f = 0; f < WX_SENSOR_NUM; f++) {
         uint8_t ch = wx_channel[f];
         if (!wx_enabled[f] || ch == SENSOR_LOCAL_CH_NONE)
@@ -1360,7 +1402,9 @@ static void telegram_sensor_lines(char *buffer, size_t size, void *ctx) {
 
         str_append(buffer, size, &used, "- %s: %s (%s)\n", label, rendered, source);
     }
+#endif
 
+#ifdef ENABLE_TELEMETRY
     // Telemetry: settings in their own file, readings from the snapshot the
     // 1 Hz refresh publishes.
     telemetry_config_t *tcfg = malloc(sizeof(*tcfg));
@@ -1428,6 +1472,7 @@ static void telegram_sensor_lines(char *buffer, size_t size, void *ctx) {
     }
 
     free(tcfg);
+#endif
 
     if (used == 0)
         str_append(buffer, size, &used, "No weather or telemetry channel is enabled and mapped to a sensor.\n");
@@ -2154,3 +2199,5 @@ void telegram_app_apply_config(void) {
     s_retry_in = 0;
     s_action = TELEGRAM_ACTION_START;
 }
+
+#endif // ENABLE_TELEGRAM

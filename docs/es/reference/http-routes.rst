@@ -26,6 +26,15 @@ almacenamiento. Las tres excepciones son ``/logs/start``, ``/logs/stop`` y
 porque lo que conmutan es un espejo de la salida de consola de la propia
 estación y nada de la estación cambia con ello.
 
+La tabla lista todas las rutas de una compilación con todos los módulos
+habilitados. Las rutas de cada módulo se registran solo cuando ese módulo está en
+la compilación (ver :ref:`es-config-module-switches`), así que una ruta de un
+módulo excluido responde ``404``. ``GET /`` redirige a la primera página de la
+barra lateral — el Dashboard cuando está compilado. Dos páginas sobreviven a su
+módulo porque también editan un ajuste compartido: ``/igate`` queda como página
+del cliente APRS-IS sin el IGate, y ``/digi`` queda como página de rutas
+predefinidas sin el digipeater.
+
 .. list-table::
    :header-rows: 1
    :widths: 16 34 50

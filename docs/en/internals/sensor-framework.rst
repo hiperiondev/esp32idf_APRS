@@ -137,7 +137,8 @@ because ``SENSORS_LOCAL_DRIVER_AUTOREGISTER`` fires from a
 ``__attribute__((constructor))``. At that point the registry mutex does not yet
 exist — the lock/unlock helpers are no-ops while it is NULL, which is safe only
 because that whole phase is single-threaded. The first real
-``sensors_local_init()`` call (from ``weather_start()``) creates the mutex and
+``sensors_local_init()`` call (from ``aprs_service_start()``, in every build
+that carries weather or telemetry) creates the mutex and
 makes every subsequent access thread-safe.
 
 One driver failing its ``init()`` or returning an error from ``save()`` is
@@ -152,10 +153,10 @@ End-to-end data flow
      └─ each drivers/*.c constructor → SENSORS_LOCAL_DRIVER_AUTOREGISTER
           → sensors_local_register(&my_driver)
 
-   weather_start()  (once, at boot)
+   aprs_service_start()  (once, at boot, with weather or telemetry built)
      ├─ sensors_local_init()          ← creates the registry mutex
      ├─ sensors_local_init_all()      ← runs init() on every driver
-     └─ registers weather_service_1hz() and weather_beacon_service()
+     └─ weather_start()               ← registers weather_service_1hz() and weather_beacon_service()
 
    weather_service_1hz()   (1 Hz)
      ├─ clears the container's "enabled" flags

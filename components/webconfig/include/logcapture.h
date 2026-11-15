@@ -57,6 +57,9 @@
  * another task holds the ring is dropped rather than delaying the task that
  * logged it. logcapture_start(), logcapture_stop(), logcapture_touch() and
  * logcapture_next_json() are meant to be called from the HTTP server task.
+ *
+ * Everything below is declared only when ::ENABLE_LOGS is defined: the
+ * console mirror is not built without it.
  */
 
 #ifndef LOGCAPTURE_H
@@ -65,6 +68,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#include "app_config.h" // ENABLE_LOGS
+
+#ifdef ENABLE_LOGS
 
 #ifdef __cplusplus
 extern "C" {
@@ -209,5 +216,7 @@ size_t logcapture_next_json(uint32_t after_seq, uint32_t max_seq, char *out, siz
 #ifdef __cplusplus
 }
 #endif
+
+#endif // ENABLE_LOGS
 
 #endif // LOGCAPTURE_H

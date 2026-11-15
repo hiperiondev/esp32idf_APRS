@@ -31,6 +31,8 @@
 #include "translations.h"
 #include "web_common.h"
 
+#ifdef ENABLE_GPS
+
 static const char *TAG = "page_gps";
 
 // Room for the whole live-value document: one JSON member per displayed row,
@@ -528,3 +530,5 @@ esp_err_t page_gps_post(httpd_req_t *req) {
     web_send_save_result(req, ok, "/gps");
     return ESP_OK;
 }
+
+#endif // ENABLE_GPS

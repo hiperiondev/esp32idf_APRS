@@ -15,14 +15,16 @@ standard in RF e/o APRS-IS dai campi che l'operatore ha mappato nella pagina web
 Le tre parti mobili
 ===================
 
-``weather_start()`` (chiamata una volta all'avvio) configura:
+``aprs_service_start()`` avvia prima **il registro** —
+``sensors_local_init()`` crea il mutex del registro e
+``sensors_local_init_all()`` esegue l'``init()`` di ogni driver
+auto-registrato — ogni volta che meteo o telemetria sono nella compilazione,
+perché entrambi lo leggono. Poi ``weather_start()`` (chiamata una volta
+all'avvio) configura:
 
 #. **Il contenitore condiviso.** ``weather_telemetry_data`` è collegato a
    memoria statica di supporto per un ``aprs_weather_report_t`` e un
    ``aprs_telemetry_report_t``.
-#. **Il registro.** ``sensors_local_init()`` crea il mutex del registro e
-   ``sensors_local_init_all()`` esegue l'``init()`` di ogni driver
-   auto-registrato.
 #. **Due callback di servizio.** ``weather_service_1hz()`` (eseguita a 1 Hz dal
    tick del servizio APRS) e ``weather_beacon_service()`` (eseguita dal
    pianificatore di beacon condiviso).

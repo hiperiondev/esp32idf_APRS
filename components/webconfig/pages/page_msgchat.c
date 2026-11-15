@@ -38,6 +38,8 @@
 #include "translations.h"
 #include "web_common.h"
 
+#ifdef ENABLE_MSG_CHAT
+
 // How many message bubbles the chat panel shows at once. The panel is sized to
 // this many of the newest messages and everything older is one scroll away, up
 // to the MSG_QUEUE_SIZE messages the engine keeps. Purely presentational: it
@@ -277,3 +279,5 @@ esp_err_t page_msgchat_list(httpd_req_t *req) {
     httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
 }
+
+#endif // ENABLE_MSG_CHAT

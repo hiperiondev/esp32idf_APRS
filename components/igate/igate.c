@@ -46,18 +46,31 @@
 #include "str_append.h"
 #include "trafficlog.h"
 
+#if defined(BUILD_APRS_IS) || defined(BUILD_DUP_CACHE)
 static const char *TAG = "igate";
+#endif
 
+// The component carries three things, each built only while a module that
+// uses it is in the build (see the shared code selection in app_config.h): the
+// statistics and drop accounting every RX/TX path reports into, always; the
+// duplicate-suppression cache, under BUILD_DUP_CACHE; and the APRS-IS client,
+// under BUILD_APRS_IS. The IGate's own gating in both directions sits on top
+// of the client, under ENABLE_IGATE.
+
+#ifdef BUILD_APRS_IS
 // Size of a buffer holding this station's APRS-IS identity: the 9-character
 // callsign field of app_config_t, the "-15" SSID suffix and the NUL, with a
 // little room to spare.
 #define IGATE_IDENTITY_SIZE 16
+#endif
 
+#ifdef BUILD_DUP_CACHE
 struct DupPacketCache {
     char hash[16];
     unsigned long timestamp;
     uint8_t scope; // dup_scope_t that inserted this entry; a lookup only matches its own scope
 };
+#endif
 
 // Ordinary .bss, not RTC slow memory: this firmware never enters deep sleep, so
 // there is nothing for RTC placement to preserve. Keeping the counters here
@@ -65,9 +78,12 @@ struct DupPacketCache {
 // on esp_restart() - which is what the dashboard should show after an OTA
 // reboot, rather than totals carried over from the previous firmware image.
 static igate_stats_t s_stats;
+#ifdef BUILD_DUP_CACHE
 static struct DupPacketCache s_dupCache[DUP_CACHE_SIZE_MAX];
 static uint8_t s_dupCacheIndex = 0;
+#endif
 
+#ifdef BUILD_APRS_IS
 static int s_sock = -1;
 static SemaphoreHandle_t s_sockMutex;
 static portMUX_TYPE s_sockMutexInitLock = portMUX_INITIALIZER_UNLOCKED;
@@ -100,7 +116,9 @@ static void ensureSockMutex(void) {
     if (candidate)
         vSemaphoreDelete(candidate);
 }
+#endif // BUILD_APRS_IS
 
+#ifdef BUILD_DUP_CACHE
 // Web-configured duplicate-cache size (g_config.dup_cache_size), clamped to
 // DUP_CACHE_SIZE_MIN..DUP_CACHE_SIZE_MAX. Read fresh on every call rather than
 // cached, so a web-admin save takes effect on the very next check without
@@ -128,7 +146,9 @@ static uint32_t dupCacheTimeoutMs(void) {
         ms = DUP_CACHE_TIMEOUT_MS_MAX;
     return ms;
 }
+#endif
 
+#ifdef BUILD_APRS_IS
 // Extracts the source callsign (everything before '>') from a TNC2 text
 // line into out, for use as the DX field of a trafficlog entry. Leaves out
 // empty if no '>' is found within the expected callsign length.
@@ -165,6 +185,7 @@ static void stationIdentity(const char *call, uint8_t ssid, char *out, size_t ou
     else
         snprintf(out, out_size, "%s", call);
 }
+#endif
 
 igate_stats_t igate_get_stats(void) {
     return s_stats;
@@ -277,6 +298,7 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
     return "";
 }
 
+#ifdef BUILD_APRS_IS
 bool igate_is_connected(void) {
     bool connected = false;
     ensureSockMutex();
@@ -286,7 +308,9 @@ bool igate_is_connected(void) {
     }
     return connected;
 }
+#endif
 
+#ifdef BUILD_DUP_CACHE
 // ---------------------------------------------------------------------------
 // Duplicate detection
 // ---------------------------------------------------------------------------
@@ -373,7 +397,9 @@ bool isDuplicatePacketScoped(ax25_msg_t *packet, dup_scope_t scope) {
 bool isDuplicatePacket(ax25_msg_t *packet) {
     return isDuplicatePacketScoped(packet, DUP_SCOPE_IGATE);
 }
+#endif
 
+#ifdef BUILD_APRS_IS
 // APRS-IS line limit (aprs-is.net/Connecting.aspx): no line, including its
 // CR/LF terminator, may exceed 512 bytes. Expressed as the usable payload
 // (510 bytes) plus the two-byte terminator, so every buffer sized from this
@@ -437,6 +463,7 @@ static bool sendToAprsIs(const uint8_t *data, size_t len) {
     // Information-level log of every APRS-IS TX (RF->INET gated frames and
     // outbound messages alike go through here) so the igate traffic is
     // visible at the default log level, not just with verbose/debug logging.
+#ifdef ENABLE_DASHBOARD
     char dx[16];
     tnc2SrcCallsign((const char *)data, len, dx, sizeof(dx));
 
@@ -444,6 +471,7 @@ static bool sendToAprsIs(const uint8_t *data, size_t len) {
     size_t pktLen = (len < sizeof(pkt) - 1) ? len : sizeof(pkt) - 1;
     memcpy(pkt, data, pktLen);
     pkt[pktLen] = 0;
+#endif
 
     if (ok) {
         // Counts every successful APRS-IS TX regardless of caller (gatewayed
@@ -452,7 +480,9 @@ static bool sendToAprsIs(const uint8_t *data, size_t len) {
         // the RF->INET gatewaying path specifically.
         s_stats.isTxCount++;
         ESP_LOGI(TAG, "APRS-IS TX: %.*s", (int)len, (const char *)data);
+#ifdef ENABLE_DASHBOARD
         trafficlog_add_pkt("TX", dx, pkt, "", -1, 0, 0);
+#endif
     } else {
         // Every failed APRS-IS TX (socket not connected, or the write
         // itself failed) counts as a drop here, at the single choke point
@@ -463,7 +493,9 @@ static bool sendToAprsIs(const uint8_t *data, size_t len) {
         // DROP/ERR tally, which reads igate_stats_total_drop().
         s_stats.dropByReason[DROP_TX_FAIL]++;
         ESP_LOGW(TAG, "APRS-IS TX failed (not connected?): %.*s", (int)len, (const char *)data);
+#ifdef ENABLE_DASHBOARD
         trafficlog_add_pkt("TX-FAIL", dx, pkt, "", -1, 0, 0);
+#endif
     }
     return ok;
 }
@@ -471,7 +503,9 @@ static bool sendToAprsIs(const uint8_t *data, size_t len) {
 bool igate_send_raw(const char *line, size_t len) {
     return sendToAprsIs((const uint8_t *)line, len);
 }
+#endif
 
+#ifdef ENABLE_IGATE
 // Third-party ('}') unwrap for the RF->INET direction.
 //
 // A third-party payload is itself a complete TNC2-style line prefixed with
@@ -1056,7 +1090,16 @@ int igateProcess(ax25_msg_t *packet) {
     }
     return 0;
 }
+#else
+// Without the IGate there are no gating filters to apply, so the traffic
+// views report every received frame.
+bool igate_log_accepts_frame(const ax25_msg_t *packet) {
+    (void)packet;
+    return true;
+}
+#endif // ENABLE_IGATE
 
+#ifdef BUILD_APRS_IS
 // ---------------------------------------------------------------------------
 // APRS-IS TCP client task (login + RX pump). INET -> RF frames are handed off
 // via the optional callback registered with igate_set_inet2rf_handler().
@@ -1066,7 +1109,9 @@ static void (*s_inet2rfHandler)(const char *line) = NULL;
 void igate_set_inet2rf_handler(void (*handler)(const char *line)) {
     s_inet2rfHandler = handler;
 }
+#endif
 
+#ifdef ENABLE_IGATE
 // Non-destructive view of the associated-position ring owned by the INET->RF
 // handler, so the traffic-log filter mirror below can recognise the position
 // follow-up a station is owed without spending it. Left NULL while no handler
@@ -1224,11 +1269,20 @@ static bool inet2rfFiltersPass(const char *line) {
 
     return true;
 }
+#endif
 
+#ifdef BUILD_APRS_IS
 bool igate_log_accepts_line(const char *line) {
+#ifdef ENABLE_IGATE
     if (!g_config.igate_log_after_filters)
         return true;
     return inet2rfFiltersPass(line);
+#else
+    // Without the IGate there are no gating filters to apply, so the traffic
+    // views report every line the server sends.
+    (void)line;
+    return true;
+#endif
 }
 
 // Read the current APRS-IS descriptor under the mutex that guards it, so the
@@ -1277,6 +1331,9 @@ static void processAprsIsLine(char *line) {
     char dx[16];
     tnc2SrcCallsign(line, strlen(line), dx, sizeof(dx));
 
+    const char *colon = strchr(line, ':');
+
+#ifdef ENABLE_DASHBOARD
     // Position/object/item reports start their info field (right after the
     // first ':') with one of !=/@;) and carry the symbol table and symbol
     // code around the latitude/longitude fields; a Mic-E report carries the
@@ -1284,10 +1341,10 @@ static void processAprsIsLine(char *line) {
     // timestamped ('/'/'@'), object, item and Mic-E payloads - see
     // aprs_extract_symbol(). A payload with no symbol of its own falls back
     // to the destination address and then the source SSID of the TNC2
-    // header, in the precedence order of APRS101 chapter 21.
+    // header, in the precedence order of APRS101 chapter 21. Both feed the
+    // Dashboard's traffic table alone.
     char symTable = 0, symCode = 0;
     char decoded[APRS_RX_DECODED_BUF_SIZE] = "";
-    const char *colon = strchr(line, ':');
     if (logPacket && colon) {
         const char *info = colon + 1;
         size_t infoLen = strlen(info);
@@ -1307,6 +1364,7 @@ static void processAprsIsLine(char *line) {
 
     if (logPacket)
         trafficlog_add_pkt("RX-IS", dx, line, decoded, -1, symTable, symCode);
+#endif
 
     // Mic-E position comment (APRS101 ch.10), carried in the destination
     // address and so absent from the packet text logged above. The internet
@@ -1344,8 +1402,16 @@ static void processAprsIsLine(char *line) {
         }
     }
 
+#ifdef ENABLE_IGATE
     if (g_config.inet2rf && s_inet2rfHandler)
         s_inet2rfHandler(line);
+#else
+    // No IGate means no Internet-to-RF switch to consult: every line is
+    // handed on, so the modules that read the feed (messaging, the query
+    // responder, the Telegram routing, last heard) see all of it.
+    if (s_inet2rfHandler)
+        s_inet2rfHandler(line);
+#endif
 }
 
 // Assembles complete CR/LF-terminated lines out of a chunk of bytes just read
@@ -1853,19 +1919,61 @@ static bool connectAprsIs(void) {
 }
 
 // The APRS-IS TCP uplink is a single shared resource used not only by the
-// IGate itself (rf2inet/inet2rf) but also by the Digipeater's and Tracker's
-// "beacon to internet" options and by outbound messages sent over the
-// internet channel. The uplink task always runs and gates on this helper, so
-// the uplink comes up or goes down live as any of these settings is toggled
-// from the web UI, without a reboot.
+// IGate itself (rf2inet/inet2rf) but by the Internet leg of every module that
+// offers one: the beacons, weather, telemetry, bulletins, objects/items,
+// messaging, the query responder and the BrandMeister interconnect. The
+// uplink task always runs and gates on this helper, so the uplink comes up or
+// goes down live as any of these settings is toggled from the web UI, without
+// a reboot.
 //
-// trk_loc2inet and igate_loc2inet are the Tracker/IGate pages' own "beacon via
-// internet" checkboxes (see beacon.c); each is a standalone setting independent
-// of igate_en. They are included here so the uplink activates for every case
-// that actually needs to send over APRS-IS, not just the ones that also flip
-// igate_en/msg_inet.
+// Each module in the build contributes its own switches, so a build without
+// the IGate still opens the session for the modules that need it. The
+// settings that live in g_config are read here directly; telemetry, bulletins
+// and objects/items keep theirs in their own files and report their need
+// through igate_uplink_demand() instead.
+static volatile uint32_t s_uplinkDemand = 0;
+
+void igate_uplink_demand(igate_uplink_user_t user, bool wanted) {
+    if ((unsigned)user >= IGATE_UPLINK_USER_COUNT)
+        return;
+    if (wanted)
+        __atomic_fetch_or(&s_uplinkDemand, 1u << user, __ATOMIC_RELAXED);
+    else
+        __atomic_fetch_and(&s_uplinkDemand, ~(1u << user), __ATOMIC_RELAXED);
+}
+
 static bool igateUplinkNeeded(void) {
-    return g_config.igate_en || g_config.digi_loc2inet || g_config.msg_inet || g_config.trk_loc2inet || g_config.igate_loc2inet;
+    if (__atomic_load_n(&s_uplinkDemand, __ATOMIC_RELAXED) != 0)
+        return true;
+#ifdef ENABLE_IGATE
+    if (g_config.igate_en || g_config.igate_loc2inet)
+        return true;
+#endif
+#ifdef ENABLE_DIGIPEATER
+    if (g_config.digi_loc2inet)
+        return true;
+#endif
+#ifdef ENABLE_TRACKER
+    if (g_config.trk_loc2inet)
+        return true;
+#endif
+#ifdef ENABLE_MESSAGE
+    if (g_config.msg_inet)
+        return true;
+#endif
+#ifdef ENABLE_WEATHER
+    if (g_config.wx_en && g_config.wx_2inet)
+        return true;
+#endif
+#ifdef ENABLE_QUERY
+    if (g_config.query_en && (g_config.query_inet || (g_config.query_cap_beacon_en && g_config.query_cap_inet)))
+        return true;
+#endif
+#ifdef ENABLE_BRANDMEISTER
+    if (g_config.bm_en)
+        return true;
+#endif
+    return false;
 }
 
 static void igateTask(void *arg) {
@@ -2025,3 +2133,4 @@ void igate_start(void) {
     ensureSockMutex();
     xTaskCreate(igateTask, "igate_task", 6144, NULL, 5, &s_task);
 }
+#endif // BUILD_APRS_IS

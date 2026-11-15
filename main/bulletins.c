@@ -41,6 +41,8 @@
 #include "str_append.h"   // str_copy_strip_line_breaks(), str_copy_utf8_safe()
 #include "telegram_app.h" // telegram_app_notify_bulletin(): optional Telegram routing of this station's own bulletins
 
+#ifdef ENABLE_BULLETINS
+
 static const char *TAG = "bulletins";
 
 // A bulletin slot with no identifier configured falls back to the digit of its
@@ -500,7 +502,9 @@ static void tx_one(int idx, const bulletin_t *b, const char *src) {
     // announcement rather than a report on the radio. Telegram routing has its
     // own switch on the Telegram page, so this is a no-op unless the operator
     // turned it on for a bot that is running.
+#ifdef ENABLE_TELEGRAM
     telegram_app_notify_bulletin(src, addr, text);
+#endif
 }
 
 // Applies expiry to a freshly-loaded set: any enabled bulletin whose deadline
@@ -606,6 +610,13 @@ uint32_t bulletins_service(void) {
             ESP_LOGE(TAG, "expired bulletins could not be written to %s", BULLETINS_PATH);
     }
 
+    // Tells the APRS-IS client whether any bulletin needs the session, which
+    // is the only way it learns: these settings are not in g_config.
+    bool inet_wanted = false;
+    for (int i = 0; i < BULLETIN_COUNT; i++)
+        inet_wanted = inet_wanted || (set.item[i].enable && set.item[i].text[0] && set.item[i].send_inet);
+    igate_uplink_demand(IGATE_UPLINK_BULLETINS, inet_wanted);
+
     char src[16];
     resolve_source_call(src, sizeof(src));
 
@@ -683,3 +694,5 @@ void bulletins_start(void) {
     bulletins_load(&set);
     ESP_LOGI(TAG, "Bulletins configured (per-bulletin interval, default=%us; driven by beacon scheduler)", (unsigned)BULLETIN_DEFAULT_INTERVAL_S);
 }
+
+#endif // ENABLE_BULLETINS

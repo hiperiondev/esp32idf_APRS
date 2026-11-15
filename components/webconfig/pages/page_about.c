@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "app_config.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -32,6 +33,8 @@
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+#ifdef ENABLE_ABOUT_FIRMWARE
 
 static const char *TAG = "page_about";
 
@@ -228,3 +231,5 @@ static esp_err_t ota_update_receive(httpd_req_t *req) {
     xTaskCreate(ota_reboot_task, "ota_reboot", 2048, NULL, 5, NULL);
     return ESP_OK;
 }
+
+#endif // ENABLE_ABOUT_FIRMWARE

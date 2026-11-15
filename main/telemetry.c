@@ -46,6 +46,8 @@
 #include "telemetry.h"
 #include "weather_telemetry.h"
 
+#ifdef ENABLE_TELEMETRY
+
 static const char *TAG = "telemetry";
 
 // Same software-identifier destination call used by beacon.c / weather.c,
@@ -1329,6 +1331,10 @@ uint32_t telemetry_beacon_service(void) {
     s_cache_valid = true;
     telemetry_unlock();
 
+    // Tells the APRS-IS client whether the Internet leg needs the session,
+    // which is the only way it learns: these settings are not in g_config.
+    igate_uplink_demand(IGATE_UPLINK_TELEMETRY, cfg.en && cfg.tx2inet);
+
     if (!cfg.en || (!cfg.tx2rf && !cfg.tx2inet)) {
         s_data_next_due = 0; // reset so (re-)enabling fires an immediate TX
         s_info_next_due = 0;
@@ -1445,9 +1451,11 @@ void telemetry_start(void) {
     telemetry_config_t cfg;
     telemetry_config_load(&cfg);
 
-    // No sensors_local_init()/sensors_local_init_all() call here: weather_start()
-    // (called before this, from aprs_service.c) already brought the shared
-    // registry up. This subsystem only reads it.
+    // No sensors_local_init()/sensors_local_init_all() call here:
+    // aprs_service_start() brings the shared registry up before this call.
+    // This subsystem only reads it.
     ESP_LOGI(TAG, "Telemetry subsystem started (en=%d rf=%d inet=%d data_interval=%us info_interval=%us)", cfg.en, cfg.tx2rf, cfg.tx2inet,
              (unsigned)cfg.data_interval, (unsigned)cfg.info_interval);
 }
+
+#endif // ENABLE_TELEMETRY

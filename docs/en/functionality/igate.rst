@@ -74,9 +74,15 @@ The APRS-IS client task
   is checked for structural validity by
   ``aprs_filter_validate_server_string()`` — each space-separated term must be
   ``<letter>/<args>`` with the right argument count for that filter letter.
-* **Shared uplink.** The task always runs, because the same socket is used by
-  the message component (``igate_send_raw()``) and by "beacon to internet". It
-  idles cheaply when nothing needs it.
+* **Shared uplink.** The task always runs, because the same socket is the
+  Internet leg of every module that has one — beacons, weather, telemetry,
+  bulletins, objects/items, messaging, the query responder and BrandMeister —
+  through ``igate_send_raw()``. It idles cheaply when nothing needs it, and opens
+  the session as soon as any built module's Internet switch asks for it
+  (telemetry, bulletins and objects/items report through
+  ``igate_uplink_demand()``). The client is built whenever any of those modules
+  is (``BUILD_APRS_IS``), so a build without ``ENABLE_IGATE`` keeps it, minus
+  the gating in both directions; see :ref:`en-config-module-switches`.
 * **Dead-link detection.** ``net_state_is_connected()`` only catches the
   station's own Wi-Fi dropping; it says nothing about the far end of an
   already-open APRS-IS socket going quiet - an idle-TCP NAT/firewall mapping

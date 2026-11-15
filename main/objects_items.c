@@ -46,7 +46,11 @@
 #include "storage.h"    // storage_write_lock() / storage_generation()
 #include "str_append.h" // str_copy_strip_line_breaks(), str_copy_strip_reserved(), str_copy_utf8_safe()
 
+#if defined(BUILD_BEACONS) || defined(ENABLE_OBJECTS_ITEMS)
 static const char *TAG = "objitems";
+#endif
+
+#ifdef ENABLE_OBJECTS_ITEMS
 
 #define OBJITEMS_PATH     "/storage/objitems.json"
 #define OBJITEMS_TMP_PATH "/storage/objitems.json.tmp"
@@ -616,6 +620,12 @@ static bool objitem_area_is_line(uint8_t type) {
     return type == OBJITEM_AREA_TYPE_LINE_DOWN_RIGHT || type == OBJITEM_AREA_TYPE_LINE_DOWN_LEFT;
 }
 
+#endif // ENABLE_OBJECTS_ITEMS
+
+// The frequency block builder below is shared: the IGate, digipeater and
+// tracker beacons put the same freqspec.txt block in their comment, so it is
+// built whenever one of them or the objects/items transmitter is.
+#if defined(BUILD_BEACONS) || defined(ENABLE_OBJECTS_ITEMS)
 // Width, in bytes, of the frequency field itself. freqspec.txt defines it as
 // a fixed 10-byte field so that it lands in a known column on the 10x10
 // character displays of the radios that auto-tune from it, which is why every
@@ -800,6 +810,9 @@ void objitem_build_freq_block(float freq_mhz, uint16_t tone_tenths, int8_t duple
 // first thing in the comment text so other stations' radios can auto-tune
 // from it. Thin wrapper over objitem_build_freq_block() so the element's own
 // stored sub-fields feed the shared builder.
+#endif // BUILD_BEACONS || ENABLE_OBJECTS_ITEMS
+
+#ifdef ENABLE_OBJECTS_ITEMS
 static void build_freq_block(const objitem_t *b, char *out, size_t out_size) {
     objitem_build_freq_block(b->freq_mhz, b->tone_tenths, b->duplex, b->offset_khz, b->range, b->range_km, b->dcs_enable, b->dcs_code, b->narrow,
                              b->rx_freq_enable, b->rx_freq_mhz, out, out_size);
@@ -1336,6 +1349,13 @@ uint32_t objitems_service(void) {
         ESP_LOGW(TAG, "%s unusable, transmitting from substituted defaults", OBJITEMS_PATH);
     warned_load = !loaded;
 
+    // Tells the APRS-IS client whether any element needs the session, which
+    // is the only way it learns: these settings are not in g_config.
+    bool inet_wanted = false;
+    for (int i = 0; i < OBJITEM_COUNT; i++)
+        inet_wanted = inet_wanted || (set.item[i].enable && set.item[i].name[0] && objitem_effective_inet(&set.item[i]));
+    igate_uplink_demand(IGATE_UPLINK_OBJECTS, inet_wanted);
+
     char src[16];
     resolve_source_call(src, sizeof(src));
 
@@ -1460,3 +1480,5 @@ void objitems_start(void) {
     objitems_load(&set);
     ESP_LOGI(TAG, "Objects/Items configured (per-element interval, default=%us; driven by beacon scheduler)", (unsigned)OBJITEM_DEFAULT_INTERVAL_S);
 }
+
+#endif // ENABLE_OBJECTS_ITEMS

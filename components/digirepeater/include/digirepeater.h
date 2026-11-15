@@ -40,8 +40,10 @@
 #ifndef DIGIREPEATER_H
 #define DIGIREPEATER_H
 
+#include "app_config.h" // ENABLE_DIGIPEATER: the entry point below is declared only when the digipeater is built
 #include "ax25.h"
 
+#ifdef ENABLE_DIGIPEATER
 /**
  * @brief Process one received AX.25 frame through the digipeater path logic.
  *
@@ -75,5 +77,6 @@
  *              re-encoded and transmitted on RF)
  */
 int digiProcess(ax25_msg_t *packet);
+#endif
 
 #endif // DIGIREPEATER_H

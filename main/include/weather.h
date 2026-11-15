@@ -21,6 +21,9 @@
  * per second, and periodically encodes and transmits a standard APRS Weather
  * Report (RF and/or APRS-IS) from the fields the operator mapped on the Weather
  * web admin page (g_config.wx_*).
+ *
+ * Everything below is declared only when ::ENABLE_WEATHER is defined: the
+ * subsystem is not built without it.
  */
 
 #ifndef WEATHER_H
@@ -32,6 +35,8 @@
 
 #include "app_config.h" // wx_field_id_t
 #include "weather_telemetry.h"
+
+#ifdef ENABLE_WEATHER
 
 /**
  * @brief The one shared weather/telemetry container for this station.
@@ -51,8 +56,11 @@ extern weather_telemetry_data_t weather_telemetry_data;
 
 /**
  * @brief Bring up the weather subsystem: wire the shared container to its
- *        backing storage, create the module lock, and initialise the
- *        ::sensors_local registry together with every auto-registered driver.
+ *        backing storage and create the module lock.
+ *
+ * The ::sensors_local registry it samples is brought up by
+ * aprs_service_start() just before this call, since the telemetry subsystem
+ * reads the same registry.
  *
  * Creates no task of its own. The WX beacon is serviced by the shared beacon
  * scheduler through ::weather_beacon_service, and the sensor refresh by the
@@ -177,5 +185,7 @@ bool weather_field_snapshot(wx_field_id_t field, double *out_value);
  */
 void weather_field_format(wx_field_id_t field, double value, char *out, size_t out_max);
 /** @} */
+
+#endif // ENABLE_WEATHER
 
 #endif // WEATHER_H

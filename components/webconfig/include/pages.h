@@ -54,12 +54,21 @@
  * The boundary lives in these handlers and nowhere else. The pages do hide or
  * disable what a read-only session cannot use, but that is presentation: a
  * request that arrives anyway is refused here.
+ *
+ * Each handler of a module page is declared only when that module is in the
+ * build (see the module enables in app_config.h), and web_server_start()
+ * registers exactly the handlers declared here. Two pages outlive their own
+ * module because they also edit a setting other modules share: the IGate page
+ * is declared under ::BUILD_APRS_IS and the Digipeater page under
+ * ::BUILD_PATH_PRESETS.
  */
 
 #ifndef PAGES_H
 #define PAGES_H
 
 #include "esp_http_server.h"
+
+#include "app_config.h"
 
 /**
  * @name Foundation pages (dashboard, station, storage, system, OTA)
@@ -70,23 +79,32 @@
 esp_err_t page_root(httpd_req_t *req);
 /** @brief GET  /logout - clear HTTP auth and show the "logged out" page. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_logout(httpd_req_t *req);
+#ifdef ENABLE_DASHBOARD
 /** @brief GET  /dashboard - main status dashboard (live panels are filled by the JSON pollers below). @param req Incoming request. @return ESP_OK or an
  * esp_err_t error. */
 esp_err_t page_dashboard(httpd_req_t *req);
+#endif
+#ifdef ENABLE_STATION
 /** @brief GET  /station - "My Station" form (callsign + lat/lon/alt shared by every page's "Use My Station Data"). @param req Incoming request. @return ESP_OK
  * or an esp_err_t error. */
 esp_err_t page_station_get(httpd_req_t *req);
 /** @brief POST /station - persist the "My Station" identity/position. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_station_post(httpd_req_t *req);
+#endif
+#ifdef ENABLE_BULLETINS
 /** @brief GET  /bulletins - APRS bulletin editor (BLN1..BLN5, stored in LittleFS, not g_config). @param req Incoming request. @return ESP_OK or an esp_err_t
  * error. */
 esp_err_t page_bulletins_get(httpd_req_t *req);
 /** @brief POST /bulletins - persist the bulletin set and (re)arm expiry. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_bulletins_post(httpd_req_t *req);
+#endif
+#ifdef ENABLE_OBJECTS_ITEMS
 /** @brief GET  /objects - APRS Objects/Items editor (stored in LittleFS, not g_config). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_objects_get(httpd_req_t *req);
 /** @brief POST /objects - persist the Objects/Items set. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_objects_post(httpd_req_t *req);
+#endif
+#ifdef ENABLE_DASHBOARD
 /** @brief GET  /sidebarInfo - HTML summary strip shown in the sidebar, polled once a second. @param req Incoming request. @return ESP_OK or an esp_err_t
  * error. */
 esp_err_t page_sidebar_info(httpd_req_t *req);
@@ -97,9 +115,11 @@ esp_err_t page_igate_traffic(httpd_req_t *req);
 esp_err_t page_lastheard(httpd_req_t *req);
 /** @brief GET  /dashinfo - compact live sysinfo strip polled by the dashboard. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_dashinfo(httpd_req_t *req);
+#endif
 /** @brief GET  /heapinfo - free/min-free heap as a two-field JSON object, for an external client that wants only those two numbers. @param req Incoming
  * request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_heapinfo(httpd_req_t *req);
+#ifdef ENABLE_FILE_STORAGE
 /** @brief GET  /storage - LittleFS storage management page (list/download/delete/format). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_storage_get(httpd_req_t *req);
 /** @brief GET  /download?file=... - stream one stored file back to the browser. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
@@ -111,6 +131,8 @@ esp_err_t page_delete(httpd_req_t *req);
 esp_err_t page_format(httpd_req_t *req);
 /** @brief POST /upload - multipart file upload into LittleFS. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_upload(httpd_req_t *req);
+#endif
+#ifdef ENABLE_WIRELESS
 /** @brief GET  /wireless - WiFi STA/AP configuration form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_wireless_get(httpd_req_t *req);
 /** @brief POST /wireless - persist WiFi configuration. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
@@ -118,19 +140,26 @@ esp_err_t page_wireless_post(httpd_req_t *req);
 /** @brief POST /wifiscan - JSON list of nearby access points (SSID/RSSI/auth). POST, not GET: the scan flips an AP-only radio to AP+STA, so it is a
  * state-changing request and has to go through the same-origin check in web_check_auth(). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_wifi_scan_post(httpd_req_t *req);
+#endif
+#ifdef ENABLE_SYSTEM
 /** @brief GET  /system - System settings (time sync, CPU frequency, HTTP auth, hostname, logging). @param req Incoming request. @return ESP_OK or an esp_err_t
  * error. */
 esp_err_t page_system_get(httpd_req_t *req);
 /** @brief POST /system - persist System settings and apply the ones that take effect live. @param req Incoming request. @return ESP_OK or an esp_err_t error.
  */
 esp_err_t page_system_post(httpd_req_t *req);
+#endif
+#ifdef ENABLE_ABOUT_FIRMWARE
 /** @brief GET  /about - firmware/build info and the OTA update form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_about_get(httpd_req_t *req);
 /** @brief POST /ota_update - multipart firmware upload written to the inactive OTA slot, then reboot. @param req Incoming request. @return ESP_OK or an
  * esp_err_t error. */
 esp_err_t page_ota_update_post(httpd_req_t *req);
+#endif
+#ifdef ENABLE_SYSTEM
 /** @brief GET/POST /default - factory reset (wipe config back to defaults and reboot). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_default_reset(httpd_req_t *req);
+#endif
 
 /** @} */
 
@@ -139,34 +168,49 @@ esp_err_t page_default_reset(httpd_req_t *req);
  * @{
  */
 
-/** @brief GET  /igate - IGate (APRS-IS gateway) settings form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+#ifdef BUILD_APRS_IS
+/** @brief GET  /igate - IGate (APRS-IS gateway) settings form; without ::ENABLE_IGATE, the APRS-IS client settings alone. @param req Incoming request.
+ * @return ESP_OK or an esp_err_t error. */
 esp_err_t page_igate_get(httpd_req_t *req);
-/** @brief POST /igate - persist IGate settings. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+/** @brief POST /igate - persist the settings page_igate_get() renders. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_igate_post(httpd_req_t *req);
+#endif
+#ifdef ENABLE_BRANDMEISTER
 /** @brief GET  /bm - BrandMeister interconnect settings form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_bm_get(httpd_req_t *req);
 /** @brief POST /bm - persist BrandMeister interconnect settings. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_bm_post(httpd_req_t *req);
-/** @brief GET  /digi - Digipeater settings form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+#endif
+#ifdef BUILD_PATH_PRESETS
+/** @brief GET  /digi - Digipeater settings form, including the shared path presets; without ::ENABLE_DIGIPEATER, the path presets alone. @param req
+ * Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_digi_get(httpd_req_t *req);
-/** @brief POST /digi - persist Digipeater settings. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
+/** @brief POST /digi - persist the settings page_digi_get() renders. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_digi_post(httpd_req_t *req);
+#endif
+#ifdef ENABLE_TRACKER
 /** @brief GET  /tracker - Tracker (fixed-position beacon) settings form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_tracker_get(httpd_req_t *req);
 /** @brief POST /tracker - persist Tracker settings. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_tracker_post(httpd_req_t *req);
+#endif
+#ifdef ENABLE_WEATHER
 /** @brief GET  /wx - Weather station settings + sensor mapping form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_wx_get(httpd_req_t *req);
 /** @brief POST /wx - persist Weather settings and sensor mapping. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_wx_post(httpd_req_t *req);
 /** @brief GET  /wx/values - JSON live sensor-mapping preview, polled every 2 s. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_wx_values_get(httpd_req_t *req);
+#endif
+#ifdef ENABLE_TELEMETRY
 /** @brief GET  /tlm - Telemetry configuration form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_tlm_get(httpd_req_t *req);
 /** @brief POST /tlm - persist Telemetry configuration (to /storage/telemetry.json). @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_tlm_post(httpd_req_t *req);
 /** @brief GET  /tlm/values - JSON live raw-analog preview, polled every 2 s. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_tlm_values_get(httpd_req_t *req);
+#endif
+#ifdef ENABLE_GPS
 /** @brief GET  /gps - GNSS receiver enable switch and live view of everything it reports. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_gps_get(httpd_req_t *req);
 /** @brief POST /gps - persist the GNSS receiver enable switch and apply it to the running receiver. @param req Incoming request. @return ESP_OK or an esp_err_t
@@ -178,6 +222,8 @@ esp_err_t page_gps_values_get(httpd_req_t *req);
 /** @brief GET  /gps/live - JSON snapshot of latitude/longitude/altitude/speed/course as plain numbers (or null), consumed by every page's "Use GPS"
  * checkbox to auto-fill its position/motion fields. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_gps_live_get(httpd_req_t *req);
+#endif
+#ifdef ENABLE_TELEGRAM
 /** @brief GET  /telegram - Telegram bot enable switch, credentials and live connection diagnosis. @param req Incoming request. @return ESP_OK or an esp_err_t
  * error. */
 esp_err_t page_telegram_get(httpd_req_t *req);
@@ -187,6 +233,7 @@ esp_err_t page_telegram_post(httpd_req_t *req);
 /** @brief GET  /telegram/status - JSON snapshot of the bot's state, the reason for it and its counters, polled every 2 s. @param req Incoming request.
  * @return ESP_OK or an esp_err_t error. */
 esp_err_t page_telegram_status_get(httpd_req_t *req);
+#endif
 
 /** @} */
 
@@ -194,6 +241,7 @@ esp_err_t page_telegram_status_get(httpd_req_t *req);
  * @name Winlink (APRSLink) page (gated by ENABLE_WINLINK)
  * @{
  */
+#ifdef ENABLE_WINLINK
 /** @brief GET  /winlink - Winlink account settings, the message-gating policy for the service, and the session terminal. @param req Incoming request.
  * @return ESP_OK or an esp_err_t error. */
 esp_err_t page_winlink_get(httpd_req_t *req);
@@ -209,6 +257,7 @@ esp_err_t page_winlink_status_get(httpd_req_t *req);
 /** @brief GET  /winlink/list - JSON array of the replies the service has sent, oldest first, polled by the session terminal. @param req Incoming request.
  * @return ESP_OK or an esp_err_t error. */
 esp_err_t page_winlink_list_get(httpd_req_t *req);
+#endif
 
 /** @} */
 
@@ -217,6 +266,7 @@ esp_err_t page_winlink_list_get(httpd_req_t *req);
  * @{
  */
 
+#ifdef ENABLE_LOGS
 /** @brief GET  /logs - console log viewer: one window and the button that starts and stops it. Rendering the page also stops any capture still running, so
  * the button always comes up in its Start state. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_logs_get(httpd_req_t *req);
@@ -231,6 +281,7 @@ esp_err_t page_logs_stop_post(httpd_req_t *req);
  * mirror's idle timeout, so the poll changes state and has to go through the same-origin check in web_check_auth(). @param req Incoming request. @return
  * ESP_OK or an esp_err_t error. */
 esp_err_t page_logs_read_post(httpd_req_t *req);
+#endif
 
 /** @} */
 
@@ -239,6 +290,7 @@ esp_err_t page_logs_read_post(httpd_req_t *req);
  * @{
  */
 
+#ifdef ENABLE_RADIO_MODEM
 /** @brief GET  /radio - Radiomodem (audio AFSK modem) settings form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_radio_get(httpd_req_t *req);
 /** @brief POST /radio - persist Radiomodem settings and re-apply them to the running modem. @param req Incoming request. @return ESP_OK or an esp_err_t error.
@@ -258,14 +310,19 @@ esp_err_t page_radio_capture_post(httpd_req_t *req);
 /** @brief POST /radio/txtest - JSON result of a bounded transmit burst, for setting the transmit level against a deviation meter. POST, not GET: it keys the
  * transmitter. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_radio_txtest_post(httpd_req_t *req);
+#endif
+#ifdef ENABLE_MESSAGE
 /** @brief GET  /msg - APRS Message service settings form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_msg_get(httpd_req_t *req);
 /** @brief POST /msg - persist APRS Message service settings. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_msg_post(httpd_req_t *req);
+#endif
+#ifdef ENABLE_QUERY
 /** @brief GET  /query - Query responder settings form. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_query_get(httpd_req_t *req);
 /** @brief POST /query - persist Query responder settings. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_query_post(httpd_req_t *req);
+#endif
 
 /** @} */
 
@@ -274,12 +331,14 @@ esp_err_t page_query_post(httpd_req_t *req);
  * @{
  */
 
+#ifdef ENABLE_MSG_CHAT
 /** @brief GET  /msgchat - chat-style message inbox/compose page. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_msgchat_get(httpd_req_t *req);
 /** @brief POST /msgchat - send a message; replies JSON {"ok":true|false,"error":...}. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_msgchat_post(httpd_req_t *req);
 /** @brief GET  /msgchat/list - JSON message history, polled by the chat page. @param req Incoming request. @return ESP_OK or an esp_err_t error. */
 esp_err_t page_msgchat_list(httpd_req_t *req);
+#endif
 
 /** @} */
 

@@ -53,6 +53,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "app_config.h" // ENABLE_GPS: the driver entry points below are declared only when the receiver driver is built
+
 /**
  * @name GNSS serial port wiring (compile-time constants)
  *
@@ -193,6 +195,7 @@ typedef struct {
     uint32_t link_age_s;    /**< Seconds since the last sentence of any kind verified. */
 } gps_data_t;
 
+#ifdef ENABLE_GPS
 /**
  * @brief Bring the GNSS subsystem up or down to match @c g_config.gps_en.
  *
@@ -249,6 +252,7 @@ bool gps_enabled(void);
  *         which case @p out is zeroed, which reads as "no link, no fix").
  */
 bool gps_snapshot(gps_data_t *out);
+#endif
 
 /**
  * @brief True if @p gpio is one of the pins the GNSS receiver's UART
@@ -258,9 +262,12 @@ bool gps_snapshot(gps_data_t *out);
  * consults this - directly, or through the GPIO registry in
  * web_gpio_collect_used() - and skips any pin for which it returns true, so
  * those pins can never be handed to another peripheral from the web UI. Kept
- * as a header-only inline, and this header kept free of any ESP-IDF include,
- * so consumers that only need the reserved-pin rule can apply it without
- * pulling in the UART machinery.
+ * as a header-only inline, so consumers that only need the reserved-pin rule
+ * can apply it without pulling in the UART machinery.
+ *
+ * The pins are board wiring rather than a driver setting, so they stay
+ * reserved in a build without ::ENABLE_GPS as well: the module is still
+ * soldered to them whether or not its driver is compiled in.
  *
  * @param gpio GPIO number to test (any int; values that match neither pin
  *             return false).

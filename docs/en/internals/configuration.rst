@@ -147,11 +147,16 @@ Scalar (single-word) fields are word-atomic on this MCU and may be read
 lock-free. It is distinct from the internal save mutex (held across the whole
 flash serialisation).
 
+.. _en-config-module-switches:
+
 Compile-time module switches
 ============================
 
 ``app_config.h`` defines a set of ``ENABLE_*`` macros; commenting one out
-removes its sidebar entry and its page from the image:
+removes the module from the image — its sidebar entry and page, the routes the
+page serves, and every piece of firmware code that implements the module: its
+tasks, its service passes, its receive-path handling, its beacons and its
+answers to other modules:
 
 .. code-block:: c
 
@@ -161,6 +166,73 @@ removes its sidebar entry and its page from the image:
    ENABLE_WEATHER      ENABLE_TELEMETRY    ENABLE_GPS          ENABLE_TELEGRAM
    ENABLE_WINLINK      ENABLE_LOGS         ENABLE_SYSTEM       ENABLE_WIRELESS
    ENABLE_FILE_STORAGE ENABLE_ABOUT_FIRMWARE
+
+What a disabled module leaves behind:
+
+- **Its settings.** ``app_config_t`` keeps every field and the persistence
+  layer every section, so the module's stored file stays on flash untouched and
+  is found again by a later build that re-enables it. Nothing outside the
+  module acts on those settings while it is out, and every page that also
+  writes one of them (for example the My Station page, which mirrors the
+  station identity into each service) only writes those of the modules built.
+- **Code another enabled module still needs.** Only the disabled module's part
+  goes. The shared pieces are selected by derived ``BUILD_*`` macros, never set
+  by hand, each defined while at least one of its users is in the build:
+
+  ======================== ====================================================
+  ``BUILD_APRS_IS``        APRS-IS client (connection, login, failover, receive
+                           line pump, ``igate_send_raw()``). Users: IGate,
+                           BrandMeister, Message, Query, Digipeater, Tracker,
+                           Weather, Telemetry, Bulletins, Objects/Items.
+  ``BUILD_DUP_CACHE``      Duplicate-suppression cache. Users: IGate,
+                           Digipeater.
+  ``BUILD_PATH_PRESETS``   The four shared path presets. Users: every module
+                           that transmits through them.
+  ``BUILD_MSG_PARSER``     The ``:ADDRESSEE:`` receive parser. Users: Message,
+                           Query (directed queries), Telegram (routing).
+  ``BUILD_SENSORS``        Bring-up of the local sensor registry. Users:
+                           Weather, Telemetry.
+  ``BUILD_BEACONS``        Position and status beacon builders. Users: IGate,
+                           Digipeater, Tracker.
+  ======================== ====================================================
+
+- **Settings another enabled module still needs.** A page that also edits a
+  shared setting stays, reduced to that setting: without ``ENABLE_IGATE`` the
+  IGate page becomes the *APRS-IS* page (login callsign/SSID, passcode, filter,
+  servers and, with the digipeater, duplicate suppression); without
+  ``ENABLE_DIGIPEATER`` the Digipeater page becomes the *Paths* page (the
+  four path presets).
+
+Two switches depend on another one, and the build stops with an ``#error``
+naming the pair if the dependency is broken: ``ENABLE_MSG_CHAT`` and
+``ENABLE_WINLINK`` both require ``ENABLE_MESSAGE``.
+
+The page-only modules — ``ENABLE_DASHBOARD``, ``ENABLE_STATION``,
+``ENABLE_RADIO_MODEM``, ``ENABLE_LOGS``, ``ENABLE_SYSTEM``,
+``ENABLE_WIRELESS``, ``ENABLE_FILE_STORAGE`` and ``ENABLE_ABOUT_FIRMWARE`` —
+remove an administration tool, not a station function: the modem, WiFi, time
+sync and file system they configure always run from the stored settings.
+What goes with each page is the tool behind it: the RX/TX traffic log and live
+statistics (Dashboard), the loop, level, capture and TX tests (Radiomodem),
+the log capture (Logs), the factory reset (System), the WiFi scan (Wireless),
+the file manager (File Storage) and the OTA upload (About).
+
+Other effects worth knowing:
+
+- Without ``ENABLE_IGATE`` every APRS-IS line is handed to the line handler
+  (there is no Internet-to-RF switch to consult), so messaging, the query
+  responder, Telegram routing and last heard keep reading the feed.
+- The APRS-IS session comes up whenever any built module's Internet leg asks
+  for it, not only for the IGate: telemetry, bulletins and objects/items, whose
+  settings live in their own files, report their need through
+  ``igate_uplink_demand()``.
+- A beacon only advertises "messaging capable" when ``ENABLE_MESSAGE`` is
+  built and switched on; the query responder answers ``?APRS?``, ``?IGATE?``,
+  ``?APRSS`` and ``?APRSP`` only with ``ENABLE_IGATE`` and ``?WX?`` only with
+  ``ENABLE_WEATHER``; SmartBeaconing and every "Use GPS" control exist only
+  with ``ENABLE_GPS``.
+- The GNSS UART pins stay reserved in the GPIO pickers without
+  ``ENABLE_GPS``: they are board wiring, like the sensor I2C pins.
 
 There is **no** ``ENABLE_SENSORS`` switch: the ``sensors_local`` framework has no
 compile-time disable and is always built in (its individual drivers are gated by

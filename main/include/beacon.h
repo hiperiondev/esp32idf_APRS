@@ -58,6 +58,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "app_config.h" // module enables: the entry points below are declared only when their module is built
+
+#ifdef BUILD_BEACONS
 /**
  * @brief Log the configured state of the Tracker, IGate, and Digipeater
  * beacons. The beacons themselves do not run as three separate tasks: they
@@ -65,7 +68,9 @@
  * calls ::beacon_service. Safe to call once from app startup.
  */
 void beacon_start(void);
+#endif
 
+#ifdef ENABLE_IGATE
 /**
  * @brief Build the same APRS position report the IGate position beacon
  * transmits (g_config.igate_*), on demand, for reuse by any caller that needs
@@ -114,7 +119,9 @@ int beacon_build_igate_position_packet(const char *path, char *out, size_t out_m
  *         APRS_TNC2_MAX_LEN.
  */
 int beacon_build_igate_status_packet(const char *path, char *out, size_t out_max);
+#endif
 
+#ifdef BUILD_BEACONS
 /**
  * @brief Service all three position beacons (Tracker / IGate / Digipeater) in
  * one pass, transmitting any that are due, and return the number of seconds
@@ -126,5 +133,6 @@ int beacon_build_igate_status_packet(const char *path, char *out, size_t out_max
  * from the shared beacon scheduler task.
  */
 uint32_t beacon_service(void);
+#endif
 
 #endif // BEACON_H

@@ -77,6 +77,10 @@
 #define TR_MENU_IGATE "IGate"
 /** Sidebar navigation entry for the Digipeater page, rendered on the sidebar. */
 #define TR_MENU_DIGI "Digipeater"
+/** Sidebar navigation entry for the IGate page when the build carries the APRS-IS client without the IGate, rendered on the sidebar. */
+#define TR_MENU_APRS_IS "APRS-IS"
+/** Sidebar navigation entry for the Digipeater page when the build carries the shared path presets without the digipeater, rendered on the sidebar. */
+#define TR_MENU_PATHS "Paths"
 /** Sidebar navigation entry for the Tracker page, rendered on the sidebar. */
 #define TR_MENU_TRACKER "Tracker"
 /** Sidebar navigation entry for the Weather page, rendered on the sidebar. */

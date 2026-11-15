@@ -42,6 +42,8 @@
 #include "web_common.h"
 #include "web_help.h"
 
+#ifdef ENABLE_RADIO_MODEM
+
 static const char *TAG = "page_radio";
 
 // Renders the FX.25 mode field as a 3-option select (Off / Receive only /
@@ -824,3 +826,5 @@ esp_err_t page_radio_post(httpd_req_t *req) {
     web_send_save_result(req, ok, "/radio");
     return ESP_OK;
 }
+
+#endif // ENABLE_RADIO_MODEM

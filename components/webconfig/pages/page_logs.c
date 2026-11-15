@@ -70,11 +70,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "app_config.h"
 #include "esp_http_server.h"
 #include "logcapture.h"
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
+
+#ifdef ENABLE_LOGS
 
 // Sends a JSON document with the no-store headers every live endpoint on this
 // page uses: none of these answers describes anything that is still true a
@@ -265,3 +268,5 @@ esp_err_t page_logs_get(httpd_req_t *req) {
     web_send_footer(req);
     return ESP_OK;
 }
+
+#endif // ENABLE_LOGS

@@ -39,6 +39,8 @@
 #include "web_common.h"
 #include "web_help.h"
 
+#ifdef ENABLE_OBJECTS_ITEMS
+
 static const char *TAG = "page_objects";
 
 // Scope <select> for one element. Values match objitem_scope_t.
@@ -877,3 +879,5 @@ esp_err_t page_objects_post(httpd_req_t *req) {
     web_send_save_result(req, ok, "/objects");
     return ESP_OK;
 }
+
+#endif // ENABLE_OBJECTS_ITEMS

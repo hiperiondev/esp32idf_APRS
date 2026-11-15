@@ -142,7 +142,8 @@ planificador de FreeRTOS**, porque ``SENSORS_LOCAL_DRIVER_AUTOREGISTER`` dispara
 desde un ``__attribute__((constructor))``. En ese punto el mutex del registro aún
 no existe — los ayudantes de lock/unlock son no-ops mientras es NULL, lo que es
 seguro solo porque toda esa fase es de un solo hilo. La primera llamada real a
-``sensors_local_init()`` (desde ``weather_start()``) crea el mutex y hace
+``sensors_local_init()`` (desde ``aprs_service_start()``, en toda compilación
+con meteo o telemetría) crea el mutex y hace
 seguro-de-hilos cada acceso posterior.
 
 Que un controlador falle su ``init()`` o devuelva un error de ``save()`` se
@@ -157,10 +158,10 @@ Flujo de datos de extremo a extremo
      └─ constructor de cada drivers/*.c → SENSORS_LOCAL_DRIVER_AUTOREGISTER
           → sensors_local_register(&my_driver)
 
-   weather_start()  (una vez, al arrancar)
+   aprs_service_start()  (una vez, al arrancar, con meteo o telemetría compilados)
      ├─ sensors_local_init()          ← crea el mutex del registro
      ├─ sensors_local_init_all()      ← ejecuta init() en cada controlador
-     └─ registra weather_service_1hz() y weather_beacon_service()
+     └─ weather_start()               ← registra weather_service_1hz() y weather_beacon_service()
 
    weather_service_1hz()   (1 Hz)
      ├─ limpia las banderas "enabled" del contenedor

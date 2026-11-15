@@ -19,6 +19,24 @@
  *
  * Configuration comes entirely from g_config (app_config_t, see
  * main/include/app_config.h / web admin "IGate" page).
+ *
+ * The component is three layers, each declared and built only while a module
+ * that uses it is in the build (see the shared code selection in
+ * app_config.h):
+ *
+ * - The traffic counters and the drop accounting (igate_get_stats(),
+ *   igate_note_drop(), igate_drop_reason_name(), igate_log_accepts_frame()),
+ *   which every receive and transmit path of the firmware reports into. Always
+ *   built.
+ * - The duplicate-suppression cache shared by the IGate and the digipeater,
+ *   under ::BUILD_DUP_CACHE.
+ * - The APRS-IS client - the connection task, the login, the server failover,
+ *   the receive-line pump and igate_send_raw() - under ::BUILD_APRS_IS. It is
+ *   the IGate's uplink and also the Internet leg of every other module that
+ *   has one.
+ *
+ * The gating itself, RF->INET (igateProcess()) and the INET->RF filters, sits
+ * on top of the client and is built only with ::ENABLE_IGATE.
  */
 
 #ifndef IGATE_H
@@ -27,6 +45,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "app_config.h"
 #include "ax25.h"
 
 // Duplicate suppression as a whole is switched by g_config.dup_cache_en; the
@@ -253,6 +272,35 @@ void igate_note_drop(drop_reason_t reason);
  */
 void igate_note_message_gated(void);
 
+#ifdef BUILD_APRS_IS
+/**
+ * @brief A module whose Internet-leg switch lives outside g_config.
+ *
+ * The uplink task reads the g_config switches of every built module itself;
+ * the modules listed here keep their settings in a file of their own and so
+ * report through igate_uplink_demand() whether they need the session.
+ */
+typedef enum {
+    IGATE_UPLINK_TELEMETRY = 0, /**< Telemetry reports sent to APRS-IS. */
+    IGATE_UPLINK_BULLETINS,     /**< Bulletins sent to APRS-IS. */
+    IGATE_UPLINK_OBJECTS,       /**< Objects/items sent to APRS-IS. */
+    IGATE_UPLINK_USER_COUNT     /**< Number of users; not a user. */
+} igate_uplink_user_t;
+
+/**
+ * @brief Report whether one module needs the APRS-IS session.
+ *
+ * The uplink task keeps the session open while any user reports @c true or
+ * any built module's own g_config switch asks for it. Each user calls this on
+ * every pass of its service with the answer its current settings give, so a
+ * settings change takes effect on that user's next pass. Safe to call from
+ * any task; it never blocks.
+ *
+ * @param user   The reporting module.
+ * @param wanted true while the module sends anything to APRS-IS.
+ */
+void igate_uplink_demand(igate_uplink_user_t user, bool wanted);
+
 /**
  * @brief Start the IGate service task (APRS-IS TCP client with multiserver
  * failover, login, RX line pump). Call once from app startup: the task then
@@ -278,7 +326,9 @@ void igate_note_message_gated(void);
  * accepts and sustains the connection.
  */
 void igate_start(void);
+#endif
 
+#ifdef ENABLE_IGATE
 /**
  * @brief Feed one RF-decoded AX.25 frame to the gateway (RF -> INET direction).
  * Applies the APRS-IS basic RX-IGate source-callsign blacklist (NOCALL,
@@ -291,6 +341,7 @@ void igate_start(void);
  * @return 1 if forwarded, 0 if dropped/duplicate/not connected.
  */
 int igateProcess(ax25_msg_t *packet);
+#endif
 
 /**
  * @brief Should this RF frame appear in the web traffic log?
@@ -310,11 +361,15 @@ int igateProcess(ax25_msg_t *packet);
  * whatever the state of the IGate enable and the RF->INET direction switch, so
  * a receive-only station's log is narrowed rather than emptied.
  *
+ * Without ::ENABLE_IGATE there are no gating filters and this returns true
+ * for every frame.
+ *
  * @param packet Decoded frame, as handed to igateProcess().
  * @return true if the frame belongs in the traffic log.
  */
 bool igate_log_accepts_frame(const ax25_msg_t *packet);
 
+#ifdef BUILD_APRS_IS
 /**
  * @brief Should this APRS-IS line appear in the web traffic log?
  *
@@ -335,11 +390,16 @@ bool igate_log_accepts_frame(const ax25_msg_t *packet);
  * is inspected through the query registered with
  * igate_set_inet2rf_assoc_query() and is not consumed by this call.
  *
+ * Without ::ENABLE_IGATE there are no gating filters and this returns true
+ * for every line.
+ *
  * @param line Raw TNC2 text line read from APRS-IS, NUL-terminated.
  * @return true if the line belongs in the traffic log.
  */
 bool igate_log_accepts_line(const char *line);
+#endif
 
+#ifdef BUILD_DUP_CACHE
 /**
  * @brief Duplicate-packet check within one ::dup_scope_t window.
  *
@@ -380,6 +440,7 @@ bool isDuplicatePacket(ax25_msg_t *packet);
  * duplicate-suppression cache. Call periodically.
  */
 void clearExpiredDuplicates(void);
+#endif
 
 /**
  * @brief Snapshot of the IGate traffic counters (for the web dashboard).
@@ -387,6 +448,7 @@ void clearExpiredDuplicates(void);
  */
 igate_stats_t igate_get_stats(void);
 
+#ifdef BUILD_APRS_IS
 /**
  * @brief True while the APRS-IS TCP socket is currently open (logged in and
  * pumping the RX line reader). Used by the web dashboard's "Network Status"
@@ -400,11 +462,16 @@ bool igate_is_connected(void);
 /**
  * @brief Register the handler invoked for every raw TNC2 text line received
  * from APRS-IS (INET -> RF direction), e.g. to hand it to the message
- * component and/or re-transmit it on RF via aprs_service_send_tnc2(). Only called
- * when g_config.inet2rf is true.
+ * component and/or re-transmit it on RF via aprs_service_send_tnc2(). With
+ * ::ENABLE_IGATE it is only called when g_config.inet2rf is true; without the
+ * IGate there is no Internet-to-RF switch and it is called for every line.
+ * @param handler Function receiving each NUL-terminated TNC2 line, or NULL to
+ *                detach it.
  */
 void igate_set_inet2rf_handler(void (*handler)(const char *line));
+#endif
 
+#ifdef ENABLE_IGATE
 /**
  * @brief Register the predicate that reports whether a station is currently
  * owed an associated-position follow-up by the INET->RF handler.
@@ -421,7 +488,9 @@ void igate_set_inet2rf_handler(void (*handler)(const char *line));
  *              follow-up).
  */
 void igate_set_inet2rf_assoc_query(bool (*query)(const char *callsign));
+#endif
 
+#ifdef BUILD_APRS_IS
 /**
  * @brief Send a raw already-built TNC2 text line to APRS-IS (used by the
  * message component to gate outbound APRS messages/acks over INET). No-op
@@ -473,5 +542,6 @@ void igate_request_reconnect(void);
  * login line, rather than sending it twice.
  */
 void igate_request_filter_update(void);
+#endif
 
 #endif // IGATE_H

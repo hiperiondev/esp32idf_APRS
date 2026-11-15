@@ -34,6 +34,8 @@
 #include "web_common.h"
 #include "web_help.h"
 
+#ifdef ENABLE_BRANDMEISTER
+
 static const char *TAG = "page_bm";
 
 // True when the worldwide monitor subscription cannot be granted: this station
@@ -218,3 +220,5 @@ esp_err_t page_bm_post(httpd_req_t *req) {
     web_send_save_result(req, ok, "/bm");
     return ESP_OK;
 }
+
+#endif // ENABLE_BRANDMEISTER

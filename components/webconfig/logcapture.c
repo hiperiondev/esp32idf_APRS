@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "app_config.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -32,6 +33,8 @@
 #include "freertos/task.h"
 #include "heap_monitor.h" // HEAP_MONITOR_BRACKET() - the ring below is a single multi-kilobyte block
 #include "json_escape.h"  // json_escape_bytes()
+
+#ifdef ENABLE_LOGS
 
 // Working buffer the hook formats one console write into before the line
 // assembler walks it. Two full rows wide, so the common case - one log
@@ -369,3 +372,5 @@ size_t logcapture_next_json(uint32_t after_seq, uint32_t max_seq, char *out, siz
         *out_seq = found;
     return (size_t)n;
 }
+
+#endif // ENABLE_LOGS

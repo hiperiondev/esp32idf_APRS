@@ -103,6 +103,9 @@
  * mailbox is saved after the session lock is released. Both locks are taken
  * before storage_write_lock() and never after it, which is the ordering
  * main/include/storage.h requires of every module that persists a file.
+ *
+ * Everything this header declares is declared only when ::ENABLE_WINLINK is defined:
+ * the client is not built without it.
  */
 
 #ifndef WINLINK_H
@@ -111,6 +114,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#include "app_config.h" // ENABLE_WINLINK: everything below is declared only when the client is built
+
+#ifdef ENABLE_WINLINK
 
 /**
  * @brief Number of commands queued for transmission to the service.
@@ -475,5 +482,7 @@ bool winlink_comment_active(void);
  * @return true when @p call is the service callsign.
  */
 bool winlink_is_service_call(const char *call);
+
+#endif // ENABLE_WINLINK
 
 #endif // WINLINK_H

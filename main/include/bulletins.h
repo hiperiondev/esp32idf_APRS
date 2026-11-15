@@ -74,6 +74,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "app_config.h" // module enables: the entry points below are declared only when their module is built
 #include "must_check.h" // APRS_MUST_CHECK: the persistence entry points below may not have their result discarded
 
 /**
@@ -123,6 +124,7 @@ typedef struct {
     bulletin_t item[BULLETIN_COUNT]; /**< Fixed-size slot array; a slot is inactive when its @c enable flag is clear, so indices stay stable across saves. */
 } bulletins_t;
 
+#ifdef ENABLE_BULLETINS
 /**
  * @brief Load the bulletin set from /storage/bulletins.json into @p out.
  *
@@ -216,5 +218,6 @@ void bulletins_start(void);
  * Intended to be called only from the shared beacon scheduler task.
  */
 uint32_t bulletins_service(void);
+#endif
 
 #endif // BULLETINS_H

@@ -922,7 +922,10 @@ done:
 // ---------------------------------------------------------------- HTML shell
 // Sidebar menu: one row per page, in the order the sidebar renders them.
 // Each row is compiled in only when its module's ENABLE_* macro is defined,
-// so a page left out of the build leaves no dead link behind.
+// so a page left out of the build leaves no dead link behind. The IGate and
+// Digipeater rows also stand for a shared setting their page edits, so each
+// keeps a row of its own name for that setting while its module is out but a
+// module that uses the setting is in.
 struct menu_item {
     const char *href;
     const char *label;
@@ -953,14 +956,18 @@ static const struct menu_item MENU[] = {
 #ifdef ENABLE_QUERY
     { "/query", TR_MENU_QUERY, "query" },
 #endif
-#ifdef ENABLE_IGATE
+#if defined(ENABLE_IGATE)
     { "/igate", TR_MENU_IGATE, "igate" },
+#elif defined(BUILD_APRS_IS)
+    { "/igate", TR_MENU_APRS_IS, "igate" },
 #endif
 #ifdef ENABLE_BRANDMEISTER
     { "/bm", TR_MENU_BM, "bm" },
 #endif
-#ifdef ENABLE_DIGIPEATER
+#if defined(ENABLE_DIGIPEATER)
     { "/digi", TR_MENU_DIGI, "digi" },
+#elif defined(BUILD_PATH_PRESETS)
+    { "/digi", TR_MENU_PATHS, "digi" },
 #endif
 #ifdef ENABLE_TRACKER
     { "/tracker", TR_MENU_TRACKER, "tracker" },
@@ -995,8 +1002,14 @@ static const struct menu_item MENU[] = {
 #ifdef ENABLE_ABOUT_FIRMWARE
     { "/about", TR_MENU_ABOUT, "about" },
 #endif
+    // Terminator, never rendered: it ends every walk over the table and keeps
+    // the array non-empty in a build that carries no page at all.
+    { NULL, NULL, NULL },
 };
-#define MENU_COUNT (sizeof(MENU) / sizeof(MENU[0]))
+
+const char *web_home_uri(void) {
+    return MENU[0].href;
+}
 
 void web_send_header(httpd_req_t *req, const char *title, const char *active_menu) {
     httpd_resp_set_type(req, "text/html");
@@ -1035,9 +1048,9 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
                                   "<div class='topbar-right'><a class='logout' href='/logout'>" TR_LOGOUT "</a></div></div>"
                                   "<div class='layout'><nav class='sidebar'><ul>");
 
-    for (size_t i = 0; i < MENU_COUNT; i++) {
+    for (size_t i = 0; MENU[i].href != NULL; i++) {
         char line[160];
-        bool is_active = active_menu && strcmp(active_menu, MENU[i].key) == 0;
+        bool is_active = active_menu && MENU[i].key && strcmp(active_menu, MENU[i].key) == 0;
         snprintf(line, sizeof(line), "<li><a href='%s'%s>%s</a></li>", MENU[i].href, is_active ? " class='active'" : "", MENU[i].label);
         httpd_resp_sendstr_chunk(req, line);
     }
@@ -1858,8 +1871,10 @@ int web_gpio_collect_used(const char *skip_tag, web_gpio_owner_t *out, int max) 
     // msg_alarm_gpio can hold a real pin number even while the Message Alarm
     // "Enable" checkbox is off (Save doesn't clear it, so re-enabling later
     // keeps the same pin) - only count it as reserved while actually enabled.
+#ifdef ENABLE_MESSAGE
     if (g_config.msg_alarm_enable)
         WEB_GPIO_ADD(g_config.msg_alarm_gpio, "Message Alarm");
+#endif
 
     // Audio front-end and PTT: all fixed at compile time
     // (esp32idf_radioamateur_modem_config.h / the top-level CMakeLists.txt),
@@ -1880,7 +1895,8 @@ int web_gpio_collect_used(const char *skip_tag, web_gpio_owner_t *out, int max) 
     WEB_GPIO_ADD(SENSORS_LOCAL_I2C_SCL_GPIO, "Sensor I2C");
 
     // GNSS receiver serial port: fixed at compile time (gps.h), always
-    // reserved. Both pins are listed, not just the one carrying sentences:
+    // reserved, with or without the receiver driver in the build. Both pins
+    // are listed, not just the one carrying sentences:
     // the transmit pin is physically wired to the module's input on this
     // board, so handing it to another peripheral would drive that input.
     WEB_GPIO_ADD(GPS_UART_RX_GPIO, "GPS");
@@ -2033,6 +2049,7 @@ void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, boo
     httpd_resp_sendstr_chunk(req, buf);
 }
 
+#ifdef ENABLE_GPS
 void web_field_use_gps_data(httpd_req_t *req, const char *checkbox_name, bool checked, const char *station_checkbox_name, const char *lat_name,
                             const char *lon_name, const char *alt_name, const char *speed_name, const char *course_name) {
     // Same "querySelector or literal null" splice web_field_use_station_data()
@@ -2113,3 +2130,4 @@ void web_field_use_gps_data(httpd_req_t *req, const char *checkbox_name, bool ch
              qstation, checkbox_name, qstation);
     httpd_resp_sendstr_chunk(req, buf);
 }
+#endif

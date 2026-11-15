@@ -17,6 +17,13 @@
  * @brief APRS text messaging (send/ack/retry). Plain C / ESP-IDF.
  *
  * Configuration comes from g_config (app_config_t, web admin "Message" page).
+ *
+ * Two parts, declared only while they are built (see the module enables in
+ * app_config.h): the APRS Message service itself - queue, retries,
+ * acknowledgements, chat history and alarm - under ::ENABLE_MESSAGE, and the
+ * ":ADDRESSEE:" receive parser handleIncomingAPRS() under ::BUILD_MSG_PARSER,
+ * which also feeds the query responder's directed queries and the Telegram
+ * routing in a build without messaging.
  */
 
 #ifndef MESSAGE_H
@@ -27,7 +34,8 @@
 #include <stdint.h>
 #include <time.h>
 
-#include "query.h" // ::query_source_t, carried through to query_process_directed()
+#include "app_config.h" // module enables: each entry point below is declared only when its part of the component is built
+#include "query.h"      // ::query_source_t, carried through to query_process_directed()
 
 /**
  * @brief Number of message slots in the in-memory queue, shared by received and
@@ -140,6 +148,7 @@ typedef struct {
     bool used;               /**< true if this slot holds a valid entry. */
 } msg_entry_t;
 
+#ifdef ENABLE_MESSAGE
 /**
  * @brief Initialize the in-memory message queue. Call once at startup.
  */
@@ -226,7 +235,9 @@ void sendAPRSMessageRetry(void);
  *         none are pending).
  */
 int message_send_pending_to(const char *toCall);
+#endif
 
+#ifdef BUILD_MSG_PARSER
 /**
  * @brief Parse one incoming TNC2 text line (from RF or APRS-IS) and, if it is
  * an APRS message addressed to g_config.msg_mycall or to a message group this
@@ -284,7 +295,9 @@ int message_send_pending_to(const char *toCall);
  *               ::QUERY_SRC_INET for the APRS-IS feed).
  */
 void handleIncomingAPRS(const char *line, query_source_t source);
+#endif
 
+#ifdef ENABLE_MESSAGE
 /**
  * @brief Find a message queue slot by callsign, message number and direction.
  * @param call  Other station's callsign to match.
@@ -293,6 +306,7 @@ void handleIncomingAPRS(const char *line, query_source_t source);
  * @return Index of the matching slot, or a negative value if none matches.
  */
 int pkgMsg_Find(const char *call, uint16_t msgID, bool rxtx);
+#endif
 
 /**
  * @brief Upper bound, in bytes, on what message_next_json() writes for a single
@@ -307,6 +321,7 @@ int pkgMsg_Find(const char *call, uint16_t msgID, bool rxtx);
  */
 #define MSG_JSON_ENTRY_MAX 512
 
+#ifdef ENABLE_MESSAGE
 /**
  * @brief Serialize the oldest queue entry (RX or TX) whose conversation
  * position is past @p after_seq as one JSON object, for a caller streaming the
@@ -342,10 +357,12 @@ int pkgMsg_Find(const char *call, uint16_t msgID, bool rxtx);
  *         left past @p after_seq or the arguments are unusable.
  */
 size_t message_next_json(uint32_t after_seq, char *out, size_t out_size, uint32_t *out_seq);
+#endif
 
 #define MSG_CHANNEL_RF   (1 << 0) /**< TX-handler channel bit: transmit on RF. */
 #define MSG_CHANNEL_INET (1 << 1) /**< TX-handler channel bit: transmit to APRS-IS (Internet). */
 
+#ifdef ENABLE_MESSAGE
 /**
  * @brief Register the function used to actually transmit a built TNC2 packet.
  *
@@ -356,6 +373,7 @@ size_t message_next_json(uint32_t after_seq, char *out, size_t out_size, uint32_
  *                channel bitmask.
  */
 void message_set_tx_handler(void (*handler)(const char *packet, size_t len, uint8_t channels));
+#endif
 
 /**
  * @brief Observer invoked for every APRS text message this station accepts and
@@ -390,6 +408,7 @@ void message_set_tx_handler(void (*handler)(const char *packet, size_t len, uint
  */
 typedef bool (*message_rx_observer_t)(const char *sender, const char *text, uint16_t msgID, bool is_ack);
 
+#ifdef ENABLE_MESSAGE
 /**
  * @brief Register the observer described by ::message_rx_observer_t.
  *
@@ -414,5 +433,6 @@ void message_set_rx_observer(message_rx_observer_t observer);
  *             The string is copied.
  */
 void message_set_inet_only_peer(const char *call);
+#endif
 
 #endif // MESSAGE_H

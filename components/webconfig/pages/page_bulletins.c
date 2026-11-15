@@ -39,6 +39,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "app_config.h"
 #include "bulletins.h"
 #include "esp_log.h"
 #include "heap_monitor.h" // HEAP_MONITOR_BRACKET() - each form buffer below is a single multi-kilobyte block
@@ -46,6 +47,8 @@
 #include "str_append.h" // str_copy_utf8_safe()
 #include "translations.h"
 #include "web_common.h"
+
+#ifdef ENABLE_BULLETINS
 
 static const char *TAG = "page_bulletins";
 
@@ -258,3 +261,5 @@ esp_err_t page_bulletins_post(httpd_req_t *req) {
     web_send_save_result(req, ok, "/bulletins");
     return ESP_OK;
 }
+
+#endif // ENABLE_BULLETINS

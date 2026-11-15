@@ -32,6 +32,8 @@
 #include "translations.h"
 #include "web_common.h"
 
+#ifdef ENABLE_WEATHER
+
 static const char *TAG = "page_wx";
 
 // Human-readable label for every mappable APRS Weather Report field, indexed
@@ -346,7 +348,9 @@ esp_err_t page_wx_get(httpd_req_t *req) {
     web_fieldset_open(req, TR_F_WEATHER_STATION);
     web_field_checkbox(req, TR_F_ENABLE_WX, "wxEn", g_config.wx_en);
     web_field_use_station_data(req, "wxUseStation", g_config.wx_use_station, "wxMycall", "wxLAT", "wxLON", NULL);
+#ifdef ENABLE_GPS
     web_field_use_gps_data(req, "wxUseGps", g_config.wx_use_gps, "wxUseStation", "wxLAT", "wxLON", NULL, NULL, NULL);
+#endif
     web_field_checkbox(req, TR_F_SEND_VIA_RF, "wxTx2rf", g_config.wx_2rf);
     web_field_checkbox(req, TR_F_SEND_VIA_INTERNET, "wxTx2inet", g_config.wx_2inet);
     web_field_checkbox(req, TR_F_ADD_TIMESTAMP, "wxTime", g_config.wx_timestamp);
@@ -450,7 +454,6 @@ esp_err_t page_wx_post(httpd_req_t *req) {
     app_config_lock();
     g_config.wx_en = web_form_get_bool(body, "wxEn");
     g_config.wx_use_station = web_form_get_bool(body, "wxUseStation");
-    g_config.wx_use_gps = web_form_get_bool(body, "wxUseGps");
     g_config.wx_2rf = web_form_get_bool(body, "wxTx2rf");
     g_config.wx_2inet = web_form_get_bool(body, "wxTx2inet");
     g_config.wx_timestamp = web_form_get_bool(body, "wxTime");
@@ -463,13 +466,17 @@ esp_err_t page_wx_post(httpd_req_t *req) {
     g_config.wx_ssid = web_form_get_ssid(body, "wxSSID", g_config.wx_ssid);
     g_config.wx_path = app_config_path_mask_clamp(web_form_get_path_mask(body, "wxPath"), g_config.path);
 
+#ifdef ENABLE_GPS
+    g_config.wx_use_gps = web_form_get_bool(body, "wxUseGps");
     if (g_config.wx_use_gps) {
         gps_data_t g;
         if (gps_snapshot(&g) && g.has_position) {
             g_config.wx_lat = (float)g.latitude;
             g_config.wx_lon = (float)g.longitude;
         }
-    } else if (g_config.wx_use_station) {
+    } else
+#endif
+        if (g_config.wx_use_station) {
         g_config.wx_lat = g_config.my_lat;
         g_config.wx_lon = g_config.my_lon;
     } else {
@@ -513,3 +520,5 @@ esp_err_t page_wx_post(httpd_req_t *req) {
     web_send_save_result(req, ok, "/wx");
     return ESP_OK;
 }
+
+#endif // ENABLE_WEATHER

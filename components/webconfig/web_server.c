@@ -14,10 +14,11 @@
 //     please contact their authors for more information.
 //
 // @brief Web admin HTTP server bring-up: starts esp_http_server and registers
-// every admin route (dashboard, configuration pages, JSON endpoints and static
-// assets) onto its handlers.
+// the admin routes of every module in the build (dashboard, configuration
+// pages, JSON endpoints) plus the static assets onto their handlers.
 
 #include "web_server.h"
+#include "app_config.h"
 #include "esp_err.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
@@ -52,7 +53,7 @@ void web_server_start(void) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.uri_match_fn = httpd_uri_match_wildcard;
     // The admin UI registers every route below on a single httpd instance:
-    // 70 handlers as of this file. esp_http_server allocates exactly
+    // 73 handlers with every module enabled. esp_http_server allocates exactly
     // max_uri_handlers slots up front and refuses any registration past that
     // count with ESP_ERR_HTTPD_HANDLERS_FULL - silently, from reg()'s point of
     // view, until the log line above fires - so this value has to stay above
@@ -104,85 +105,135 @@ void web_server_start(void) {
         return;
     }
 
-    // -- Implemented --
+    // Shell routes every build serves: the root redirect, the logout page,
+    // the stylesheet and logo every page links to, the heap probe for external
+    // clients, and the symbol picker the symbol field of several pages opens.
     reg(server, "/", HTTP_GET, page_root);
     reg(server, "/logout", HTTP_GET, page_logout);
+    reg(server, "/style.css", HTTP_GET, css_handler);
+    reg(server, "/logo.png", HTTP_GET, logo_handler);
+    reg(server, "/heapinfo", HTTP_GET, page_heapinfo);
+    reg(server, "/symbol", HTTP_GET, page_symbol_get);
+
+    // Every other route belongs to one module and is registered only when the
+    // module is in the build (see the module enables in app_config.h), so a
+    // module left out answers 404 rather than serving a page for code that is
+    // not there.
+#ifdef ENABLE_DASHBOARD
     reg(server, "/dashboard", HTTP_GET, page_dashboard);
-    reg(server, "/station", HTTP_GET, page_station_get);
-    reg(server, "/station", HTTP_POST, page_station_post);
-    reg(server, "/bulletins", HTTP_GET, page_bulletins_get);
-    reg(server, "/bulletins", HTTP_POST, page_bulletins_post);
-    reg(server, "/objects", HTTP_GET, page_objects_get);
-    reg(server, "/objects", HTTP_POST, page_objects_post);
     reg(server, "/sidebarInfo", HTTP_GET, page_sidebar_info);
     reg(server, "/igate_traffic", HTTP_GET, page_igate_traffic);
     reg(server, "/lastheard", HTTP_GET, page_lastheard);
     reg(server, "/dashinfo", HTTP_GET, page_dashinfo);
-    reg(server, "/heapinfo", HTTP_GET, page_heapinfo);
-    reg(server, "/style.css", HTTP_GET, css_handler);
-    reg(server, "/logo.png", HTTP_GET, logo_handler);
-
+#endif
+#ifdef ENABLE_STATION
+    reg(server, "/station", HTTP_GET, page_station_get);
+    reg(server, "/station", HTTP_POST, page_station_post);
+#endif
+#ifdef ENABLE_BULLETINS
+    reg(server, "/bulletins", HTTP_GET, page_bulletins_get);
+    reg(server, "/bulletins", HTTP_POST, page_bulletins_post);
+#endif
+#ifdef ENABLE_OBJECTS_ITEMS
+    reg(server, "/objects", HTTP_GET, page_objects_get);
+    reg(server, "/objects", HTTP_POST, page_objects_post);
+#endif
+#ifdef ENABLE_FILE_STORAGE
     reg(server, "/storage", HTTP_GET, page_storage_get);
     reg(server, "/download", HTTP_GET, page_download);
     reg(server, "/delete", HTTP_POST, page_delete);
     reg(server, "/format", HTTP_POST, page_format);
     reg(server, "/upload", HTTP_POST, page_upload);
-
+#endif
+#ifdef ENABLE_WIRELESS
     reg(server, "/wireless", HTTP_GET, page_wireless_get);
     reg(server, "/wireless", HTTP_POST, page_wireless_post);
     reg(server, "/wifiscan", HTTP_POST, page_wifi_scan_post);
+#endif
+#ifdef ENABLE_SYSTEM
     reg(server, "/system", HTTP_GET, page_system_get);
     reg(server, "/system", HTTP_POST, page_system_post);
     reg(server, "/default", HTTP_POST, page_default_reset);
+#endif
+#ifdef ENABLE_ABOUT_FIRMWARE
     reg(server, "/about", HTTP_GET, page_about_get);
     reg(server, "/ota_update", HTTP_POST, page_ota_update_post);
-
+#endif
+    // The IGate page is also the APRS-IS client page, so it stays whenever
+    // the client is built, with or without the IGate itself.
+#ifdef BUILD_APRS_IS
     reg(server, "/igate", HTTP_GET, page_igate_get);
     reg(server, "/igate", HTTP_POST, page_igate_post);
+#endif
+#ifdef ENABLE_BRANDMEISTER
     reg(server, "/bm", HTTP_GET, page_bm_get);
     reg(server, "/bm", HTTP_POST, page_bm_post);
+#endif
+    // The Digipeater page also edits the shared path presets, so it stays
+    // whenever any module transmits through them.
+#ifdef BUILD_PATH_PRESETS
     reg(server, "/digi", HTTP_GET, page_digi_get);
     reg(server, "/digi", HTTP_POST, page_digi_post);
+#endif
+#ifdef ENABLE_TRACKER
     reg(server, "/tracker", HTTP_GET, page_tracker_get);
     reg(server, "/tracker", HTTP_POST, page_tracker_post);
+#endif
+#ifdef ENABLE_WEATHER
     reg(server, "/wx", HTTP_GET, page_wx_get);
     reg(server, "/wx", HTTP_POST, page_wx_post);
     reg(server, "/wx/values", HTTP_GET, page_wx_values_get);
+#endif
+#ifdef ENABLE_TELEMETRY
     reg(server, "/tlm", HTTP_GET, page_tlm_get);
     reg(server, "/tlm", HTTP_POST, page_tlm_post);
     reg(server, "/tlm/values", HTTP_GET, page_tlm_values_get);
+#endif
+#ifdef ENABLE_GPS
     reg(server, "/gps", HTTP_GET, page_gps_get);
     reg(server, "/gps", HTTP_POST, page_gps_post);
     reg(server, "/gps/values", HTTP_GET, page_gps_values_get);
     reg(server, "/gps/live", HTTP_GET, page_gps_live_get);
+#endif
+#ifdef ENABLE_TELEGRAM
     reg(server, "/telegram", HTTP_GET, page_telegram_get);
     reg(server, "/telegram", HTTP_POST, page_telegram_post);
     reg(server, "/telegram/status", HTTP_GET, page_telegram_status_get);
+#endif
+#ifdef ENABLE_WINLINK
     reg(server, "/winlink", HTTP_GET, page_winlink_get);
     reg(server, "/winlink", HTTP_POST, page_winlink_post);
     reg(server, "/winlink/cmd", HTTP_POST, page_winlink_cmd_post);
     reg(server, "/winlink/status", HTTP_GET, page_winlink_status_get);
     reg(server, "/winlink/list", HTTP_GET, page_winlink_list_get);
+#endif
+#ifdef ENABLE_LOGS
     reg(server, "/logs", HTTP_GET, page_logs_get);
     reg(server, "/logs/start", HTTP_POST, page_logs_start_post);
     reg(server, "/logs/stop", HTTP_POST, page_logs_stop_post);
     reg(server, "/logs/read", HTTP_POST, page_logs_read_post);
-
+#endif
+#ifdef ENABLE_RADIO_MODEM
     reg(server, "/radio", HTTP_GET, page_radio_get);
     reg(server, "/radio", HTTP_POST, page_radio_post);
     reg(server, "/radio/looptest", HTTP_POST, page_radio_looptest_post);
     reg(server, "/radio/level", HTTP_POST, page_radio_level_post);
     reg(server, "/radio/capture", HTTP_POST, page_radio_capture_post);
     reg(server, "/radio/txtest", HTTP_POST, page_radio_txtest_post);
+#endif
+#ifdef ENABLE_MESSAGE
     reg(server, "/msg", HTTP_GET, page_msg_get);
     reg(server, "/msg", HTTP_POST, page_msg_post);
+#endif
+#ifdef ENABLE_QUERY
     reg(server, "/query", HTTP_GET, page_query_get);
     reg(server, "/query", HTTP_POST, page_query_post);
+#endif
+#ifdef ENABLE_MSG_CHAT
     reg(server, "/msgchat", HTTP_GET, page_msgchat_get);
     reg(server, "/msgchat", HTTP_POST, page_msgchat_post);
     reg(server, "/msgchat/list", HTTP_GET, page_msgchat_list);
-
-    reg(server, "/symbol", HTTP_GET, page_symbol_get);
+#endif
 
     ESP_LOGI(TAG, "Web admin server started");
 }

@@ -70,6 +70,8 @@
 #include "str_append.h" // str_append(), str_copy_strip_line_breaks(), str_copy_utf8_safe()
 #include "winlink.h"
 
+#ifdef ENABLE_WINLINK
+
 static const char *TAG = "winlink";
 
 // The mailbox, not the account settings: those are the Winlink page's own
@@ -1109,3 +1111,5 @@ void winlink_init(void) {
 
     ESP_LOGI(TAG, "Winlink client initialized (enabled=%d service=%s mail=%d)", g_config.wl_enable, g_config.wl_service_call, winlink_mail_count());
 }
+
+#endif // ENABLE_WINLINK

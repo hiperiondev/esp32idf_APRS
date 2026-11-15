@@ -35,8 +35,19 @@
 #include "web_common.h"
 #include "web_help.h"
 
+#ifdef BUILD_PATH_PRESETS
+
 static const char *TAG = "page_digi";
 
+// Without the digipeater the page carries the shared path presets alone, and
+// is titled after them.
+#ifdef ENABLE_DIGIPEATER
+#define DIGI_PAGE_TITLE TR_F_DIGIPEATER
+#else
+#define DIGI_PAGE_TITLE TR_MENU_PATHS
+#endif
+
+#ifdef ENABLE_DIGIPEATER
 // Duplex-direction <select>. UI values 0=simplex, 1=+, 2=- (converted to the
 // stored int8_t duplex on POST).
 static void render_duplex_select(httpd_req_t *req, const char *name, int8_t duplex) {
@@ -47,17 +58,21 @@ static void render_duplex_select(httpd_req_t *req, const char *name, int8_t dupl
     web_select_option(req, 2, TR_F_OBJITEM_DUPLEX_MINUS, cur == 2);
     web_select_close(req);
 }
+#endif
 
 esp_err_t page_digi_get(httpd_req_t *req) {
     if (!web_check_auth(req))
         return ESP_OK;
-    web_send_header(req, TR_F_DIGIPEATER, "digi");
+    web_send_header(req, DIGI_PAGE_TITLE, "digi");
     httpd_resp_sendstr_chunk(req, "<form method='POST' action='/digi'>");
 
+#ifdef ENABLE_DIGIPEATER
     web_fieldset_open(req, TR_F_DIGIPEATER);
     web_field_checkbox(req, TR_F_ENABLE_DIGIPEATER, "digiEn", g_config.digi_en);
     web_field_use_station_data(req, "digiUseStation", g_config.digi_use_station, "digiMycall", "digiLAT", "digiLON", "digiAlt");
+#ifdef ENABLE_GPS
     web_field_use_gps_data(req, "digiUseGps", g_config.digi_use_gps, "digiUseStation", "digiLAT", "digiLON", "digiAlt", NULL, NULL);
+#endif
     web_field_checkbox(req, TR_F_ADD_TIMESTAMP, "digiTime", g_config.digi_timestamp);
     web_fieldset_close(req);
 
@@ -339,7 +354,10 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_field_int(req, TR_F_OBJITEM_OFFSET, "digiOfs", (long)g_config.digi_offset_khz, 0, 65535);
     web_field_float(req, TR_F_OBJITEM_TONE, "digiTone", g_config.digi_tone_tenths / 10.0f, "0.1", 0.0f, 254.1f);
     web_fieldset_close(req);
+#endif
 
+    // Shared by every service that transmits on RF through a path preset,
+    // so this fieldset is on the page in every build that serves it.
     web_fieldset_open(req, TR_SYS_DIGI_PATH_ALIASES);
     web_field_text(req, TR_SYS_PATH_1, "path0", g_config.path[0], 71);
     web_field_text(req, TR_SYS_PATH_2, "path1", g_config.path[1], 71);
@@ -347,8 +365,10 @@ esp_err_t page_digi_get(httpd_req_t *req) {
     web_field_text(req, TR_SYS_PATH_4, "path3", g_config.path[3], 71);
     web_fieldset_close(req);
 
-    web_raw(req, "<p style='color:var(--sub);font-size:12px'>" TR_NOTE_TLM_DIGI "</p>"
-                 "<button type='submit'>" TR_BTN_SAVE "</button></form>");
+#ifdef ENABLE_DIGIPEATER
+    web_raw(req, "<p style='color:var(--sub);font-size:12px'>" TR_NOTE_TLM_DIGI "</p>");
+#endif
+    web_raw(req, "<button type='submit'>" TR_BTN_SAVE "</button></form>");
     web_send_footer(req);
     return ESP_OK;
 }
@@ -367,11 +387,15 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     }
 
     app_config_lock();
+    // Only the fields this build renders are read back: one the page did not
+    // carry is absent from the POST and keeps its stored value.
+#ifdef ENABLE_DIGIPEATER
     g_config.digi_en = web_form_get_bool(body, "digiEn");
     g_config.digi_use_station = web_form_get_bool(body, "digiUseStation");
-    g_config.digi_use_gps = web_form_get_bool(body, "digiUseGps");
     g_config.digi_timestamp = web_form_get_bool(body, "digiTime");
 
+#ifdef ENABLE_GPS
+    g_config.digi_use_gps = web_form_get_bool(body, "digiUseGps");
     if (g_config.digi_use_gps) {
         web_form_get_call(body, "digiMycall", g_config.digi_mycall, sizeof(g_config.digi_mycall));
         gps_data_t g;
@@ -383,7 +407,9 @@ esp_err_t page_digi_post(httpd_req_t *req) {
             if (g.has_altitude)
                 g_config.digi_alt = (float)g.altitude_m;
         }
-    } else if (g_config.digi_use_station) {
+    } else
+#endif
+        if (g_config.digi_use_station) {
         // Fields are disabled client-side while this is checked, so the
         // form never submits them - pull from the shared Station data instead.
         strncpy(g_config.digi_mycall, g_config.my_callsign, sizeof(g_config.digi_mycall) - 1);
@@ -543,6 +569,7 @@ esp_err_t page_digi_post(httpd_req_t *req) {
             tone_tenths = 65535;
         g_config.digi_tone_tenths = (uint16_t)tone_tenths;
     }
+#endif
 
     web_form_get(body, "path0", g_config.path[0], sizeof(g_config.path[0]));
     web_form_get(body, "path1", g_config.path[1], sizeof(g_config.path[1]));
@@ -555,7 +582,13 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     // result is what decides whether the operator is told this reached flash.
     bool ok = app_config_save_section(APP_CONFIG_SECTION_DIGIPEATER);
     if (!ok)
+#ifdef ENABLE_DIGIPEATER
         ESP_LOGE(TAG, "digipeater settings could not be written to flash");
+#else
+        ESP_LOGE(TAG, "path presets could not be written to flash");
+#endif
     web_send_save_result(req, ok, "/digi");
     return ESP_OK;
 }
+
+#endif // BUILD_PATH_PRESETS

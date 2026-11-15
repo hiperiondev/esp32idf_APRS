@@ -83,6 +83,8 @@
 #include "objects_items.h" // objitems_load() / objitems_request_transmit_all() / OBJITEM_COUNT
 #endif
 
+#ifdef ENABLE_QUERY
+
 static const char *TAG = "query";
 
 // Same software-identifier destination call used by the message and beacon
@@ -635,6 +637,7 @@ static void txMessageTo(const char *toCall, const char *text, query_source_t sou
 // same the IGate position beacon sends on the channel this answer leaves on
 // (the path is the one part that differs between the two channels, and
 // queryPathSuffix() picks it the same way the beacon does).
+#ifdef ENABLE_IGATE
 static void respondAPRS(query_source_t source) {
     char path[80];
     queryPathSuffix(source, path, sizeof(path));
@@ -648,9 +651,11 @@ static void respondAPRS(query_source_t source) {
     txPacket(packet, (size_t)len, source);
     ESP_LOGI(TAG, "?APRS? query answered: %s", packet);
 }
+#endif
 
 // "?WX?" -> the latest cached weather report, if ENABLE_WEATHER and a
 // report exists.
+#ifdef ENABLE_WEATHER
 static void respondWX(query_source_t source) {
     char path[80];
     queryPathSuffix(source, path, sizeof(path));
@@ -664,7 +669,9 @@ static void respondWX(query_source_t source) {
     txPacket(packet, (size_t)len, source);
     ESP_LOGI(TAG, "?WX? query answered: %s", packet);
 }
+#endif
 
+#ifdef ENABLE_IGATE
 // Builds the "<IGATE,MSG_CNT=n,LOC_CNT=n>" Station Capabilities line APRS101
 // ch.15 defines, as a complete TNC2 packet ready for the channel named by
 // `source`, and returns its length (0 when it could not be built).
@@ -767,6 +774,7 @@ static void respondStatus(query_source_t source) {
     txPacket(packet, (size_t)len, source);
     ESP_LOGI(TAG, "?APRSS query answered: %s", packet);
 }
+#endif // ENABLE_IGATE
 
 // "?APRSD" -> the list of stations heard here without a digipeater in
 // between, as the "Directs=" message APRS101 ch.15 defines. An empty list is
@@ -860,8 +868,15 @@ static void respondHeard(const char *fromCall, const char *arg, query_source_t s
 // answer of "none" is information. The messages themselves are real traffic
 // this station owes the operator, so they go out on the channels the Message
 // page selects; only the "nothing pending" reply follows the query's source.
+//
+// Without the APRS Message service there is no outgoing queue, so nothing is
+// ever pending and the answer is always the "nothing pending" reply.
 static void respondMessages(const char *fromCall, query_source_t source) {
+#ifdef ENABLE_MESSAGE
     int sent = message_send_pending_to(fromCall);
+#else
+    const int sent = 0;
+#endif
     if (sent == 0)
         txMessageTo(fromCall, "No messages pending", source);
 }
@@ -985,21 +1000,25 @@ static void respondTrace(const char *fromCall, const char *route, query_source_t
 // on the air, and it only ever executes on the beacon scheduler task.
 static void runRequest(const query_request_t *req) {
     switch (req->type) {
+#ifdef ENABLE_IGATE
         case QUERY_TYPE_APRS:
         case QUERY_TYPE_POSITION:
             respondAPRS(req->source);
             return;
-        case QUERY_TYPE_WX:
-            respondWX(req->source);
-            return;
         case QUERY_TYPE_IGATE:
             respondIGate(req->source);
             return;
-        case QUERY_TYPE_QRU:
-            respondQRU(req->source);
-            return;
         case QUERY_TYPE_STATUS:
             respondStatus(req->source);
+            return;
+#endif
+#ifdef ENABLE_WEATHER
+        case QUERY_TYPE_WX:
+            respondWX(req->source);
+            return;
+#endif
+        case QUERY_TYPE_QRU:
+            respondQRU(req->source);
             return;
         case QUERY_TYPE_DIRECTS:
             respondDirects(req->fromCall, req->source);
@@ -1021,13 +1040,20 @@ static void runRequest(const query_request_t *req) {
     }
 }
 
+#ifdef ENABLE_IGATE
 // Monotonic second at which the periodic capabilities beacon is next due. 0
 // means "due now", which is also what disabling the beacon resets it to, so
 // re-enabling transmits one straight away rather than after a full interval of
 // silence.
 static int64_t s_cap_next_due = 0;
+#endif
 
 uint32_t query_capabilities_service(void) {
+#ifndef ENABLE_IGATE
+    // The capabilities line announces the IGate, so a build without it has
+    // none to send.
+    return QUERY_CAP_IDLE_RECHECK_S;
+#else
     bool enabled;
     uint32_t interval;
     bool toRf, toInet;
@@ -1076,6 +1102,7 @@ uint32_t query_capabilities_service(void) {
     if (rem < 1)
         rem = 1;
     return (uint32_t)rem;
+#endif
 }
 
 void query_service(void) {
@@ -1161,17 +1188,26 @@ static bool matchQueryType(const char *info, bool directed, query_type_t *type, 
 // about this station's own configuration (Objects/Items membership, traffic,
 // heard history) and an operator either wants the station answering that
 // class of question or not.
+//
+// The answers built from the IGate position/status beacon and from the weather
+// report exist only with those modules in the build; without them the type is
+// never enabled, so the query is left unanswered rather than queued.
 static bool queryTypeEnabled(query_type_t type) {
     switch (type) {
+#ifdef ENABLE_IGATE
         case QUERY_TYPE_APRS:
             return g_config.query_aprs_en; // single-word read, benign if stale
-        case QUERY_TYPE_WX:
-            return g_config.query_wx_en; // single-word read, benign if stale
         case QUERY_TYPE_IGATE:
             return g_config.query_igate_en; // single-word read, benign if stale
-        case QUERY_TYPE_QRU:
         case QUERY_TYPE_POSITION:
         case QUERY_TYPE_STATUS:
+            return g_config.query_ext_en; // single-word read, benign if stale
+#endif
+#ifdef ENABLE_WEATHER
+        case QUERY_TYPE_WX:
+            return g_config.query_wx_en; // single-word read, benign if stale
+#endif
+        case QUERY_TYPE_QRU:
         case QUERY_TYPE_DIRECTS:
         case QUERY_TYPE_HEARD:
         case QUERY_TYPE_MESSAGES:
@@ -1298,3 +1334,5 @@ void query_process_directed(const char *fromCall, const char *toCall, const char
 
     queueResponse(type, source, fromCall, detail);
 }
+
+#endif // ENABLE_QUERY

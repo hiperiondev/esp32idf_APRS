@@ -45,8 +45,18 @@
 #include "str_append.h"
 #include "telegram_app.h" // telegram_app_notify_station_message(), telegram_app_notify_bulletin(), telegram_app_routing_active(): optional Telegram routing
 
+#ifdef BUILD_MSG_PARSER
+
 static const char *TAG = "message";
 
+// The file carries two things: the ":ADDRESSEE:" receive parser,
+// handleIncomingAPRS(), built under BUILD_MSG_PARSER for the three modules
+// that read it (messaging, the query responder's directed queries and the
+// Telegram routing), and the APRS Message service itself - the outgoing
+// queue, retries, acknowledgements, chat history and alarm - built only with
+// ENABLE_MESSAGE.
+
+#ifdef ENABLE_MESSAGE
 #define MSG_ALARM_PULSE_MS 1000
 
 static msg_entry_t s_queue[MSG_QUEUE_SIZE];
@@ -227,6 +237,7 @@ static void message_alarm_pulse(void) {
     esp_timer_stop(s_alarmTimer); // no-op if not currently running
     esp_timer_start_once(s_alarmTimer, (uint64_t)MSG_ALARM_PULSE_MS * 1000ULL);
 }
+#endif // ENABLE_MESSAGE
 
 // ---------------------------------------------------------------------------
 // Helpers: trim, uppercase
@@ -245,6 +256,7 @@ static void trimUpper(char *s) {
         s[i] = toupper((unsigned char)s[i]);
 }
 
+#ifdef ENABLE_MESSAGE
 // Compares two callsigns ignoring any "-SSID" suffix, so a message sent to
 // "N0CALL", "N0CALL-0".."N0CALL-15" (or any other/garbled SSID) is treated
 // as addressed to station "N0CALL". Case-insensitive; SSID digits themselves
@@ -259,7 +271,9 @@ static bool callsignBaseMatch(const char *a, const char *b) {
         return false;
     return strncasecmp(a, b, na) == 0;
 }
+#endif
 
+#ifdef ENABLE_TELEGRAM
 // True if a message addressee names a bulletin rather than a station or a
 // message group: "BLN" followed by a single digit is a general bulletin,
 // "BLN" followed by a single upper-case letter is an announcement, and either
@@ -270,7 +284,9 @@ static bool callsignBaseMatch(const char *a, const char *b) {
 static bool isBulletinAddressee(const char *toCall) {
     return strncmp(toCall, "BLN", 3) == 0 && (isdigit((unsigned char)toCall[3]) || isupper((unsigned char)toCall[3]));
 }
+#endif
 
+#ifdef ENABLE_MESSAGE
 // Reports whether toCall (already trimmed and upper-cased) is one of the
 // message-group addressees this station reads: the built-in "ALL"/"QST"/"CQ"
 // set every station reads per APRS101 chapter 14, or one of the operator's
@@ -292,11 +308,13 @@ static bool isGroupAddressee(const char *toCall) {
     }
     return false;
 }
+#endif
 
 // ---------------------------------------------------------------------------
 // Reply-ACK: reading a received identifier and building an outgoing one
 // ---------------------------------------------------------------------------
 
+#ifdef ENABLE_MESSAGE
 // Reads a message number written as plain decimal digits. Anything else - an
 // empty field, an alphanumeric identifier another client may have issued, a
 // value past the width of the field - is refused, because the only numbers
@@ -317,6 +335,7 @@ static bool parseMsgNumber(const char *s, uint16_t *out) {
     *out = (uint16_t)v;
     return true;
 }
+#endif
 
 // Checks whether s is a valid message-number field as APRS101 chapter 14
 // defines it for an "ack"/"rej": 1-5 alphanumeric characters, optionally
@@ -343,6 +362,7 @@ static bool isValidMsgNoField(const char *s) {
     return strlen(s + i + 1) <= 2; // "MM}" or "MM}AA"
 }
 
+#ifdef ENABLE_MESSAGE
 // Splits a received message identifier into the sender's own number and the
 // free acknowledgement it carries: "MM}AA" gives both, "MM}" gives the number
 // and an empty acknowledgement, and a plain "MM" gives the number alone. Both
@@ -596,9 +616,13 @@ static bool destIsInetOnly(const char *toCall) {
     // without anything having to have been heard first.
     if (s_inetOnlyPeer[0] != 0 && callsignBaseMatch(toCall, s_inetOnlyPeer))
         return true;
+#ifdef ENABLE_BRANDMEISTER
     if (!g_config.bm_en || !g_config.bm_msg_inet_only)
         return false;
     return lastheard_last_seen_bm(toCall);
+#else
+    return false;
+#endif
 }
 
 static void txPacket(const char *myCall, const char *toCall, const char *info) {
@@ -747,12 +771,14 @@ void sendAPRSMessage(const char *toCall, const char *text) {
     // retries sendAPRSMessageRetry() sends carry the same text to the same
     // addressee and would otherwise arrive as duplicates of a line already
     // delivered.
+#ifdef ENABLE_TELEGRAM
     if (payload[0] != 0) {
         if (isBulletinAddressee(toCallUp))
             telegram_app_notify_bulletin(myCallUp, toCallUp, payload);
         else
             telegram_app_notify_station_message(myCallUp, toCallUp, payload);
     }
+#endif
 
     int8_t ackVal = (g_config.msg_retry == 0) ? -2 : (int8_t)g_config.msg_retry;
     // The trimmed upper-case addressee is what goes in the queue, matching the
@@ -908,6 +934,7 @@ void sendAPRSMessageRetry(void) {
         ESP_LOGD(TAG, "Retry APRS message[%d] to %s msgID %u ack left %d", i, s_queue[i].callsign, (unsigned)s_queue[i].msgID, s_queue[i].ack);
     }
 }
+#endif // ENABLE_MESSAGE
 
 // ---------------------------------------------------------------------------
 // Incoming
@@ -988,7 +1015,11 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
         // the unparsed line still carries. The source travels with it too,
         // since it decides both whether the query is answered and where the
         // answer goes.
+#ifdef ENABLE_QUERY
         query_process_directed(fromCall, toCall, colon + 1, line, source);
+#else
+        (void)source;
+#endif
         return;
     }
 
@@ -999,8 +1030,17 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     // past that test - the acceptance rule, the acknowledgement, the alarm
     // pulse and the chat history - belongs to the messaging service and stays
     // behind it.
+#ifdef ENABLE_MESSAGE
     bool msg_service_on = g_config.msg_enable;
-    if (!msg_service_on && !telegram_app_routing_active())
+#else
+    const bool msg_service_on = false;
+#endif
+#ifdef ENABLE_TELEGRAM
+    bool routing_on = telegram_app_routing_active();
+#else
+    const bool routing_on = false;
+#endif
+    if (!msg_service_on && !routing_on)
         return;
 
     char message[300] = { 0 };
@@ -1047,23 +1087,28 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     // Only readable text travels: an ack or a rej carries none, and an empty
     // text is nothing to deliver. A no-op unless the operator has turned
     // "Route Station messages" on for a bot that is actually running.
+#ifdef ENABLE_TELEGRAM
     if (!isAck && !isRej && message[0] != 0)
         telegram_app_notify_station_message(fromCall, toCall, message);
+#endif
 
-    // A bulletin is handed to the bot on the same terms, and by the same
-    // reasoning: a bulletin is addressed to the whole network rather than to
-    // any station, so it reaches every account the bot is configured to talk
-    // to instead of being matched against a callsign. Bulletins arrive both
-    // off the air and from the APRS-IS feed and are repeated by their
-    // originator and by every digipeater that hears them, so the routing
-    // itself drops a bulletin identical to one it delivered recently. A
-    // no-op unless the operator has turned "Route Bulletins" on for a bot
-    // that is actually running.
+        // A bulletin is handed to the bot on the same terms, and by the same
+        // reasoning: a bulletin is addressed to the whole network rather than to
+        // any station, so it reaches every account the bot is configured to talk
+        // to instead of being matched against a callsign. Bulletins arrive both
+        // off the air and from the APRS-IS feed and are repeated by their
+        // originator and by every digipeater that hears them, so the routing
+        // itself drops a bulletin identical to one it delivered recently. A
+        // no-op unless the operator has turned "Route Bulletins" on for a bot
+        // that is actually running.
+#ifdef ENABLE_TELEGRAM
     if (!isAck && !isRej && message[0] != 0 && isBulletinAddressee(toCall))
         telegram_app_notify_bulletin(fromCall, toCall, message);
+#endif
 
-    // Everything from here on is the messaging service's own work on a frame
-    // it keeps, so it happens only when that service is switched on.
+        // Everything from here on is the messaging service's own work on a frame
+        // it keeps, so it happens only when that service is built and switched on.
+#ifdef ENABLE_MESSAGE
     if (!msg_service_on)
         return;
 
@@ -1183,4 +1228,7 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
         if (!consumed)
             message_alarm_pulse();
     }
+#endif // ENABLE_MESSAGE
 }
+
+#endif // BUILD_MSG_PARSER

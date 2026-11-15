@@ -28,6 +28,8 @@
 
 #include "esp_http_server.h"
 
+#include "app_config.h"
+
 /**
  * @brief Privilege a request carries, decided by which credential pair it
  * presented.
@@ -439,6 +441,17 @@ static inline uint8_t web_form_get_ssid(const char *body, const char *key, uint8
         v = WEB_RANGE_SSID_MAX;
     return (uint8_t)v;
 }
+
+/**
+ * @brief URI of the page the web admin opens on.
+ *
+ * The first entry of the sidebar, so it always names a page this build
+ * serves: the Dashboard when ::ENABLE_DASHBOARD is defined, otherwise the
+ * first module page left in the build.
+ *
+ * @return The page URI, or NULL when the build carries no sidebar page at all.
+ */
+const char *web_home_uri(void);
 
 /**
  * @brief Send the common HTML shell opening: @c <head>, top bar and sidebar.
@@ -893,6 +906,7 @@ void web_field_symbol(httpd_req_t *req, const char *label, const char *name_pref
 void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, bool checked, const char *call_name, const char *lat_name, const char *lon_name,
                                 const char *alt_name);
 
+#ifdef ENABLE_GPS
 /**
  * @brief Render a "Use GPS" checkbox plus the inline JS that binds it to a
  * page's latitude/longitude/altitude/speed/course fields and keeps them
@@ -923,6 +937,9 @@ void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, boo
  * checkbox is on, the same way it already does for "Use My Station Data"
  * (see gps_snapshot() in gps.h).
  *
+ * Declared only with ::ENABLE_GPS: without the receiver there is no live
+ * fix to fill a field from, so no page renders the checkbox.
+ *
  * @param req              Incoming request.
  * @param checkbox_name    Form field name and DOM id for the checkbox itself
  *                         (e.g. "digiUseGps").
@@ -938,6 +955,7 @@ void web_field_use_station_data(httpd_req_t *req, const char *checkbox_name, boo
  */
 void web_field_use_gps_data(httpd_req_t *req, const char *checkbox_name, bool checked, const char *station_checkbox_name, const char *lat_name,
                             const char *lon_name, const char *alt_name, const char *speed_name, const char *course_name);
+#endif
 
 /**
  * @brief Parse the POST body produced by web_field_symbol() back into a 2-char

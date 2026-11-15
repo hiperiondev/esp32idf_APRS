@@ -24,6 +24,8 @@
 #include "digirepeater.h"
 #include "igate.h"
 
+#ifdef ENABLE_DIGIPEATER
+
 // Every frame this file discards is reported through igate_note_drop(), whose
 // per-reason table is what the web dashboard's Drop Breakdown renders, and the
 // headline rx/tx/digi figures are counted in aprs_service.c at the points where
@@ -528,3 +530,5 @@ int digiProcess(ax25_msg_t *packet) {
 
     return j;
 }
+
+#endif // ENABLE_DIGIPEATER

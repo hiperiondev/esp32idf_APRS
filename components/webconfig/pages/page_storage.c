@@ -32,6 +32,8 @@
 #include "translations.h"
 #include "web_common.h"
 
+#ifdef ENABLE_FILE_STORAGE
+
 static const char *TAG = "page_storage";
 
 // Filenames land in three different contexts on this page - HTML text, an
@@ -325,3 +327,5 @@ esp_err_t page_upload(httpd_req_t *req) {
     web_send_footer(req);
     return ESP_OK;
 }
+
+#endif // ENABLE_FILE_STORAGE

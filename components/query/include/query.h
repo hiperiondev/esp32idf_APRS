@@ -61,6 +61,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "app_config.h" // ENABLE_QUERY: the entry points below are declared only when the responder is built
+
 /**
  * @brief Where a query reached this station, passed to both entry points
  * below.
@@ -79,6 +81,7 @@ typedef enum {
     QUERY_SRC_COUNT   /**< Number of sources; sizes the per-source rate-limit table, never used as a source itself. */
 } query_source_t;
 
+#ifdef ENABLE_QUERY
 /**
  * @brief Initialize the query responder (rate-limit timers). Call once at
  * startup, after message_init()/igate_start(), before aprs_service_start()
@@ -187,5 +190,6 @@ void query_service(void);
  * @return Seconds until this function next needs to be called.
  */
 uint32_t query_capabilities_service(void);
+#endif
 
 #endif // QUERY_H

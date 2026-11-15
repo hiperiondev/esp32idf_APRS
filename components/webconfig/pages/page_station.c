@@ -44,6 +44,8 @@
 #include "translations.h"
 #include "web_common.h"
 
+#ifdef ENABLE_STATION
+
 static const char *TAG = "page_station";
 
 // @brief Re-mirror the just-saved "My Station" identity/position/PHG into
@@ -68,23 +70,33 @@ static const char *TAG = "page_station";
 //
 // @return true if every dependent store that needed rewriting was written.
 // The g_config mirrors above cannot fail and are always applied.
+//
+// Only the consumers in the build are refreshed: a module left out keeps its
+// stored settings exactly as they are.
 static bool station_resync_dependents(void) {
-    // -- IGate ---------------------------------------------------------------
+    // -- IGate / APRS-IS login -------------------------------------------------
+#ifdef BUILD_APRS_IS
     if (g_config.igate_use_station) {
         strncpy(g_config.aprs_mycall, g_config.my_callsign, sizeof(g_config.aprs_mycall) - 1);
         g_config.aprs_mycall[sizeof(g_config.aprs_mycall) - 1] = 0;
+#ifdef ENABLE_IGATE
         g_config.igate_lat = g_config.my_lat;
         g_config.igate_lon = g_config.my_lon;
         g_config.igate_alt = g_config.my_alt;
+#endif
     }
+#endif
+#ifdef ENABLE_IGATE
     if (g_config.igate_phg_use_station) {
         g_config.igate_phg_power = g_config.my_phg_power;
         g_config.igate_phg_gain = g_config.my_phg_gain;
         g_config.igate_phg_height = g_config.my_phg_height;
         g_config.igate_phg_dir = g_config.my_phg_dir;
     }
+#endif
 
     // -- Digipeater ------------------------------------------------------------
+#ifdef ENABLE_DIGIPEATER
     if (g_config.digi_use_station) {
         strncpy(g_config.digi_mycall, g_config.my_callsign, sizeof(g_config.digi_mycall) - 1);
         g_config.digi_mycall[sizeof(g_config.digi_mycall) - 1] = 0;
@@ -92,8 +104,10 @@ static bool station_resync_dependents(void) {
         g_config.digi_lon = g_config.my_lon;
         g_config.digi_alt = g_config.my_alt;
     }
+#endif
 
     // -- Tracker ---------------------------------------------------------------
+#ifdef ENABLE_TRACKER
     if (g_config.trk_use_station) {
         strncpy(g_config.trk_mycall, g_config.my_callsign, sizeof(g_config.trk_mycall) - 1);
         g_config.trk_mycall[sizeof(g_config.trk_mycall) - 1] = 0;
@@ -101,20 +115,25 @@ static bool station_resync_dependents(void) {
         g_config.trk_lon = g_config.my_lon;
         g_config.trk_alt = g_config.my_alt;
     }
+#endif
 
     // -- Weather -----------------------------------------------------------
+#ifdef ENABLE_WEATHER
     if (g_config.wx_use_station) {
         strncpy(g_config.wx_mycall, g_config.my_callsign, sizeof(g_config.wx_mycall) - 1);
         g_config.wx_mycall[sizeof(g_config.wx_mycall) - 1] = 0;
         g_config.wx_lat = g_config.my_lat;
         g_config.wx_lon = g_config.my_lon;
     }
+#endif
 
     // -- Messaging -----------------------------------------------------------
+#ifdef ENABLE_MESSAGE
     if (g_config.msg_use_station) {
         strncpy(g_config.msg_mycall, g_config.my_callsign, sizeof(g_config.msg_mycall) - 1);
         g_config.msg_mycall[sizeof(g_config.msg_mycall) - 1] = 0;
     }
+#endif
 
     // Tracks the two dependent stores below. The g_config mirrors above are
     // in-memory field copies and have nothing that can fail.
@@ -123,6 +142,7 @@ static bool station_resync_dependents(void) {
     // -- Telemetry (own JSON store, /storage/telemetry.json) -----------------
     // Loaded/saved independently of g_config, so it needs its own
     // read-modify-write here rather than a direct g_config field touch.
+#ifdef ENABLE_TELEMETRY
     {
         telemetry_config_t tcfg;
         if (telemetry_config_load(&tcfg)) {
@@ -136,8 +156,10 @@ static bool station_resync_dependents(void) {
             }
         }
     }
+#endif
 
     // -- Objects/Items PHG (own JSON store, /storage/objitems.json) ----------
+#ifdef ENABLE_OBJECTS_ITEMS
     {
         objitems_t set;
         if (objitems_load(&set)) {
@@ -158,6 +180,7 @@ static bool station_resync_dependents(void) {
             }
         }
     }
+#endif
 
     return ok;
 }
@@ -170,7 +193,9 @@ esp_err_t page_station_get(httpd_req_t *req) {
 
     web_fieldset_open(req, TR_F_STATION);
     web_field_text(req, TR_F_MY_CALLSIGN, "myCallsign", g_config.my_callsign, 9);
+#ifdef ENABLE_GPS
     web_field_use_gps_data(req, "myUseGps", g_config.my_use_gps, NULL, "myLAT", "myLON", "myALT", NULL, NULL);
+#endif
     web_field_float(req, TR_F_LATITUDE, "myLAT", g_config.my_lat, "0.0001", WEB_RANGE_LAT_MIN, WEB_RANGE_LAT_MAX);
     web_field_float(req, TR_F_LONGITUDE, "myLON", g_config.my_lon, "0.0001", WEB_RANGE_LON_MIN, WEB_RANGE_LON_MAX);
     web_field_float(req, TR_F_ALTITUDE_M, "myALT", g_config.my_alt, "0.1", WEB_RANGE_ALT_M_MIN, WEB_RANGE_ALT_M_MAX);
@@ -336,6 +361,7 @@ esp_err_t page_station_post(httpd_req_t *req) {
 
     app_config_lock();
     web_form_get_call(body, "myCallsign", g_config.my_callsign, sizeof(g_config.my_callsign));
+#ifdef ENABLE_GPS
     g_config.my_use_gps = web_form_get_bool(body, "myUseGps");
     if (g_config.my_use_gps) {
         // Snapshot whatever the receiver currently reports rather than
@@ -353,7 +379,9 @@ esp_err_t page_station_post(httpd_req_t *req) {
             if (g.has_altitude)
                 g_config.my_alt = (float)g.altitude_m;
         }
-    } else {
+    } else
+#endif
+    {
         g_config.my_lat = web_form_get_float(body, "myLAT", g_config.my_lat);
         g_config.my_lon = web_form_get_float(body, "myLON", g_config.my_lon);
         g_config.my_alt = web_form_get_float(body, "myALT", g_config.my_alt);
@@ -420,3 +448,5 @@ esp_err_t page_station_post(httpd_req_t *req) {
     web_send_save_result(req, deps_ok && cfg_ok, "/station");
     return ESP_OK;
 }
+
+#endif // ENABLE_STATION

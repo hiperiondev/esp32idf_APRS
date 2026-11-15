@@ -15,14 +15,15 @@ la página web *Weather* (``g_config.wx_*``).
 Las tres piezas móviles
 =======================
 
-``weather_start()`` (llamada una vez al arrancar) configura:
+``aprs_service_start()`` primero levanta **el registro** —
+``sensors_local_init()`` crea el mutex del registro y
+``sensors_local_init_all()`` ejecuta el ``init()`` de cada controlador
+autorregistrado — siempre que meteo o telemetría estén en la compilación, ya que
+ambos lo leen. Luego ``weather_start()`` (llamada una vez al arrancar) configura:
 
 #. **El contenedor compartido.** ``weather_telemetry_data`` se conecta a
    almacenamiento estático de respaldo para un ``aprs_weather_report_t`` y un
    ``aprs_telemetry_report_t``.
-#. **El registro.** ``sensors_local_init()`` crea el mutex del registro y
-   ``sensors_local_init_all()`` ejecuta el ``init()`` de cada controlador
-   autorregistrado.
 #. **Dos callbacks de servicio.** ``weather_service_1hz()`` (ejecutada a 1 Hz por
    el tick del servicio APRS) y ``weather_beacon_service()`` (ejecutada por el
    planificador de balizas compartido).

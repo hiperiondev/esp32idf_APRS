@@ -31,6 +31,8 @@
 #include "gps.h"
 #include "sched_time.h" // sched_mono_seconds(): monotonic clock for the staleness ages
 
+#ifdef ENABLE_GPS
+
 static const char *TAG = "gps";
 
 // A conforming NMEA 0183 sentence is at most 82 characters including the
@@ -832,3 +834,5 @@ bool gps_snapshot(gps_data_t *out) {
     gps_unlock();
     return true;
 }
+
+#endif // ENABLE_GPS

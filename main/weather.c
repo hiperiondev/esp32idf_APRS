@@ -40,6 +40,8 @@
 #include "weather.h"
 #include "weather_telemetry.h"
 
+#ifdef ENABLE_WEATHER
+
 static const char *TAG = "weather";
 
 // Same software-identifier destination call used by beacon.c / the message
@@ -642,7 +644,11 @@ static int build_wx_packet(const wx_resolved_t r[WX_SENSOR_NUM], const char *pat
         cfg_lat = g_config.wx_lat;
         cfg_lon = g_config.wx_lon;
         cfg_timestamp = g_config.wx_timestamp;
+#ifdef ENABLE_MESSAGE
         cfg_msg_capable = g_config.msg_enable;
+#else
+        cfg_msg_capable = false;
+#endif
         cfg_no_archive = g_config.my_no_archive;
     }
     app_config_unlock();
@@ -869,15 +875,11 @@ void weather_start(void) {
 
     s_lock = xSemaphoreCreateMutex();
 
-    // Arm the registry's own lock before any other task can reach it, then
-    // eagerly bring up the auto-registered drivers so the first sample and the
-    // Weather page's channel list are populated.
-    sensors_local_init();
-    sensors_local_init_all();
-
     // The weather subsystem creates no task of its own: the WX beacon runs in
     // the shared beacon scheduler (via weather_beacon_service()) and the 1 Hz
     // sensor refresh runs in the APRS service tick (via weather_service_1hz()).
     ESP_LOGI(TAG, "Weather subsystem started (en=%d rf=%d inet=%d interval=%us, %u local sensor driver(s))", g_config.wx_en, g_config.wx_2rf, g_config.wx_2inet,
              (unsigned)g_config.wx_interval, (unsigned)sensors_local_count());
 }
+
+#endif // ENABLE_WEATHER

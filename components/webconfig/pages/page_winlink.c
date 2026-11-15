@@ -56,6 +56,8 @@
 #include "web_common.h"
 #include "winlink.h"
 
+#ifdef ENABLE_WINLINK
+
 static const char *TAG = "page_winlink";
 
 // Room for the whole live-status document: the untranslated state key, the
@@ -508,3 +510,5 @@ esp_err_t page_winlink_list_get(httpd_req_t *req) {
     httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
 }
+
+#endif // ENABLE_WINLINK

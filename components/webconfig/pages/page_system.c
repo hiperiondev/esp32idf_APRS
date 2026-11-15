@@ -32,6 +32,8 @@
 #include "translations.h"
 #include "web_common.h"
 
+#ifdef ENABLE_SYSTEM
+
 static const char *TAG = "page_system";
 
 esp_err_t page_system_get(httpd_req_t *req) {
@@ -124,9 +126,13 @@ esp_err_t page_system_get(httpd_req_t *req) {
     // floor (::NTP_RESYNC_MIN_SEC, enforced again on save), so it is rendered
     // as a plain min-only number input rather than through web_field_int(),
     // which always emits both a min and a max attribute.
+    // The buffer is sized from the format itself, so the label of every
+    // language fits, plus room for the widest value the %d can print.
     {
-        char buf[120];
-        snprintf(buf, sizeof(buf), "<label>" TR_SYS_NTP_RESYNC "</label><input type='number' name='ntpResync' value='%d' min='30'>", g_config.ntp_resync_sec);
+#define NTP_RESYNC_FIELD_FMT "<label>" TR_SYS_NTP_RESYNC "</label><input type='number' name='ntpResync' value='%d' min='30'>"
+        char buf[sizeof(NTP_RESYNC_FIELD_FMT) + 11];
+        snprintf(buf, sizeof(buf), NTP_RESYNC_FIELD_FMT, g_config.ntp_resync_sec);
+#undef NTP_RESYNC_FIELD_FMT
         httpd_resp_sendstr_chunk(req, buf);
     }
 
@@ -219,3 +225,5 @@ esp_err_t page_default_reset(httpd_req_t *req) {
     web_send_save_result(req, ok, "/system");
     return ESP_OK;
 }
+
+#endif // ENABLE_SYSTEM

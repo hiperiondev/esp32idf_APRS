@@ -54,6 +54,7 @@
 #include "message.h"
 #include "objects_items.h"
 #include "query.h"
+#include "sensors_local.h"
 #include "str_append.h"
 #include "telegram_app.h"
 #include "telemetry.h"
@@ -403,6 +404,7 @@ aprs_service_stats_t aprs_service_get_stats(void) {
     return s;
 }
 
+#ifdef ENABLE_RADIO_MODEM
 // Receive configuration the statistics were collected under. The counters
 // describe a particular demodulator set, so they restart whenever the modem
 // profile, the input type or the receive tuning changes - and only then, so
@@ -441,6 +443,7 @@ void aprs_service_apply_modem_config(void) {
              (unsigned)cfg.modem, (int)cfg.flat_audio, (unsigned)cfg.preamble_ms, (unsigned)cfg.tx_tail_ms, (unsigned)cfg.slot_time_ms,
              (unsigned)cfg.csma_slot_ms, (unsigned)cfg.csma_busy_max_ms, (unsigned)cfg.persist, (unsigned)cfg.fx25_mode, (unsigned)cfg.min_unkey_ms);
 }
+#endif
 
 // Set true once main.c has actually called modem_init() successfully (i.e.
 // the audio modem is enabled in config *and* the hardware came up since boot -
@@ -756,6 +759,28 @@ static int ax25ToTnc2(const ax25_msg_t *m, char *out, size_t outMax) {
 
 // @brief Single dispatch point for digipeater / igate / message, fed by
 // rx_dispatch() below, on the receive task, for every decoded RX frame.
+#ifdef BUILD_MSG_PARSER
+// Whether a received ":ADDRESSEE:" frame has a consumer right now: the APRS
+// Message service, the directed queries of the query responder, or the
+// Telegram routing of messages and bulletins. Only the consumers built in are
+// asked.
+static bool msg_parser_wanted(void) {
+#ifdef ENABLE_MESSAGE
+    if (g_config.msg_enable)
+        return true;
+#endif
+#ifdef ENABLE_QUERY
+    if (g_config.query_en && g_config.query_directed_en)
+        return true;
+#endif
+#ifdef ENABLE_TELEGRAM
+    if (telegram_app_routing_active())
+        return true;
+#endif
+    return false;
+}
+#endif
+
 static void aprs_msg_callback(ax25_msg_t *msg) {
     // This buffer renders a *received* frame, so it is deliberately larger
     // than APRS_TNC2_BUF_SIZE (the size every packet *builder* uses, and the
@@ -811,12 +836,16 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
     // once here so a moving station reads as moving instead of as a bare
     // packet line. A payload carrying none of them yields an empty string
     // and an empty column.
+    // Only the Dashboard's traffic table shows it, so it is decoded only with
+    // the Dashboard in the build.
     char decoded[APRS_RX_DECODED_BUF_SIZE] = "";
+#ifdef ENABLE_DASHBOARD
     {
         aprs_rx_report_t report;
         if (aprs_filter_decode_report((const char *)msg->info, msg->dst.call, &report))
             aprs_filter_format_report(&report, decoded, sizeof(decoded));
     }
+#endif
 
     if (igate_log_accepts_frame(msg)) {
         ESP_LOGI(TAG, "RX: %s", tnc2);
@@ -916,6 +945,7 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
         return;
     }
 
+#ifdef ENABLE_DIGIPEATER
     if (g_config.digi_en) {
         int action = digiProcess(msg);
         if (action == 2) {
@@ -931,11 +961,14 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
             }
         }
     }
+#endif
 
+#ifdef ENABLE_IGATE
     if (g_config.igate_en && g_config.rf2inet) {
         if (igateProcess(msg)) // builds its own qAR/qAO header and sends to APRS-IS internally
             atomic_fetch_add_explicit(&s_statRf2Inet, 1, memory_order_relaxed);
     }
+#endif
 
     // handleIncomingAPRS() is the single ":ADDRESSEE:" parser for three
     // consumers - APRS messaging, directed queries ("CALL:?query?") and the
@@ -946,13 +979,16 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
     // query_process() below operate on the frame as received, rendered once at
     // the top of this function, since digiProcess() (if it ran) rewrote the
     // path for retransmission only, not for these consumers.
-    if (g_config.msg_enable || (g_config.query_en && g_config.query_directed_en) || telegram_app_routing_active()) {
+#ifdef BUILD_MSG_PARSER
+    if (msg_parser_wanted())
         handleIncomingAPRS(tnc2, QUERY_SRC_RF);
-    }
+#endif
 
+#ifdef ENABLE_QUERY
     if (g_config.query_en) {
         query_process(tnc2, QUERY_SRC_RF);
     }
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -1079,6 +1115,7 @@ static void on_rx_frame(const modem_rx_frame_t *f, void *ctx) {
     }
 }
 
+#ifdef ENABLE_IGATE
 // Case-insensitive compare of a TNC2 source base callsign (SSID already
 // stripped, given as ptr+len) against one configured own-station call. An
 // empty configured call never matches, so report callsigns the operator left
@@ -1134,11 +1171,36 @@ static bool inet_line_is_own_report(const char *line) {
     // Telemetry's callsign persists to its own /storage/telemetry.json (see
     // telemetry.h), so it is fetched through telemetry_get_mycall() rather
     // than a direct g_config field.
-    char tlm_mycall[10];
+    //
+    // A module left out of the build transmits nothing, so its callsign is
+    // no report source and its entry stays blank.
+    char tlm_mycall[10] = "";
+#ifdef ENABLE_TELEMETRY
     telemetry_get_mycall(tlm_mycall, sizeof(tlm_mycall));
+#endif
+#ifdef ENABLE_TRACKER
+    const char *trk_mycall = g_config.trk_mycall;
+#else
+    const char *trk_mycall = "";
+#endif
+#ifdef ENABLE_DIGIPEATER
+    const char *digi_mycall = g_config.digi_mycall;
+#else
+    const char *digi_mycall = "";
+#endif
+#ifdef ENABLE_WEATHER
+    const char *wx_mycall = g_config.wx_mycall;
+#else
+    const char *wx_mycall = "";
+#endif
+#ifdef ENABLE_MESSAGE
+    const char *msg_mycall = g_config.msg_mycall;
+#else
+    const char *msg_mycall = "";
+#endif
 
     const char *calls[] = {
-        g_config.aprs_mycall, g_config.my_callsign, g_config.trk_mycall, g_config.digi_mycall, g_config.wx_mycall, tlm_mycall, g_config.msg_mycall,
+        g_config.aprs_mycall, g_config.my_callsign, trk_mycall, digi_mycall, wx_mycall, tlm_mycall, msg_mycall,
     };
     _Static_assert(sizeof(calls) / sizeof(calls[0]) == OWN_REPORT_CALL_COUNT,
                    "calls[] in inet_line_is_own_report() must list exactly OWN_REPORT_CALL_COUNT callsigns; "
@@ -1431,7 +1493,11 @@ static bool messageGatePass(const char *srcLine, const char *srcCall, const char
     // command is itself enough to make the addressee look Internet-connected.
     // The exemption is deliberately narrow - it lifts this condition and no
     // other, and only for the configured service callsign.
+#ifdef ENABLE_WINLINK
     bool wl_exempt = g_config.wl_gate_exempt && winlink_is_service_call(srcCall);
+#else
+    const bool wl_exempt = false;
+#endif
     if (!wl_exempt && lastheard_heard_inet_within(addressee, window)) {
         ESP_LOGD(TAG, "INET2RF message not gated - %s is Internet-connected", addressee);
         igate_note_drop(DROP_MSG_ADDRESSEE_INET);
@@ -1589,9 +1655,13 @@ static int build_thirdparty_frame(const char *inetLine, char *out, size_t outMax
     }
     return n;
 }
+#endif // ENABLE_IGATE
 
+#ifdef BUILD_APRS_IS
 // ---------------------------------------------------------------------------
-// INET -> RF: called by igate.c for every non-comment line read from APRS-IS.
+// APRS-IS receive line: called by igate.c for every non-comment line read from
+// APRS-IS. It feeds last heard, messaging, the query responder and the
+// Telegram routing, and then, with the IGate in the build, the INET -> RF gate.
 // ---------------------------------------------------------------------------
 static void inet2rfHandler(const char *line) {
     // Feed the dashboard LAST HEARD table from APRS-IS too, not just RF, so
@@ -1610,6 +1680,7 @@ static void inet2rfHandler(const char *line) {
     // The gateway list is snapshotted under the config lock for the same
     // reason every other string field is: this runs on the IGate task while a
     // web save may be rewriting it.
+#ifdef ENABLE_BRANDMEISTER
     aprs_bm_match_t bmMatch = APRS_BM_MATCH_NONE;
     if (g_config.bm_en) {
         char gateways[APRS_BM_GATEWAYS_MAX][APRS_BM_GATEWAY_LEN];
@@ -1621,6 +1692,9 @@ static void inet2rfHandler(const char *line) {
         bmMatch = aprs_bm_classify(line, gateways, APRS_BM_GATEWAYS_MAX);
     }
     const bool viaBm = (bmMatch != APRS_BM_MATCH_NONE);
+#else
+    const bool viaBm = false;
+#endif
 
     {
         const char *gt = strchr(line, '>');
@@ -1660,12 +1734,18 @@ static void inet2rfHandler(const char *line) {
     // traffic off the transmitter: a general query such as "?APRS?" is
     // ordinary backbone traffic, and the answer to one belongs on the channel
     // the question arrived on.
-    if (g_config.msg_enable || (g_config.query_en && g_config.query_directed_en) || telegram_app_routing_active())
+#ifdef BUILD_MSG_PARSER
+    if (msg_parser_wanted())
         handleIncomingAPRS(line, QUERY_SRC_INET);
+#endif
 
+#ifdef ENABLE_QUERY
     if (g_config.query_en)
         query_process(line, QUERY_SRC_INET);
+#endif
 
+        // Everything from here on is the IGate's Internet-to-RF gate.
+#ifdef ENABLE_IGATE
     if (g_config.inet2rf) {
         // Generic queries ("?APRS?", "?WX?", "?IGATE?", ...) are never gated
         // onto RF: transmitting one over the air would let a single APRS-IS
@@ -2044,10 +2124,14 @@ static void inet2rfHandler(const char *line) {
             }
         }
     }
+#endif // ENABLE_IGATE
 }
+#endif // BUILD_APRS_IS
 
+#if defined(ENABLE_MESSAGE) || defined(ENABLE_QUERY)
 // ---------------------------------------------------------------------------
-// Outbound message TX: message.c hands us a built TNC2 packet + channel mask.
+// Outbound message TX: message.c and query.c hand us a built TNC2 packet +
+// channel mask.
 // ---------------------------------------------------------------------------
 static void messageTxHandler(const char *packet, size_t len, uint8_t channels) {
     // Critical: APRS messages (and their acks/retries) are exempt from the
@@ -2057,6 +2141,7 @@ static void messageTxHandler(const char *packet, size_t len, uint8_t channels) {
     if (channels & MSG_CHANNEL_INET)
         igate_send_raw(packet, len);
 }
+#endif
 
 // The application does not pump the DSP or drain the frame queue: the modem
 // component owns both. AFSK_init() starts its own pinned RX DSP task, and
@@ -2123,12 +2208,16 @@ static void serviceTickTask(void *arg) {
         // of its own, which saves that task's stack. weather_start() has
         // already run by the time this task is created, so the shared container
         // and sensor registry are ready.
+#ifdef ENABLE_WEATHER
         weather_service_1hz();
+#endif
 
         // 1 Hz Binary (digital B1-B8) telemetry channel refresh - reads the
         // same sensors_local registry weather_service_1hz() does, so it is
         // folded into this existing task rather than getting its own.
+#ifdef ENABLE_TELEMETRY
         telemetry_service_1hz();
+#endif
 
         // SNTP bootstrap step, also folded in here instead of a dedicated
         // time_sync task (saves its 4 KB stack). Non-blocking: it just advances
@@ -2141,16 +2230,22 @@ static void serviceTickTask(void *arg) {
         // when either is. Keeping that work off a permanent task of its own is
         // what stops the bot from holding a large stack while it is merely
         // running.
+#ifdef ENABLE_TELEGRAM
         telegram_app_tick_1hz();
+#endif
 
         // 1 Hz Winlink session step, folded in here for the same reason as the
         // ones above: it only advances a state machine whose every forward
         // transition is driven by a reply the messaging engine has already
         // delivered, and it neither blocks nor touches the filesystem.
+#ifdef ENABLE_WINLINK
         winlink_tick_1hz();
+#endif
 
+#ifdef ENABLE_MESSAGE
         if (g_config.msg_enable)
             sendAPRSMessageRetry();
+#endif
 
         rx_loss_watch_1hz();
 
@@ -2160,6 +2255,25 @@ static void serviceTickTask(void *arg) {
     }
 }
 
+void aprs_service_notify_modem_ready(void) {
+    s_modemReady = true;
+}
+
+bool aprs_service_modem_ready(void) {
+    return s_modemReady;
+}
+
+bool aprs_service_can_transmit(void) {
+    return s_modemReady && g_config.audio_modem_en;
+}
+
+#ifdef ENABLE_IGATE
+bool aprs_service_can_gate_to_rf(void) {
+    return aprs_service_can_transmit() && g_config.igate_en && g_config.inet2rf;
+}
+#endif
+
+#ifdef ENABLE_RADIO_MODEM
 // ---------------------------------------------------------------------------
 // Audio ADC/DAC AFSK modem "LOOP TEST" (Radiomodem webconfig page).
 // ---------------------------------------------------------------------------
@@ -2214,22 +2328,6 @@ static volatile bool s_loopTestGotFrame = false;
 static char s_loopTestToken[8];
 static char s_loopTestRxInfo[128];
 static uint16_t s_loopTestRxMVrms = 0;
-
-void aprs_service_notify_modem_ready(void) {
-    s_modemReady = true;
-}
-
-bool aprs_service_modem_ready(void) {
-    return s_modemReady;
-}
-
-bool aprs_service_can_transmit(void) {
-    return s_modemReady && g_config.audio_modem_en;
-}
-
-bool aprs_service_can_gate_to_rf(void) {
-    return aprs_service_can_transmit() && g_config.igate_en && g_config.inet2rf;
-}
 
 // ---------------------------------------------------------------------------
 // Loop-test diagnostics.
@@ -2927,6 +3025,8 @@ bool aprs_tx_test_run(char *msg, size_t msg_len) {
     return true;
 }
 
+#endif // ENABLE_RADIO_MODEM
+
 void aprs_service_start(void) {
     // Created before anything below it: igate_start() a few lines down and
     // the Telegram bring-up path main.c's app_task() enables later in the
@@ -2936,19 +3036,29 @@ void aprs_service_start(void) {
 
     trafficlog_init();
     lastheard_init();
+#ifdef ENABLE_MESSAGE
     message_init();
     message_alarm_configure(g_config.msg_alarm_enable, g_config.msg_alarm_gpio);
     message_set_tx_handler(messageTxHandler);
+#endif
+#ifdef BUILD_APRS_IS
     igate_set_inet2rf_handler(inet2rfHandler);
+#endif
+#ifdef ENABLE_IGATE
     igate_set_inet2rf_assoc_query(msgAssocPending);
+#endif
 
+#ifdef ENABLE_QUERY
     query_init();
     query_set_tx_handler(messageTxHandler); // reuse the same RF/INET TX plumbing
+#endif
 
     // Winlink client. Registered after message_init() because it installs the
     // message observer the session state machine is driven by, and after the
     // storage partition is mounted because it loads its mailbox from there.
+#ifdef ENABLE_WINLINK
     winlink_init();
+#endif
 
     // The transmit gate exists before anything can transmit; see s_rfTxGate.
     s_rfTxGate = xSemaphoreCreateMutexStatic(&s_rfTxGateBuf);
@@ -2963,26 +3073,43 @@ void aprs_service_start(void) {
         ESP_LOGE(TAG, "could not start the aprs_rx task: received frames will not be dispatched");
     modem_set_rx_callback(on_rx_frame, NULL);
 
-    // Always start the uplink task: it idles itself (socket closed,
-    // fast retry loop) whenever nothing needs APRS-IS, and comes up as soon
-    // as igate_en, digi_loc2inet, or msg_inet is turned on - including via
-    // a runtime web UI save, with no reboot required.
+    // Always start the uplink task when the APRS-IS client is built: it idles
+    // itself (socket closed, fast retry loop) whenever nothing needs APRS-IS,
+    // and comes up as soon as any built module's Internet leg is turned on -
+    // including via a runtime web UI save, with no reboot required.
+#ifdef BUILD_APRS_IS
     igate_start();
+#endif
 
+#ifdef BUILD_BEACONS
     beacon_start();
+#endif
+
+    // The local sensor registry, shared by the weather report and the
+    // telemetry channels: armed and its auto-registered drivers brought up
+    // once, before either subsystem samples it, so the first sample and the
+    // channel lists of both pages are populated.
+#ifdef BUILD_SENSORS
+    sensors_local_init();
+    sensors_local_init_all();
+#endif
 
     // Own-station weather: creates the shared weather_telemetry_data container,
     // refreshes it from the local sensor drivers at 1 Hz, and beacons an APRS
     // Weather Report at wx_interval.
+#ifdef ENABLE_WEATHER
     weather_start();
+#endif
 
     // Own-station telemetry (Binary/digital B1-B8 channel 0): resolves the
-    // operator's per-bit channel mapping from the same sensors_local registry
-    // weather_start() just brought up, and beacons a "T#..." Telemetry Data
-    // Report at its configured data interval (plus BITS metadata at its
-    // configured info interval) - both stored in their own
-    // /storage/telemetry.json, not g_config; see telemetry.h.
+    // operator's per-bit channel mapping from the sensors_local registry
+    // brought up above, and beacons a "T#..." Telemetry Data Report at its
+    // configured data interval (plus BITS metadata at its configured info
+    // interval) - both stored in their own /storage/telemetry.json, not
+    // g_config; see telemetry.h.
+#ifdef ENABLE_TELEMETRY
     telemetry_start();
+#endif
 
     // Periodic APRS bulletins (BLN1..BLN5), configured on the "Bulletins" web
     // admin page and persisted in their own LittleFS file (not g_config). The
@@ -3012,5 +3139,5 @@ void aprs_service_start(void) {
     // why it needs the budget it does.
     xTaskCreate(serviceTickTask, "aprs_svc_tick", APRS_SVC_TICK_TASK_STACK_BYTES, NULL, 4, NULL);
 
-    ESP_LOGI(TAG, "APRS service started (digi=%d igate=%d msg=%d)", g_config.digi_en, g_config.igate_en, g_config.msg_enable);
+    ESP_LOGI(TAG, "APRS service started");
 }

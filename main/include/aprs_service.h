@@ -31,6 +31,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "app_config.h" // module enables: the Radiomodem tools and the IGate gate below are declared only when built
 #include "app_version.h"
 #include "esp32idf_radioamateur_modem.h"
 
@@ -404,6 +405,7 @@ void aprs_service_set_beacon_context(void);
  */
 void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex);
 
+#ifdef ENABLE_RADIO_MODEM
 /**
  * @brief Re-apply the current g_config modem settings to the running modem.
  *
@@ -416,6 +418,7 @@ void aprs_service_build_modem_config(modem_config_t *cfg, bool full_duplex);
  * No-op when the modem was never brought up (see aprs_service_modem_ready()).
  */
 void aprs_service_apply_modem_config(void);
+#endif
 
 /**
  * @brief Tell aprs_service.c that modem_init() has actually been called and
@@ -449,6 +452,7 @@ bool aprs_service_modem_ready(void);
  */
 bool aprs_service_can_transmit(void);
 
+#ifdef ENABLE_IGATE
 /**
  * @brief Whether this IGate can currently gate messages from APRS-IS to RF.
  *
@@ -467,7 +471,9 @@ bool aprs_service_can_transmit(void);
  *         otherwise.
  */
 bool aprs_service_can_gate_to_rf(void);
+#endif
 
+#ifdef ENABLE_RADIO_MODEM
 /**
  * @brief Audio ADC/DAC AFSK modem self-test ("LOOP TEST" button on the
  * Radio/Modem webconfig page). Requires the ADC and DAC GPIOs (MODEM_ADC_GPIO
@@ -560,5 +566,6 @@ bool aprs_rx_level_sample(char *json, size_t json_len);
  *         already in progress).
  */
 bool aprs_tx_test_run(char *msg, size_t msg_len);
+#endif
 
 #endif // APRS_SERVICE_H
