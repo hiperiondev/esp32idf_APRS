@@ -27,9 +27,23 @@ superiore a ``WIFI_MODE_CFG_MAX``, quindi nessun valore memorizzato può lasciar
 una stazione headless senza un'amministrazione web da cui correggerlo.
 
 Sono memorizzati fino a cinque profili STA (``WIFI_STA_NUM = 5``), ciascuno con la
-propria casella Enable. La **prima voce abilitata con un SSID non vuoto** è
-spinta al driver, ed è l'unica usata per quell'avvio: gli slot sono credenziali
-alternative fra cui scegliere, non una rotazione su cui il firmware commuta.
+propria casella Enable. Le voci abilitate con un SSID non vuoto formano un
+elenco di failover percorso nell'ordine degli slot: la prima viene spinta al
+driver all'avvio, e quando uno slot accumula ``WIFI_STA_ATTEMPTS_PER_SLOT`` (3)
+tentativi falliti consecutivi il timer di riconnessione seleziona lo slot
+abilitato successivo prima del suo tentativo, ripartendo dall'inizio alla fine
+della tabella. Ottenere un IP azzera il conteggio, così uno slot connesso
+conserva tutti i suoi tentativi per la prossima caduta del collegamento; con un
+solo slot utilizzabile la stazione continua semplicemente a riprovarlo.
+
+Una scansione dalla pagina Wireless trattiene la riconnessione per la sua
+durata (``wifi_sta_scan_begin()`` / ``wifi_sta_scan_end()`` in
+``wifi_sta.h``): una stazione non connessa è quasi sempre a metà di
+un'associazione, e il driver in quel momento rifiuta di scansionare.
+L'associazione in corso viene annullata, la disconnessione che ne deriva non
+viene contata contro lo slot, e il tentativo successivo parte appena la
+scansione è finita. Una stazione connessa mantiene il suo collegamento mentre
+la scansione è in corso.
 
 Connessione di stazione robusta
 ===============================

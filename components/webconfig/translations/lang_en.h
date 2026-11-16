@@ -1209,6 +1209,10 @@
 #define TR_WIFI_SCANNING "Scanning..."
 /** Wireless page label for scan failed, rendered on the Wireless page. */
 #define TR_WIFI_SCAN_FAILED "Scan failed"
+/** Wireless page label for scan pick, the first entry of each WiFi Client slot's list of scanned networks. */
+#define TR_WIFI_SCAN_PICK "Choose a network found by the scan..."
+/** Wireless page label for scan none, shown in the list of scanned networks when the scan found none. */
+#define TR_WIFI_SCAN_NONE "No networks found"
 
 /** @} */
 

@@ -44,6 +44,7 @@
 #include "telegram_app.h"
 #include "time_sync.h"
 #include "web_server.h"
+#include "wifi_sta.h"
 
 static const char *TAG = "main";
 
@@ -65,6 +66,16 @@ static const char *TAG = "main";
 
 // Fixed delay applied before every reconnect attempt after a STA disconnect.
 #define RECONNECT_INTERVAL_MS 5000
+
+// Consecutive failed attempts on one WiFi Client slot before the station moves
+// on to the next enabled one. With RECONNECT_INTERVAL_MS between attempts this
+// gives each network about this many times five seconds to answer - enough
+// for a router that is rebooting or a link that dropped for a moment - before
+// the next configured network is tried. The slots are walked in order and the
+// walk wraps around, so a station with several networks keeps cycling through
+// all of them until one lets it in; with a single slot it simply keeps
+// retrying that one.
+#define WIFI_STA_ATTEMPTS_PER_SLOT 3
 
 // Memory class the gate below checks: internal 8-bit memory, the same
 // capability mask heap_monitor.c samples every minute, so the two figures are
@@ -100,8 +111,74 @@ static bool s_staEnabled = false;
 // in AP+STA mode.
 static esp_timer_handle_t s_reconnectTimer = NULL;
 
+// The WiFi Client slot currently handed to the driver, -1 before the first one
+// is chosen. Written at boot and afterwards only from the reconnect timer's
+// task, which is the only place a slot change is made.
+static int s_staSlot = -1;
+
+// Disconnects counted against s_staSlot since it last got an IP or was
+// selected. Incremented by the event handler, read and reset by the reconnect
+// timer: a lost update between the two can only delay a slot change by one
+// attempt, never prevent it.
+static volatile uint8_t s_staFails = 0;
+
+// Set while the Wireless page runs a scan (wifi_sta_scan_begin() /
+// wifi_sta_scan_end()). A scan cannot run while the station is part-way
+// through an association, so automatic connects wait until it is over, and
+// the disconnect the scan itself provokes is not counted as a failed attempt.
+static volatile bool s_scanHold = false;
+
+// Number of slots that are enabled and carry an SSID.
+static int sta_usable_slots(void) {
+    int n = 0;
+    for (int i = 0; i < WIFI_STA_NUM; i++) {
+        if (g_config.wifi_sta[i].enable && g_config.wifi_sta[i].wifi_ssid[0])
+            n++;
+    }
+    return n;
+}
+
+// Hands the first usable slot at or after `start` to the driver, wrapping
+// around the table, and makes it the current one. A slot the driver refuses
+// is logged and skipped, so one bad entry never stops the others from being
+// tried. Returns false when no slot could be selected.
+static bool sta_select_from(int start) {
+    for (int k = 0; k < WIFI_STA_NUM; k++) {
+        int i = (start + k) % WIFI_STA_NUM;
+        if (!g_config.wifi_sta[i].enable || !g_config.wifi_sta[i].wifi_ssid[0])
+            continue;
+
+        wifi_config_t sta_cfg = { 0 };
+        strncpy((char *)sta_cfg.sta.ssid, g_config.wifi_sta[i].wifi_ssid, sizeof(sta_cfg.sta.ssid) - 1);
+        strncpy((char *)sta_cfg.sta.password, g_config.wifi_sta[i].wifi_pass, sizeof(sta_cfg.sta.password) - 1);
+
+        // Advertise PMF capability. A zeroed wifi_config_t leaves
+        // pmf_cfg.capable = false, and an AP configured for WPA3 or WPA2 with
+        // PMF required will simply refuse such a station - it associates and
+        // is immediately dropped, or never gets past the handshake. "capable,
+        // not required" is the setting that works against both old and new
+        // APs.
+        sta_cfg.sta.pmf_cfg.capable = true;
+        sta_cfg.sta.pmf_cfg.required = false;
+
+        // The station credentials come from stored data, and a set that the
+        // driver refuses must not take the boot down: it is logged and the
+        // next slot is tried, so the access point still comes up either way.
+        esp_err_t serr = esp_wifi_set_config(WIFI_IF_STA, &sta_cfg);
+        if (serr != ESP_OK) {
+            ESP_LOGE(TAG, "esp_wifi_set_config(STA) rejected slot %d ('%s'): %s - skipping it", i, g_config.wifi_sta[i].wifi_ssid, esp_err_to_name(serr));
+            continue;
+        }
+        s_staSlot = i;
+        s_staFails = 0;
+        ESP_LOGI(TAG, "STA entry %d selected: SSID '%s'", i, g_config.wifi_sta[i].wifi_ssid);
+        return true;
+    }
+    return false;
+}
+
 static void try_connect(const char *why) {
-    if (!s_staEnabled)
+    if (!s_staEnabled || s_scanHold)
         return;
     esp_err_t err = esp_wifi_connect();
     // esp_wifi_connect() failing is the whole reason this function exists:
@@ -115,8 +192,41 @@ static void try_connect(const char *why) {
         ESP_LOGE(TAG, "STA connect (%s) failed: %s", why, esp_err_to_name(err));
 }
 
+// Runs on the esp_timer task before every reconnect attempt. Once the current
+// slot has used up its attempts and another network is configured, the next
+// usable slot is selected first, so the attempt that follows goes to it.
 static void reconnect_timer_cb(void *arg) {
+    if (s_scanHold)
+        return;
+    if (s_staFails >= WIFI_STA_ATTEMPTS_PER_SLOT && sta_usable_slots() > 1) {
+        int from = s_staSlot;
+        if (sta_select_from(from + 1))
+            ESP_LOGW(TAG, "STA slot %d did not connect after %d attempts, trying slot %d ('%s')", from, WIFI_STA_ATTEMPTS_PER_SLOT, s_staSlot,
+                     g_config.wifi_sta[s_staSlot].wifi_ssid);
+    }
     try_connect("retry");
+}
+
+bool wifi_sta_scan_begin(void) {
+    s_scanHold = true;
+    if (s_reconnectTimer)
+        esp_timer_stop(s_reconnectTimer);
+    // An association in progress keeps the driver from scanning, and a
+    // station that is not connected is by definition either associating or
+    // about to retry. Stopping it is harmless: its next attempt is made by
+    // wifi_sta_scan_end(). A station that is connected is left alone, since a
+    // scan runs alongside an established link.
+    if (s_staEnabled && !net_state_is_connected()) {
+        esp_wifi_disconnect();
+        return true;
+    }
+    return false;
+}
+
+void wifi_sta_scan_end(void) {
+    s_scanHold = false;
+    if (s_staEnabled && !net_state_is_connected())
+        try_connect("after scan");
 }
 
 static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data) {
@@ -140,17 +250,26 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
         // get a fresh IP (see ip_event_handler below).
         net_state_set_connected(false);
 
+        // A disconnect provoked by the Wireless page's scan says nothing about
+        // the network; wifi_sta_scan_end() makes the next attempt.
+        if (s_scanHold)
+            return;
+        if (s_staFails < UINT8_MAX)
+            s_staFails++;
+
         // The reason code is the single most useful number when a station
         // won't associate: 15 (4WAY_HANDSHAKE_TIMEOUT) or 204 (NOT_AUTHED)
         // means the password is wrong, 201 (NO_AP_FOUND) means the SSID
         // isn't visible (wrong name, out of range, or 5 GHz-only), 2/8/200
         // are ordinary roaming/AP-side drops.
-        ESP_LOGW(TAG, "STA disconnected from '%s', reason %d, retrying in %u ms...", (d && d->ssid_len) ? (const char *)d->ssid : "?", d ? (int)d->reason : -1,
-                 (unsigned)RECONNECT_INTERVAL_MS);
+        ESP_LOGW(TAG, "STA disconnected from '%s', reason %d, attempt %u on slot %d, retrying in %u ms...", (d && d->ssid_len) ? (const char *)d->ssid : "?",
+                 d ? (int)d->reason : -1, (unsigned)s_staFails, s_staSlot, (unsigned)RECONNECT_INTERVAL_MS);
 
         // Deferred, not slept: see the note on s_reconnectTimer. Every
         // disconnect - whether transient or persistent - waits the same
-        // fixed interval before the next esp_wifi_connect() attempt.
+        // fixed interval before the next esp_wifi_connect() attempt, which
+        // goes to the next configured network once this one has had
+        // WIFI_STA_ATTEMPTS_PER_SLOT attempts (see reconnect_timer_cb()).
         if (s_reconnectTimer) {
             esp_timer_stop(s_reconnectTimer); // no-op if not armed
             esp_timer_start_once(s_reconnectTimer, (uint64_t)RECONNECT_INTERVAL_MS * 1000ULL);
@@ -169,6 +288,9 @@ static void ip_event_handler(void *arg, esp_event_base_t base, int32_t id, void 
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
         ESP_LOGI(TAG, "STA got IP: " IPSTR " - internet route available", IP2STR(&event->ip_info.ip));
         net_state_set_connected(true);
+        // The slot that got in keeps its full budget of attempts for the next
+        // time the link drops.
+        s_staFails = 0;
     }
 }
 
@@ -249,36 +371,9 @@ static void wifi_init(void) {
         wifi_apply_ap_config();
 
     if (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) {
-        for (int i = 0; i < WIFI_STA_NUM; i++) {
-            if (g_config.wifi_sta[i].enable && g_config.wifi_sta[i].wifi_ssid[0]) {
-                wifi_config_t sta_cfg = { 0 };
-                strncpy((char *)sta_cfg.sta.ssid, g_config.wifi_sta[i].wifi_ssid, sizeof(sta_cfg.sta.ssid) - 1);
-                strncpy((char *)sta_cfg.sta.password, g_config.wifi_sta[i].wifi_pass, sizeof(sta_cfg.sta.password) - 1);
-
-                // Advertise PMF capability. A zeroed wifi_config_t leaves
-                // pmf_cfg.capable = false, and an AP configured for WPA3 or
-                // WPA2 with PMF required will simply refuse such a station -
-                // it associates and is immediately dropped, or never gets
-                // past the handshake. "capable, not required" is the setting
-                // that works against both old and new APs.
-                sta_cfg.sta.pmf_cfg.capable = true;
-                sta_cfg.sta.pmf_cfg.required = false;
-
-                // Same reasoning as the AP path: the station credentials also
-                // come from stored data, and a set that the driver refuses
-                // must not take the boot down. Log it and try the next slot,
-                // so the access point still comes up either way.
-                esp_err_t serr = esp_wifi_set_config(WIFI_IF_STA, &sta_cfg);
-                if (serr != ESP_OK) {
-                    ESP_LOGE(TAG, "esp_wifi_set_config(STA) rejected slot %d ('%s'): %s - skipping it", i, g_config.wifi_sta[i].wifi_ssid,
-                             esp_err_to_name(serr));
-                    continue;
-                }
-                s_staEnabled = true;
-                ESP_LOGI(TAG, "STA entry %d selected: SSID '%s'", i, g_config.wifi_sta[i].wifi_ssid);
-                break; // first enabled entry; multi-AP failover can be added later
-            }
-        }
+        // The first usable slot is tried first; reconnect_timer_cb() moves on
+        // through the others when it cannot connect.
+        s_staEnabled = sta_select_from(0);
 
         // Loudly, because this is the other half of "I switched to STA and
         // nothing happened": if the loop above finds nothing, no STA config is

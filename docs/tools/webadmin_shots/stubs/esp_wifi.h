@@ -18,4 +18,5 @@ esp_err_t esp_wifi_scan_start(const wifi_scan_config_t *c, bool block);
 esp_err_t esp_wifi_scan_get_ap_records(uint16_t *n, wifi_ap_record_t *r);
 esp_err_t esp_wifi_scan_get_ap_num(uint16_t *n);
 esp_err_t esp_wifi_clear_ap_list(void);
+#define ESP_ERR_WIFI_STATE 0x3007
 esp_err_t esp_wifi_connect(void);

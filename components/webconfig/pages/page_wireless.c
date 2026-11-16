@@ -24,13 +24,23 @@
 #include "app_config.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "heap_monitor.h" // HEAP_MONITOR_BRACKET() - a scan allocates driver buffers plus the record array
 #include "pages.h"
 #include "translations.h"
 #include "web_common.h"
 #include "web_help.h"
+#include "wifi_sta.h" // wifi_sta_scan_begin()/_end(): the station's reconnection waits while the scan runs
 
 #ifdef ENABLE_WIRELESS
+
+// Attempts at starting the scan, and the pause between them. Cancelling an
+// association that is under way (wifi_sta_scan_begin()) takes the driver a
+// moment to complete, and a scan started before it has refuses with
+// ESP_ERR_WIFI_STATE; a short retry absorbs that without failing the request.
+#define WIFI_SCAN_START_TRIES    5
+#define WIFI_SCAN_START_RETRY_MS 200
 
 static const char *TAG = "page_wireless";
 
@@ -110,11 +120,17 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
             char buf[600];
             char esc_sta_ssid[33 * 6 + 1];
             web_html_attr_escape(g_config.wifi_sta[i].wifi_ssid, esc_sta_ssid, sizeof(esc_sta_ssid));
+            // The picker under the field stays hidden until a scan has
+            // filled it. It shows every network found, whatever the field
+            // already holds - unlike the datalist, which a browser filters by
+            // the text already typed and so shows nothing for a slot that
+            // carries an SSID - and choosing one writes it into this slot.
             snprintf(buf, sizeof(buf),
                      "<label>" TR_F_SSID "</label>"
                      "<input type='text' name='staSsid%d' id='staSsid%d' list='ssidList' value='%s' maxlength='32' autocomplete='off' "
-                     "placeholder='" TR_WIFI_SSID_PLACEHOLDER "'>",
-                     i, i, esc_sta_ssid);
+                     "placeholder='" TR_WIFI_SSID_PLACEHOLDER "'>"
+                     "<select id='staPick%d' class='wifi-pick' style='display:none;margin-top:6px' onchange='wifiPick(%d,this)'></select>",
+                     i, i, esc_sta_ssid, i, i);
             httpd_resp_sendstr_chunk(req, buf);
         }
         {
@@ -145,21 +161,43 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
                                   "btn.disabled=false;"
                                   "if(data.error){status.textContent=' '+data.error;return;}"
                                   "var nets=(data.networks||[]).slice().sort(function(a,b){return b.rssi-a.rssi;});"
-                                  "status.textContent=' ('+nets.length+')';"
                                   // Fill the shared datalist only, so scan suggestions never touch
                                   // what is typed in an SSID field.
                                   "var dl=document.getElementById('ssidList');"
                                   "while(dl.firstChild){dl.removeChild(dl.firstChild);}"
-                                  "var seen={};"
+                                  "var seen={},list=[];"
                                   "for(var j=0;j<nets.length;j++){"
                                   "var ssid=nets[j].ssid;"
                                   "if(!ssid||seen[ssid])continue;"
-                                  "seen[ssid]=true;"
+                                  "seen[ssid]=true;list.push(nets[j]);"
                                   "var opt=document.createElement('option');"
                                   "opt.value=ssid;opt.label=ssid+' ('+nets[j].rssi+' dBm)';"
                                   "dl.appendChild(opt);"
                                   "}"
+                                  "status.textContent=' ('+list.length+')';"
+                                  // Every slot's picker gets the same list, strongest first, under
+                                  // a placeholder entry that changes nothing when left selected.
+                                  "var picks=document.getElementsByClassName('wifi-pick');"
+                                  "for(var p=0;p<picks.length;p++){"
+                                  "var sel=picks[p];"
+                                  "while(sel.firstChild){sel.removeChild(sel.firstChild);}"
+                                  "var head=document.createElement('option');"
+                                  "head.value='';head.textContent=list.length?'" TR_WIFI_SCAN_PICK "':'" TR_WIFI_SCAN_NONE "';"
+                                  "sel.appendChild(head);"
+                                  "for(var k=0;k<list.length;k++){"
+                                  "var o=document.createElement('option');"
+                                  "o.value=list[k].ssid;o.textContent=list[k].ssid+' ('+list[k].rssi+' dBm)';"
+                                  "sel.appendChild(o);"
+                                  "}"
+                                  "sel.style.display='';"
+                                  "}"
                                   "}).catch(function(){btn.disabled=false;status.textContent=' " TR_WIFI_SCAN_FAILED "';});"
+                                  "}"
+                                  "function wifiPick(i,sel){"
+                                  "if(!sel.value)return;"
+                                  "document.getElementById('staSsid'+i).value=sel.value;"
+                                  "var pw=document.getElementById('pwd_staPass'+i);"
+                                  "if(pw)pw.focus();"
                                   "}"
                                   "</script>");
 
@@ -309,11 +347,24 @@ esp_err_t page_wifi_scan_post(httpd_req_t *req) {
         mode_switched = true;
     }
 
+    // A station that keeps retrying a network that is not there is, most of
+    // the time, part-way through an association, and the driver refuses to
+    // scan then. Its reconnection is held for the length of the scan and
+    // released right after it, whatever the scan's outcome.
     wifi_scan_config_t scan_cfg = { 0 };
     scan_cfg.show_hidden = false;
-    esp_err_t scan_err = esp_wifi_scan_start(&scan_cfg, true);
+    wifi_sta_scan_begin();
+    esp_err_t scan_err = ESP_FAIL;
+    for (int attempt = 0; attempt < WIFI_SCAN_START_TRIES; attempt++) {
+        scan_err = esp_wifi_scan_start(&scan_cfg, true);
+        if (scan_err != ESP_ERR_WIFI_STATE)
+            break;
+        vTaskDelay(pdMS_TO_TICKS(WIFI_SCAN_START_RETRY_MS));
+    }
+    wifi_sta_scan_end();
 
     if (scan_err != ESP_OK) {
+        ESP_LOGW(TAG, "esp_wifi_scan_start() failed: %s", esp_err_to_name(scan_err));
         if (mode_switched)
             esp_wifi_set_mode(mode); // restore original mode
         httpd_resp_sendstr(req, "{\"error\":\"scan failed\"}");

@@ -38,15 +38,19 @@ Wireless
 
    **WiFi Client #1** — one of the five client slots, each with its own *Enable* switch, network name and password.
 
-The slots are alternative sets of credentials, not a failover list: at boot
-the first enabled slot with a network name is the one used, so moving a unit
-between a home network and a phone's hotspot is a matter of ticking a
-different slot. *AP + STA* keeps the access point up while the client is
-connected, which is the safe choice while setting a station up: the web admin
-stays reachable on ``192.168.4.1`` even when the client credentials are
-wrong. The *WIFI SCAN* button above the slots searches for networks in range and
-offers their names as suggestions in every SSID field. Network settings
-are described in :ref:`en-networking`.
+The enabled slots with a network name form a failover list. At boot the first
+one is tried; a slot that has not connected after three attempts (about
+fifteen seconds) gives way to the next enabled slot, and the walk wraps
+around, so a unit moved between a home network and a phone's hotspot finds
+whichever of them is in range without anything being changed. A slot that
+connects keeps its three attempts for the next time the link drops. *AP + STA*
+keeps the access point up while the client is connected, which is the safe
+choice while setting a station up: the web admin stays reachable on
+``192.168.4.1`` even when the client credentials are wrong. The *WIFI SCAN*
+button above the slots searches for networks in range and shows the result,
+strongest first, in a list under every SSID field; choosing a network there
+writes its name into that slot. The names are also offered as suggestions
+while typing. Network settings are described in :ref:`en-networking`.
 
 System
 ======

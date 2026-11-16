@@ -41,6 +41,7 @@ Repository layout
    │   ├── include/aprs_call.h ← callsign / path-preset normalization to the on-air form
    │   ├── include/aprs_path.h ← path-preset bitmask → ",WIDE1-1,WIDE2-1" suffix builder
    │   ├── include/str_append.h ← bounded snprintf-append helper shared by the builders
+   │   ├── include/wifi_sta.h ← STA reconnect / Wireless-page scan coordination
    │   ├── json_store.c + include/json_store.h / json_escape.h ← shared JSON-file store scaffolding (one stdio buffer, non-allocating well-formedness scan) + streaming writer/escaping
    │   ├── include/must_check.h ← the "caller must read this return value" attribute
    │   ├── include/app_version.h ← firmware version string shown on the About page

@@ -280,6 +280,11 @@ esp_err_t esp_wifi_scan_get_ap_records(uint16_t *n, wifi_ap_record_t *r) {
 esp_err_t esp_wifi_clear_ap_list(void) {
     return 0;
 }
+bool wifi_sta_scan_begin(void) {
+    return false;
+}
+void wifi_sta_scan_end(void) {
+}
 esp_err_t esp_wifi_connect(void) {
     return 0;
 }

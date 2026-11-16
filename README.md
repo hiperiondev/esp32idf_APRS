@@ -46,7 +46,7 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 - **Objects, items & bulletins.** Up to five own-station APRS Objects/Items and five bulletins (BLN1–BLN5), each on RF and/or INET with expiry/decay control.
 - **Telegram bot.** An optional bot alongside the APRS services — long polling, per-user and per-chat authorization, station-message and bulletin routing to Telegram, and a Mini App button — so the station can be checked on and lightly controlled from a phone.
 - **Runtime sensor framework.** A dynamic, self-registering driver registry (`sensors_local`) — includes a BME280/BMP280 (I²C) driver out of the box, plus an optional BMP180 one on the same bus.
-- **Web admin, 22 pages.** HTTP Basic auth with two accounts — an administrator and an optional read-only one that sees every page, changes nothing, and may only start and stop the console log viewer —, a live dashboard with a live traffic log (JSON long-poll) and a last-heard JSON feed, LittleFS file management (upload/download/delete/format), Wi-Fi AP/STA/AP+STA with scan and TX-power control, CPU frequency control (80/160/240 MHz), and an on-demand console log viewer that mirrors the serial output into the browser. The whole UI is responsive from one stylesheet — on a tablet or a phone the sidebar becomes a slide-in drawer, form rows collapse to a single column, wide tables scroll within the page and the controls grow to a touch size.
+- **Web admin, 22 pages.** HTTP Basic auth with two accounts — an administrator and an optional read-only one that sees every page, changes nothing, and may only start and stop the console log viewer —, a live dashboard with a live traffic log (JSON long-poll) and a last-heard JSON feed, LittleFS file management (upload/download/delete/format), Wi-Fi AP/STA/AP+STA with failover across up to five client networks, scan and TX-power control, CPU frequency control (80/160/240 MHz), and an on-demand console log viewer that mirrors the serial output into the browser. The whole UI is responsive from one stylesheet — on a tablet or a phone the sidebar becomes a slide-in drawer, form rows collapse to a single column, wide tables scroll within the page and the controls grow to a touch size.
 - **OTA updates with auto-rollback.** Dual `ota_0`/`ota_1` app slots; a failed image rolls back automatically on the next boot.
 - **Trilingual UI.** English, Spanish and Italian (compile-time, one language per image).
 
@@ -80,7 +80,7 @@ In one sentence, the firmware **demodulates** AFSK/FSK audio from a radio's spea
 | Sensor driver framework | Dynamic registry, BME280/BMP280 driver included |
 | Web admin | 22 pages, live dashboard, live traffic log + last-heard feed, console log viewer, per-option contextual help |
 | Storage | LittleFS 512 KB, upload/download/delete/format |
-| Networking | Wi-Fi AP/STA/AP+STA, scan, TX power, SNTP (UTC clock, selectable timezone for display) |
+| Networking | Wi-Fi AP/STA/AP+STA, 5-network client failover, scan, TX power, SNTP (UTC clock, selectable timezone for display) |
 | CPU frequency control | 80 / 160 / 240 MHz |
 | OTA update | `ota_0`/`ota_1` slots, auto-rollback |
 | Localization | EN / ES / IT, compile-time, labels and help balloons alike |

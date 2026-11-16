@@ -141,7 +141,7 @@ Feature matrix
      - ``esp_pm_configure()``
    * - Wi-Fi AP / STA / AP+STA, scan, TX power
      - ✅
-     - 5 STA slots (first enabled one is used)
+     - 5 STA slots, tried in order with failover
    * - Localization (EN / ES / IT)
      - ✅
      - compile-time, one language per image

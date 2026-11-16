@@ -145,7 +145,7 @@ Matrice delle funzionalità
      - ``esp_pm_configure()``
    * - Wi-Fi AP / STA / AP+STA, scansione, potenza TX
      - ✅
-     - 5 slot STA (si usa il primo abilitato)
+     - 5 slot STA, provati in ordine con failover
    * - Localizzazione (EN / ES / IT)
      - ✅
      - in compilazione, una lingua per immagine

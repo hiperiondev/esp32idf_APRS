@@ -42,6 +42,7 @@ Disposición del repositorio
    │   ├── include/aprs_call.h ← normalización de indicativos y presets de ruta a su forma en el aire
    │   ├── include/aprs_path.h ← bitmask de presets de ruta → sufijo ",WIDE1-1,WIDE2-1"
    │   ├── include/str_append.h ← ayudante de append snprintf acotado, compartido por los constructores
+   │   ├── include/wifi_sta.h ← coordinación entre la reconexión STA y el escaneo de la página Wireless
    │   ├── json_store.c + include/json_store.h / json_escape.h ← andamiaje común de almacenes JSON (un único buffer stdio, escaneo de validez sin asignar memoria) + escritor en streaming/escapado
    │   ├── include/must_check.h ← atributo "el llamador debe mirar este retorno"
    │   ├── include/app_version.h ← cadena de versión del firmware que muestra la página About

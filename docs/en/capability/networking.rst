@@ -27,9 +27,21 @@ above ``WIFI_MODE_CFG_MAX``, so no stored value can leave a headless station
 without a web admin to fix it from.
 
 Up to five STA profiles (``WIFI_STA_NUM = 5``) are stored, each with its own
-Enable checkbox. The **first enabled entry with a non-empty SSID** is pushed to
-the driver, and it is the only one used for that boot: the slots are alternative
-credentials to choose between, not a rotation the firmware fails over across.
+Enable checkbox. The enabled entries with a non-empty SSID form a failover
+list walked in slot order: the first one is pushed to the driver at boot, and
+once a slot has had ``WIFI_STA_ATTEMPTS_PER_SLOT`` (3) consecutive failed
+attempts the reconnect timer selects the next enabled slot before its attempt,
+wrapping around at the end of the table. Getting an IP resets the count, so a
+connected slot keeps its full budget for the next time the link drops; with a
+single usable slot the station simply keeps retrying it.
+
+A scan from the Wireless page holds the reconnection for its duration
+(``wifi_sta_scan_begin()`` / ``wifi_sta_scan_end()`` in ``wifi_sta.h``): a
+station that is not connected is part-way through an association most of the
+time, and the driver refuses to scan then. The association under way is
+cancelled, the disconnect this produces is not counted against the slot, and
+the next attempt is made as soon as the scan is over. A connected station keeps
+its link while the scan runs.
 
 Robust station connection
 =========================

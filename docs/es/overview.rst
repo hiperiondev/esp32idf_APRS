@@ -145,7 +145,7 @@ Matriz de funciones
      - ``esp_pm_configure()``
    * - Wi-Fi AP / STA / AP+STA, escaneo, potencia TX
      - ✅
-     - 5 ranuras STA (se usa la primera habilitada)
+     - 5 ranuras STA, probadas en orden con respaldo
    * - Localización (EN / ES / IT)
      - ✅
      - en compilación, un idioma por imagen

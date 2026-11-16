@@ -1282,6 +1282,11 @@
 #define TR_WIFI_SCANNING "Scansione in corso..."
 /** Italian text for the wireless page label for scan failed, rendered on the Wireless page. English: "Scan failed". */
 #define TR_WIFI_SCAN_FAILED "Scansione non riuscita"
+/** Italian text for the wireless page label for scan pick, the first entry of each WiFi Client slot's list of scanned networks. English: "Choose a network
+ * found by the scan...". */
+#define TR_WIFI_SCAN_PICK "Scegli una rete trovata dalla scansione..."
+/** Italian text for the wireless page label for scan none, shown in the list of scanned networks when the scan found none. English: "No networks found". */
+#define TR_WIFI_SCAN_NONE "Nessuna rete trovata"
 
 /** @} */
 

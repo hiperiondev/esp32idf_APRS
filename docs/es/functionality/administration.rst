@@ -39,15 +39,20 @@ Inalámbrico
 
    **Cliente WiFi n.º 1** — uno de los cinco espacios de cliente, cada uno con su interruptor *Habilitar*, nombre de red y contraseña.
 
-Los espacios son juegos de credenciales alternativos, no una lista de
-respaldo: al arrancar se usa el primer espacio activado que tenga nombre de
-red, así que pasar un equipo de la red de casa al hotspot de un teléfono es
-cuestión de marcar otro espacio. *AP + STA* mantiene el punto de acceso
-mientras el cliente está conectado, que es lo seguro mientras se configura
-una estación: la administración web sigue accesible en ``192.168.4.1`` aunque
-las credenciales del cliente estén mal. El botón *ESCANEAR WIFI* sobre los
-espacios busca las redes al alcance y ofrece sus nombres como sugerencias en
-cada campo SSID. La red está descrita en :ref:`es-networking`.
+Los espacios activados que tienen nombre de red forman una lista de respaldo.
+Al arrancar se prueba el primero; un espacio que no se conectó tras tres
+intentos (unos quince segundos) deja paso al siguiente espacio activado, y el
+recorrido vuelve a empezar al llegar al final, de modo que un equipo que pasa
+de la red de casa al hotspot de un teléfono encuentra el que esté al alcance
+sin cambiar nada. Un espacio que se conecta conserva sus tres intentos para la
+próxima vez que caiga el enlace. *AP + STA* mantiene el punto de acceso
+mientras el cliente está conectado, que es lo seguro mientras se configura una
+estación: la administración web sigue accesible en ``192.168.4.1`` aunque las
+credenciales del cliente estén mal. El botón *ESCANEAR WIFI* sobre los
+espacios busca las redes al alcance y muestra el resultado, de la más fuerte a
+la más débil, en una lista bajo cada campo SSID; elegir una red ahí escribe su
+nombre en ese espacio. Los nombres también se ofrecen como sugerencias al
+escribir. La red está descrita en :ref:`es-networking`.
 
 Sistema
 =======

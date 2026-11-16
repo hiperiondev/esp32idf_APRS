@@ -28,10 +28,23 @@ dejar una estación sin cabeza sin una administración web desde la que
 corregirlo.
 
 Se almacenan hasta cinco perfiles STA (``WIFI_STA_NUM = 5``), cada uno con su
-propia casilla Enable. La **primera entrada habilitada con un SSID no vacío** se
-empuja al controlador, y es la única que se usa en ese arranque: las ranuras son
-credenciales alternativas entre las que elegir, no una rotación por la que el
-firmware conmute.
+propia casilla Enable. Las entradas habilitadas con un SSID no vacío forman una
+lista de respaldo recorrida en el orden de las ranuras: la primera se empuja al
+controlador al arrancar, y cuando una ranura acumula
+``WIFI_STA_ATTEMPTS_PER_SLOT`` (3) intentos fallidos consecutivos el
+temporizador de reconexión selecciona la siguiente ranura habilitada antes de
+su intento, volviendo al principio al final de la tabla. Obtener una IP pone el
+recuento a cero, así que una ranura conectada conserva todos sus intentos para
+la próxima caída del enlace; con una sola ranura utilizable la estación
+simplemente sigue reintentándola.
+
+Un escaneo desde la página Wireless retiene la reconexión mientras dura
+(``wifi_sta_scan_begin()`` / ``wifi_sta_scan_end()`` en ``wifi_sta.h``): una
+estación no conectada está casi siempre a mitad de una asociación, y el
+controlador se niega a escanear en ese momento. La asociación en curso se
+cancela, la desconexión que eso produce no cuenta contra la ranura, y el
+siguiente intento se hace en cuanto termina el escaneo. Una estación conectada
+conserva su enlace mientras corre el escaneo.
 
 Conexión de estación robusta
 ============================

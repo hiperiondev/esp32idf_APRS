@@ -38,15 +38,20 @@ Senza fili
 
    **Client WiFi #1** — uno dei cinque slot client, ciascuno con il proprio interruttore *Abilita*, nome della rete e password.
 
-Gli slot sono insiemi di credenziali alternativi, non un elenco di failover:
-all'avvio si usa il primo slot abilitato che abbia un nome di rete, quindi
-spostare un dispositivo dalla rete di casa all'hotspot di un telefono è
-questione di spuntare un altro slot. *AP + STA* mantiene attivo il punto di
-accesso mentre il client è connesso, ed è la scelta sicura mentre si configura
-una stazione: l'amministrazione web resta raggiungibile su ``192.168.4.1``
-anche se le credenziali del client sono sbagliate. Il pulsante *SCANSIONA
-WIFI* sopra gli slot cerca le reti nel raggio e ne propone i nomi come
-suggerimenti in ogni campo SSID. La rete è descritta in :ref:`it-networking`.
+Gli slot abilitati che hanno un nome di rete formano un elenco di failover.
+All'avvio si prova il primo; uno slot che non si è connesso dopo tre tentativi
+(circa quindici secondi) cede il posto allo slot abilitato successivo, e il
+giro ricomincia arrivato in fondo, così un dispositivo spostato dalla rete di
+casa all'hotspot di un telefono trova quella a portata senza cambiare nulla.
+Uno slot che si connette conserva i suoi tre tentativi per la prossima volta
+che il collegamento cade. *AP + STA* mantiene attivo il punto di accesso mentre
+il client è connesso, ed è la scelta sicura mentre si configura una stazione:
+l'amministrazione web resta raggiungibile su ``192.168.4.1`` anche se le
+credenziali del client sono sbagliate. Il pulsante *SCANSIONA WIFI* sopra gli
+slot cerca le reti nel raggio e mostra il risultato, dalla più forte alla più
+debole, in un elenco sotto ogni campo SSID; scegliere lì una rete ne scrive il
+nome in quello slot. I nomi vengono anche proposti come suggerimenti durante la
+digitazione. La rete è descritta in :ref:`it-networking`.
 
 Sistema
 =======
