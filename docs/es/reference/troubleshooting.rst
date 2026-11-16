@@ -208,9 +208,8 @@ para memoria interna de 8 bits, la misma clase que imprime el transporte al
 fallar, de modo que ambos tipos de línea se pueden contrastar. La línea cuesta
 tres consultas al asignador por período y nada de memoria.
 
-El valor por defecto de Kconfig es diez segundos —el ``sdkconfig`` que se
-entrega lo fija en 60, y es el valor que hay que bajar primero al perseguir un
-pico— porque el período tiene que ser más corto que los eventos que pretende
+El período es de diez segundos, el valor por defecto de Kconfig y el que trae
+el ``sdkconfig`` que se entrega, porque el período tiene que ser más corto que los eventos que pretende
 capturar, y en este firmware son cortos: un *handshake*
 TLS, una reconexión a APRS-IS o un guardado de ajustes alcanzan su pico y se
 recuperan en pocos segundos. Un muestreador más lento que eso es

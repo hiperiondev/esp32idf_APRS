@@ -78,12 +78,13 @@ esp_err_t page_wireless_get(httpd_req_t *req) {
     // submitted untouched carries the placeholder through unvalidated, and any
     // passphrase actually entered is held to the full length.
     {
-        char buf[600];
         char esc_ap_pass[64 * 6 + 1];
         web_password_value(req, g_config.wifi_ap_pass, esc_ap_pass, sizeof(esc_ap_pass));
-        snprintf(buf, sizeof(buf),
-                 "<label>" TR_WIFI_AP_PASSWORD "</label><input type='password' name='apPass' id='pwd_apPass' value='%s' maxlength='63' minlength='8'>",
-                 esc_ap_pass);
+        char hlp[WEB_HELP_MARKUP_MAX];
+        web_help_markup(hlp, sizeof(hlp), web_help_for_label(TR_WIFI_AP_PASSWORD));
+        char buf[WEB_HELP_MARKUP_MAX + 600];
+        snprintf(buf, sizeof(buf), "<label>%s%s</label><input type='password' name='apPass' id='pwd_apPass' value='%s' maxlength='63' minlength='%d'>",
+                 TR_WIFI_AP_PASSWORD, hlp, esc_ap_pass, WIFI_AP_PASS_MIN_LEN);
         httpd_resp_sendstr_chunk(req, buf);
     }
     web_password_toggle(req, "pwd_apPass");
@@ -227,7 +228,20 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
         wifiPwr = WIFI_TX_POWER_DBM_MAX;
     g_config.wifi_power = (int8_t)wifiPwr;
     web_form_get(body, "apSsid", g_config.wifi_ap_ssid, sizeof(g_config.wifi_ap_ssid));
-    web_form_get_password(body, "apPass", g_config.wifi_ap_pass, sizeof(g_config.wifi_ap_pass));
+    // WPA2 needs eight characters, and a shorter password is never run as an
+    // open access point in its place: it is refused, the stored one is kept,
+    // the rest of the form is saved and the operator is told after the save.
+    // An empty field is the one way to ask for an open access point.
+    bool apPassRefused = false;
+    {
+        char apPass[sizeof(g_config.wifi_ap_pass)];
+        memcpy(apPass, g_config.wifi_ap_pass, sizeof(apPass));
+        web_form_get_password(body, "apPass", apPass, sizeof(apPass));
+        if (app_config_ap_password_is_valid(apPass))
+            memcpy(g_config.wifi_ap_pass, apPass, sizeof(apPass));
+        else
+            apPassRefused = true;
+    }
     // The form's min/max attributes are browser side only: a crafted POST can
     // carry any integer. esp_wifi_set_config() refuses an AP channel outside
     // the regulatory range, so anything out of bounds is folded back to the
@@ -256,6 +270,13 @@ esp_err_t page_wireless_post(httpd_req_t *req) {
     if (!app_config_save_section(APP_CONFIG_SECTION_WIRELESS)) {
         ESP_LOGE(TAG, "wireless settings could not be written to flash");
         web_send_save_result(req, false, "/wireless");
+        return ESP_OK;
+    }
+
+    if (apPassRefused) {
+        httpd_resp_set_type(req, "text/html");
+        web_send_standalone_page(req, "<p class='err'>" TR_WIFI_AP_PASS_TOO_SHORT "</p>"
+                                      "<p><a href='/wireless'>&larr; " TR_F_WIRELESS "</a></p>");
         return ESP_OK;
     }
 

@@ -143,6 +143,20 @@ all'avvio che innescherà la prossima riga inoltrata, oppure fino allo
 svuotamento che il task in esecuzione esegue uscendo. In nessuno dei due casi
 si perde qualcosa; l'unico costo è un ritardo di un secondo o poco più.
 
+Uno spegnimento non rilascia mai nulla che il task di polling stia ancora
+usando. ``telegram_stop()`` alza la richiesta di arresto insieme al flag di
+annullamento di entrambi gli handle client (``telegram_bot_client_set_cancel()``),
+così la richiesta in corso non fa altri tentativi di trasporto e abbandona
+l'attesa che ne precede uno; ciò che resta è un solo tentativo di long poll, e la
+chiamata lo attende, ``poll_timeout_s`` più venti secondi. Se il task vi è
+ancora dentro quando l'attesa finisce, ``telegram_stop()`` e
+``telegram_deinit()`` riportano ``ESP_ERR_TIMEOUT`` e non rilasciano nulla: il
+servizio resta attivo con la richiesta di arresto alzata, il task lavoratore
+rimette in coda la stessa azione per il tick successivo, nel frattempo non
+viene avviato alcuno svuotamento delle notifiche, e lo spegnimento si completa
+quando il task è uscito. Solo il task che il servizio registra come proprio può
+segnarlo fermo all'uscita.
+
 Mentre il bot gira, lo stesso tick a 1 Hz ripubblica i suoi contatori e nota
 un collegamento a internet scomparso o un task di polling terminato, così una
 stazione che perde la connessione segnala "in attesa di un percorso di rete"

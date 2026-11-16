@@ -201,8 +201,7 @@ esp_err_t page_bulletins_post(httpd_req_t *req) {
         char group[BULLETIN_GROUP_MAX + 1];
         group[0] = 0;
         web_form_get(body, name, group, sizeof(group));
-        strncpy(b->group, group, BULLETIN_GROUP_MAX);
-        b->group[BULLETIN_GROUP_MAX] = 0;
+        str_copy_bounded(b->group, sizeof(b->group), group);
 
         snprintf(name, sizeof(name), "bMsg%d", i + 1);
         char text[BULLETIN_TEXT_MAX + 1];

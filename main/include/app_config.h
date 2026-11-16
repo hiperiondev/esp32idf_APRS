@@ -342,6 +342,43 @@ typedef enum {
 /** @} */
 
 /**
+ * @name SoftAP password rules
+ *
+ * The SoftAP is protected with WPA2-PSK whenever its password is set, and
+ * WPA2 needs at least ::WIFI_AP_PASS_MIN_LEN characters. An empty password is
+ * the one way to run the access point open; a password of 1 to
+ * ::WIFI_AP_PASS_MIN_LEN - 1 characters is never accepted, neither from the
+ * Wireless page nor from a stored configuration file.
+ *
+ * The factory password is not a constant: app_config_default_ap_password()
+ * draws one per device the first time the defaults are built (and again on a
+ * factory reset), so no two stations share it and it never appears in the
+ * source. It has the shape ::WIFI_AP_PASS_GENERATED_PREFIX followed by two
+ * groups of ::WIFI_AP_PASS_GENERATED_GROUP characters separated by '-', and is
+ * printed on the serial console at every boot for as long as the station
+ * still uses it.
+ * @{
+ */
+#define WIFI_AP_PASS_MIN_LEN          8       /**< Shortest SoftAP password WPA2-PSK accepts. */
+#define WIFI_AP_PASS_GENERATED_PREFIX "APRS-" /**< Leading text of a generated SoftAP password. */
+#define WIFI_AP_PASS_GENERATED_GROUP  5       /**< Random characters in each of the two groups of a generated SoftAP password. */
+/** Length of a generated SoftAP password: the prefix, two groups and the separator between them. */
+#define WIFI_AP_PASS_GENERATED_LEN (sizeof(WIFI_AP_PASS_GENERATED_PREFIX) - 1 + 2 * WIFI_AP_PASS_GENERATED_GROUP + 1)
+/** @} */
+
+/**
+ * @name Factory web administrator credentials
+ *
+ * The administrator account a station starts with. While these exact values
+ * are in use the web interface accepts changes on the System page only, where
+ * the password is replaced; see web_factory_credentials_active().
+ * @{
+ */
+#define APP_CONFIG_DEFAULT_HTTP_USERNAME "admin" /**< Factory web administrator username. */
+#define APP_CONFIG_DEFAULT_HTTP_PASSWORD "admin" /**< Factory web administrator password. */
+/** @} */
+
+/**
  * @name WiFi interface selector
  * @brief Accepted values and factory value for ::app_config_t::wifi_mode.
  *
@@ -1494,6 +1531,46 @@ bool app_config_save_section(app_config_section_t section) APRS_MUST_CHECK;
  * app_config_save_sections().
  */
 bool app_config_save(void) APRS_MUST_CHECK;
+
+/**
+ * @brief Draw a new per-device SoftAP password.
+ *
+ * Writes ::WIFI_AP_PASS_GENERATED_PREFIX followed by two groups of
+ * ::WIFI_AP_PASS_GENERATED_GROUP characters, separated by '-', taken from an
+ * alphabet without the characters that are easy to confuse when read off a
+ * console (0/O, 1/I/L). The characters come from the hardware random number
+ * generator with its internal entropy source enabled for the duration of the
+ * draw, so the result does not depend on the radio having been started.
+ * About fifty bits of the password are random.
+ *
+ * @param[out] out      Destination buffer.
+ * @param[in]  out_size Size of @p out; at least ::WIFI_AP_PASS_GENERATED_LEN + 1.
+ *                      A smaller buffer receives an empty string.
+ */
+void app_config_default_ap_password(char *out, size_t out_size);
+
+/**
+ * @brief Tell whether a SoftAP password has the shape
+ *        app_config_default_ap_password() produces.
+ *
+ * Used to decide whether the password may be printed on the serial console at
+ * boot: a generated one has to be readable somewhere for the operator to join
+ * the access point the first time, while a password the operator chose is
+ * never printed.
+ *
+ * @param[in] pass Password to test; NULL is not generated.
+ * @return true if @p pass has the generated shape.
+ */
+bool app_config_ap_password_is_generated(const char *pass);
+
+/**
+ * @brief Tell whether a SoftAP password can be used as is.
+ *
+ * @param[in] pass Password to test; NULL is not valid.
+ * @return true for the empty string (open access point) and for a password of
+ *         at least ::WIFI_AP_PASS_MIN_LEN characters; false otherwise.
+ */
+bool app_config_ap_password_is_valid(const char *pass);
 
 /**
  * @brief Wipe the configuration back to factory defaults and persist.

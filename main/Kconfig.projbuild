@@ -172,3 +172,28 @@ menu "APRS heap instrumentation"
             with the rest of the log, at a cost the station does not feel.
 
 endmenu
+
+menu "APRS web admin"
+
+    config APRS_WEB_ALLOWED_HOSTS
+        string "Extra host names the web admin answers to"
+        default ""
+        help
+            Comma-separated list of host names, without port, that the web
+            admin accepts in the Host header of a request, for example
+            "igate.lan,aprs.example.org". Blanks around each name are ignored
+            and the comparison is case-insensitive.
+
+            Every request is refused with 421 Misdirected Request unless its
+            Host header is an IP address literal, the network host name of the
+            station or SoftAP interface, or one of the names listed here. This
+            is what keeps a web page served under a foreign name that a DNS
+            server resolves to this station (DNS rebinding) out of the admin
+            interface: such a page is same-origin with its own requests, so the
+            Origin check alone cannot tell it apart.
+
+            Leave it empty when the station is reached by IP address. List a
+            name here when the station is reached through a local DNS entry or
+            a reverse proxy that forwards the original Host header.
+
+endmenu

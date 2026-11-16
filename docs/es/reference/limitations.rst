@@ -100,8 +100,10 @@ Módem / Capa 2
        ``duty_cycle_pct`` por ciento (1-100, por defecto 25) medido sobre una
        ventana deslizante de 10 minutos, acumulado a partir del tiempo al aire
        estimado de cada trama realmente transmitida a la velocidad configurada.
-       Solo se retiene el tráfico no crítico: los mensajes y las repeticiones
-       del digipeater siempre salen. Una baliza retenida se difiere, no se
+       Solo se retiene el tráfico no crítico: los mensajes que envía el
+       operador, las respuestas a consultas y las repeticiones del digipeater
+       siempre salen, mientras que los acuses automáticos de mensajes se
+       retienen como las balizas. Una baliza retenida se difiere, no se
        pierde - la tarea periódica que la genera vuelve a ofrecerla en su
        siguiente intervalo -, aunque se contabiliza como ``DROP_TX_DUTY_CYCLE``
        para que sea visible. El panel muestra el porcentaje medido frente al

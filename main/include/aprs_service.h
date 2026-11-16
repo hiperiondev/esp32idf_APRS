@@ -151,6 +151,23 @@
 /** @} */
 
 /**
+ * @name Automatic RF frame budget
+ *
+ * Frames the station transmits on its own in answer to traffic it received -
+ * today the acknowledgement of a message addressed to it - are drawn from a
+ * token bucket of ::APRS_AUTO_TX_BURST frames refilled at one every
+ * ::APRS_AUTO_TX_REFILL_S seconds, shared by every source. A frame that finds
+ * the bucket empty is not transmitted and is counted as DROP_AUTO_TX_RATE
+ * (see igate.h). These frames are also subject to the duty-cycle ceiling,
+ * unlike the messages the operator sends, so neither a message flood nor a
+ * busy conversation can key the transmitter without bound.
+ * @{
+ */
+#define APRS_AUTO_TX_BURST    6  /**< Automatic RF frames that may be sent back to back before the budget limits them. */
+#define APRS_AUTO_TX_REFILL_S 10 /**< Seconds after which one more automatic RF frame becomes available. */
+/** @} */
+
+/**
  * @name TNC2 text length limit
  *
  * The RF leg encodes a TNC2 line into an AX.25 frame that has to fit

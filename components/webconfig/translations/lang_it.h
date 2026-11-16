@@ -46,6 +46,19 @@
 /** Italian text for the body of the HTTP 403 response sent when a read-only account requests something that would change the station. English: "403 Forbidden:
  * this account is read-only". */
 #define TR_FORBIDDEN_READONLY "403 Vietato: questo account è di sola lettura"
+/** Italian text for the body of the HTTP 421 response sent when the Host header of a request does not name this station. English: "421 Misdirected Request:
+ * this host name is not served here. Open the web admin by the station's IP address.". */
+#define TR_FORBIDDEN_HOST                                                                                                                                      \
+    "421 Richiesta mal indirizzata: questo nome host non è servito qui. Aprire l'amministrazione web tramite l'indirizzo IP della stazione."
+/** Italian text for the body of the HTTP 403 response sent while the factory administrator password is in use. English: "403 Forbidden: the factory
+ * administrator password is still in use. Change it on the System page first.". */
+#define TR_FORBIDDEN_DEFAULT_PASSWORD "403 Vietato: la password di amministratore di fabbrica è ancora in uso. Cambiarla prima nella pagina Sistema."
+/** Italian text for the link to the System page shown under the factory-password refusal. English: "Go to the System page". */
+#define TR_DEFAULT_PASSWORD_GO_SYSTEM "Vai alla pagina Sistema"
+/** Italian text for the banner shown at the top of every page while the factory administrator password is in use. */
+#define TR_DEFAULT_PASSWORD_BANNER                                                                                                                             \
+    "La password di amministratore di fabbrica (admin / admin) è ancora in uso. Cambiarla nella pagina Sistema: fino ad allora nessun'altra pagina accetta "   \
+    "modifiche."
 /** Italian text for the banner shown at the top of every page while the session is signed in with the read-only account. English: "Read-only session:
  * everything on this page is shown, nothing on it can be changed.". */
 #define TR_RO_BANNER "Sessione di sola lettura: tutto in questa pagina viene mostrato, nulla può essere modificato."
@@ -1069,14 +1082,26 @@
 #define TR_SYS_WEB_ADMIN_LOGIN "Accesso amministrazione web"
 /** System page note clarifying that a blank username only disables the password prompt, rendered on the System page. */
 #define TR_SYS_WEB_ADMIN_LOGIN_NOTE                                                                                                                            \
-    "Lasciare il nome utente vuoto disabilita solo la richiesta della password. Le richieste devono comunque provenire dalla stessa origine per "              \
-    "qualsiasi modifica effettuata tramite questo pannello di amministrazione."
+    "Lasciare il nome utente vuoto disabilita solo la richiesta della password, e richiede di selezionare 'Disattiva la protezione con password' nello "       \
+    "stesso salvataggio. Le richieste devono comunque provenire dalla stessa origine ed essere rivolte a un nome host servito dalla stazione per qualsiasi "   \
+    "modifica effettuata tramite questo pannello di amministrazione."
+/** Italian text for the System page label of the checkbox that confirms a blank administrator username. English: "Disable password protection". */
+#define TR_SYS_AUTH_OFF "Disattiva la protezione con password"
+/** Italian text for the message shown after a System page save that left the administrator username blank without the confirmation box. */
+#define TR_SYS_AUTH_OFF_REFUSED                                                                                                                                \
+    "Le altre impostazioni sono state salvate, ma l'accesso di amministratore è rimasto invariato: un nome utente vuoto disattiva la protezione con "          \
+    "password, e questo richiede di selezionare 'Disattiva la protezione con password' nello stesso salvataggio."
+/** Italian text for the message shown after a System page save that keeps the factory administrator password. */
+#define TR_SYS_DEFAULT_PASSWORD_KEPT                                                                                                                           \
+    "Salvato, ma l'accesso di amministratore è ancora quello di fabbrica admin / admin. Scegliere un'altra password: fino ad allora nessun'altra pagina "      \
+    "accetta modifiche."
 /** Italian text for the system page legend for the read-only account credentials, rendered on the System page. English: "Web Read-Only Login". */
 #define TR_SYS_WEB_RO_LOGIN "Accesso web in sola lettura"
 /** System page note describing what the read-only account may and may not do, rendered on the System page. */
 #define TR_SYS_WEB_RO_LOGIN_NOTE                                                                                                                               \
-    "Un secondo account che vede ogni pagina ma non cambia nulla: non salva alcuna impostazione, non carica, scarica, elimina né formatta alcun file e non "   \
-    "trasmette nulla. Può solo avviare e fermare la console dei log. Lasciare vuoto il nome utente per non avere alcun account in sola lettura."
+    "Un secondo account che vede ogni pagina ma non cambia nulla: non salva alcuna impostazione, non carica, scarica, elimina né formatta alcun file, non "    \
+    "trasmette nulla, e può leggere la console dei log ma non avviarla né fermarla. Lasciare vuoto il nome utente per non avere alcun account in sola "        \
+    "lettura."
 /** Italian text for the system page label for the read-only account username, rendered on the System page. English: "Read-only username". */
 #define TR_SYS_RO_USERNAME "Nome utente di sola lettura"
 /** Italian text for the system page label for the read-only account password, rendered on the System page. English: "Read-only password". */
@@ -1278,6 +1303,10 @@
 #define TR_WIFI_STA_NEEDS_SSID                                                                                                                                 \
     "Salvato, ma questo NON si connetterà: la modalità seleziona una stazione, ma nessun blocco Client WiFi ha sia 'Abilita' selezionato sia un SSID "         \
     "compilato. Correggi e salva di nuovo."
+/** Italian text for the message shown after a Wireless page save whose access point password is one to seven characters long. */
+#define TR_WIFI_AP_PASS_TOO_SHORT                                                                                                                              \
+    "Le altre impostazioni sono state salvate, ma la password dell'access point è rimasta invariata: deve avere almeno 8 caratteri, oppure essere vuota per "  \
+    "un access point aperto."
 /** Italian text for the wireless page label for scanning, rendered on the Wireless page. English: "Scanning...". */
 #define TR_WIFI_SCANNING "Scansione in corso..."
 /** Italian text for the wireless page label for scan failed, rendered on the Wireless page. English: "Scan failed". */
@@ -2741,6 +2770,14 @@
 #define TR_H_SYS_RO_USERNAME                                                                                                                                   \
     "Nome di accesso dell'account che può guardare la stazione ma non modificarla. Lasciarlo vuoto e l'account non esiste; non può mai essere il nome "        \
     "dell'amministratore, che ha sempre la precedenza."
+/** Italian text of the contextual help for the "Disable password protection" option. */
+#define TR_H_SYS_AUTH_OFF                                                                                                                                      \
+    "Conferma un nome utente di amministratore vuoto per questo salvataggio. Senza di essa un nome utente vuoto viene rifiutato e l'accesso resta com'era. "   \
+    "La casella non viene mai ricordata."
+/** Italian text of the contextual help for the "AP Password" option. */
+#define TR_H_WIFI_AP_PASSWORD                                                                                                                                  \
+    "Password WPA2 dell'access point della stazione: almeno 8 caratteri. Lasciarla vuota per un access point aperto. La password di fabbrica viene generata "  \
+    "per ogni dispositivo e stampata sulla console seriale a ogni avvio finché non viene cambiata."
 /** Italian text of the contextual help for the "Username" option. */
 #define TR_H_F_USERNAME "Nome di accesso al servizio. Per APRS-IS è il nominativo di stazione per cui è stato emesso il codice di accesso."
 /** Italian text of the contextual help for the "Callsign" option. */

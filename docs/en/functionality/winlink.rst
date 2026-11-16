@@ -74,6 +74,13 @@ only while a challenge answer is outstanding, and text from the service that
 arrives with no session open or being opened does not touch the session: it
 lands in the ordinary message conversation instead of the mailbox.
 
+Everything the session takes from the service — challenges, *Login valid*,
+replies and acknowledgements — has to come from ``wlServiceCall`` exactly, SSID
+included (no SSID and ``-0`` being the same address): another SSID of the same
+base call is left to the ordinary conversation. A challenge naming more than
+three positions is refused and ends the attempt, since every position named is
+a password character quoted back.
+
 A session expires on the service's side after about two hours.
 ``wlSessionMaxMin`` (110 minutes by default) sits below that, so this station
 gives a session up slightly before the service does rather than discovering it

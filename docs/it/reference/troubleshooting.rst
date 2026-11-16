@@ -207,8 +207,8 @@ interna a 8 bit, la stessa classe che il trasporto stampa in caso di errore,
 così i due tipi di riga si possono confrontare. La riga costa tre interrogazioni
 all'allocatore per periodo e nessuna memoria.
 
-Il default di Kconfig è dieci secondi — l'``sdkconfig`` distribuito lo imposta a
-60, ed è il valore da abbassare per primo quando si insegue un picco — perché il
+Il periodo è di dieci secondi, il default di Kconfig e il valore che porta
+l'``sdkconfig`` distribuito, perché il
 periodo deve essere più breve degli eventi che intende cogliere, e su questo firmware sono brevi: un handshake TLS,
 una riconnessione ad APRS-IS o un salvataggio di impostazioni raggiungono il
 picco e rientrano in pochi secondi. Un campionatore più lento è

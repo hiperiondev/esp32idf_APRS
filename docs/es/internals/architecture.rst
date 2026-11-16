@@ -111,7 +111,7 @@ Mapa de tareas
        la copia en la cola de ``aprs_rx``; fijada al mismo núcleo que la tarea
        RX DSP, cuyo anillo AX.25 consume
    * - ``aprs_rx``
-     - 6144 B
+     - 8192 B
      - 4
      - cualquiera
      - ``aprs_service_start()``
@@ -139,7 +139,7 @@ Mapa de tareas
      - ``AFSK_init()``
      - una muestra del DAC cada 1/38400 s
    * - ``igate_task``
-     - 6144 B
+     - 9216 B
      - 5
      - cualquiera
      - ``igate_start()``

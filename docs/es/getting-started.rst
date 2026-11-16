@@ -38,14 +38,15 @@ Compilar en español o italiano en lugar de inglés (véase :ref:`es-localizatio
 
 .. tip::
 
-   ``sdkconfig`` viene con ``CONFIG_COMPILER_OPTIMIZATION_DEBUG`` (``-Og``) y
+   ``sdkconfig`` viene con ``CONFIG_COMPILER_OPTIMIZATION_PERF`` (``-O2``) y
    las aserciones activadas, y con ``CONFIG_COMPILER_STACK_CHECK_MODE_NORM``
-   para el canario de pila: es la configuración bajo la que se dimensionaron
-   todas las pilas de tareas del proyecto. Cambiar a
-   ``CONFIG_COMPILER_OPTIMIZATION_SIZE`` (``-Os``) produce una imagen más
-   pequeña con marcos de pila menos profundos, pero altera los tamaños de marco
-   con los que se fijaron esos presupuestos, así que vuelve a comprobar las
-   marcas de agua de pila (ver :ref:`es-troubleshooting`) después de hacerlo.
+   para el canario de pila. Las pilas de la tarea de recepción (``aprs_rx``) y
+   del cliente APRS-IS (``igate_task``) se dimensionaron con la contabilidad de
+   pila del propio compilador a ``-O2`` (``-fcallgraph-info=su``). Cambiar a
+   ``CONFIG_COMPILER_OPTIMIZATION_DEBUG`` (``-Og``) hace los marcos más
+   profundos, y ``CONFIG_COMPILER_OPTIMIZATION_SIZE`` (``-Os``) también los
+   altera, así que vuelve a comprobar las marcas de agua de pila (ver
+   :ref:`es-troubleshooting`) después de cualquiera de los dos.
 
 Presupuesto de memoria
 ======================
@@ -91,7 +92,9 @@ subir cualquiera de ellos baja la cifra *Min free heap* del panel.
        ``CONFIG_ESP_HTTPS_SERVER_ENABLE``,
        ``CONFIG_MBEDTLS_CERTIFICATE_BUNDLE`` y
        ``CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT`` están todos desactivados en
-       ``sdkconfig``. Un camino de código sí abre TLS, como *cliente*: el bot de
+       ``sdkconfig``, y mbedTLS se compila solo como cliente
+       (``CONFIG_MBEDTLS_TLS_CLIENT_ONLY``) con la renegociación desactivada, de
+       modo que no se enlaza código TLS de servidor. Un camino de código sí abre TLS, como *cliente*: el bot de
        Telegram habla con ``api.telegram.org`` por HTTPS mediante
        ``esp_http_client``/``esp_tls``. Con el paquete de certificados
        desactivado, verifica al servidor contra un archivo PEM que el operador
@@ -139,14 +142,26 @@ Primer arranque
 #. En una partición nueva, LittleFS se autoformatea y ``app_config_load()``
    escribe un archivo de configuración por funcionalidad con los valores de
    fábrica.
-#. El ESP32 arranca como **AP Wi-Fi**: SSID ``esp32idf_APRS``, contraseña
-   ``esp32idf_APRS``, canal 1, WPA2-PSK, máx. 4 clientes.
+#. El ESP32 arranca como **AP Wi-Fi**: SSID ``esp32idf_APRS``, canal 1,
+   WPA2-PSK, máx. 4 clientes. Su contraseña se genera para este equipo cuando
+   se construyen los valores de fábrica (y de nuevo en un restablecimiento de
+   fábrica) y se imprime en la consola serie en cada arranque mientras siga en
+   uso, como ``SoftAP "esp32idf_APRS" factory password: APRS-XXXXX-XXXXX`` —
+   deja abierto el ``idf.py monitor`` que arranca el comando de flasheo para
+   leerla.
 #. Únete a él y navega al dispositivo (por defecto ``http://192.168.4.1/``).
-#. **Inicia sesión:** ``admin`` / ``admin`` — cámbialo en la página *System*.
-   Esa misma página lleva una segunda cuenta opcional, *Acceso web de solo
-   lectura*: ve todas las páginas pero no guarda nada, no mueve archivos y no
-   transmite nada, y solo puede iniciar y detener el visor de registro de
-   consola. Viene sin configurar de fábrica.
+#. **Inicia sesión:** ``admin`` / ``admin`` — cambia primero la contraseña en
+   la página *System*: mientras el par de fábrica esté en uso todas las páginas
+   muestran un aviso y ninguna página salvo *System* acepta cambios. Esa misma
+   página lleva una segunda cuenta opcional, *Acceso web de solo lectura*: ve
+   todas las páginas pero no guarda nada, no mueve archivos y no transmite
+   nada, y puede leer el visor de registro de consola mientras el
+   administrador lo ejecuta. Viene sin configurar de fábrica.
+#. Abre el panel web por la **dirección IP** de la estación. Una solicitud
+   dirigida a cualquier otro nombre de host se rechaza con *421 Misdirected
+   Request* salvo que el nombre sea el nombre de host de red propio de la
+   estación o figure en ``CONFIG_APRS_WEB_ALLOWED_HOSTS`` (menú *APRS web
+   admin* de ``idf.py menuconfig``) — ver :ref:`es-web-admin-host-check`.
 #. En *Wireless*: elige **Station** o **AP+STA**, marca **Enable** en un bloque
    de Cliente Wi-Fi, introduce SSID/contraseña, Guarda.
 #. En *IGate*: pon tu **indicativo**, **SSID**, **passcode**, **host**/**puerto**
@@ -168,9 +183,11 @@ Valores de fábrica destacados
    * - Modo Wi-Fi
      - AP (siempre accesible)
    * - SSID / contraseña del AP
-     - ``esp32idf_APRS`` / ``esp32idf_APRS``
+     - ``esp32idf_APRS`` / generada por equipo (``APRS-XXXXX-XXXXX``),
+       impresa en la consola serie en cada arranque hasta que se cambia
    * - Login web
-     - ``admin`` / ``admin``
+     - ``admin`` / ``admin``; solo la página *System* acepta cambios hasta que
+       se reemplaza la contraseña
    * - Login web de solo lectura
      - sin configurar (sin cuenta de solo lectura)
    * - Frecuencia de CPU

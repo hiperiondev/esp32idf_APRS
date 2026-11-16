@@ -106,10 +106,11 @@ static const char *TAG = "winlink";
 // the command itself, so this allows two retries.
 #define WL_CMD_TRIES 3
 
-// Widest challenge the service issues. The documented form is three digits;
-// the extra room means an unexpected fourth is answered rather than rejected,
-// while anything longer than the answer field can carry is refused outright.
-#define WL_CHALLENGE_MAX 5
+// Widest challenge answered. The service issues three digits, and every digit
+// is a password character quoted back, so a wider challenge is refused: a
+// sender able to ask for more positions per login collects the password in
+// fewer logins.
+#define WL_CHALLENGE_MAX 3
 
 // Characters of the operator's password quoted back, plus the three arbitrary
 // ones the scheme asks for, plus the terminator.
@@ -469,6 +470,33 @@ bool winlink_is_service_call(const char *call) {
     return base_call_match(call, g_config.wl_service_call);
 }
 
+// Length of the base callsign and value of the SSID of call, "-0" and no SSID
+// alike being SSID 0. Returns false for an SSID that is not one or two digits.
+static bool split_call(const char *call, size_t *base_len, unsigned *ssid) {
+    *base_len = strcspn(call, "-");
+    *ssid = 0;
+    if (call[*base_len] == 0)
+        return *base_len > 0;
+    const char *p = call + *base_len + 1;
+    size_t digits = 0;
+    for (; *p >= '0' && *p <= '9' && digits < 3; p++, digits++)
+        *ssid = *ssid * 10 + (unsigned)(*p - '0');
+    return *base_len > 0 && digits >= 1 && digits <= 2 && *p == 0;
+}
+
+// Whether sender is exactly the configured service, SSID included. This is
+// the test the client's own session applies to everything it takes from the
+// service, challenges first among them: anyone can transmit under a callsign,
+// and accepting every SSID of the service's base call would widen the set of
+// senders a forged challenge or reply could come from for no gain.
+static bool is_own_service(const char *sender) {
+    size_t na, nb;
+    unsigned sa, sb;
+    if (!sender || !split_call(sender, &na, &sa) || !split_call(g_config.wl_service_call, &nb, &sb))
+        return false;
+    return na == nb && sa == sb && strncasecmp(sender, g_config.wl_service_call, na) == 0;
+}
+
 static bool client_usable(void) {
     if (!g_config.wl_enable || !g_config.msg_enable)
         return false;
@@ -632,12 +660,10 @@ static void transmit_locked(const char *cmd, char *pending, size_t pending_size)
     // The retry path hands back the outstanding command itself, so the copy is
     // skipped when source and destination are the same buffer.
     if (cmd != s_outstanding) {
-        strncpy(s_outstanding, cmd, sizeof(s_outstanding) - 1);
-        s_outstanding[sizeof(s_outstanding) - 1] = 0;
+        str_copy_bounded(s_outstanding, sizeof(s_outstanding), cmd);
     }
     s_last_tx = time(NULL);
-    strncpy(pending, s_outstanding, pending_size - 1);
-    pending[pending_size - 1] = 0;
+    str_copy_bounded(pending, pending_size, s_outstanding);
 }
 
 // Puts the command transmit_locked() copied out on the air, if there is one.
@@ -961,9 +987,9 @@ static void store_reply(const char *text) {
 }
 
 // The observer the messaging engine calls for every message this station
-// accepts. Only traffic from the service callsign is Winlink's; everything else
-// is left to the ordinary conversation queue, which is what returning false
-// means.
+// accepts. Only traffic from the service callsign, SSID included, is
+// Winlink's; everything else is left to the ordinary conversation queue, which
+// is what returning false means.
 //
 // Runs on the receive task, so the whole reply is applied to the session under
 // s_sess_lock: clearing the outstanding command and resetting the retry
@@ -974,7 +1000,7 @@ static void store_reply(const char *text) {
 static bool winlink_rx_observer(const char *sender, const char *text, uint16_t msgID, bool is_ack) {
     (void)msgID;
 
-    if (!client_usable() || !winlink_is_service_call(sender))
+    if (!client_usable() || !is_own_service(sender))
         return false;
 
     char pending[WL_TX_BUF_SIZE] = { 0 };

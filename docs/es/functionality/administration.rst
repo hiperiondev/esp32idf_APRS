@@ -26,11 +26,11 @@ Inalámbrico
    **Modo WiFi** — modo Wi-Fi - apagado, cliente (STA), punto de acceso (AP) o ambos - y la potencia de transmisión, hasta 20 dBm.
 
 .. figure:: /_static/webadmin/wireless_fs01.png
-   :alt: Punto de acceso (AP) — el punto de acceso propio de la estación: nombre de red, contraseña y canal (1 a 13).
+   :alt: Punto de acceso (AP) — el punto de acceso propio de la estación: nombre de red, contraseña (al menos 8 caracteres, o vacía para un punto de acceso abierto; la de fábrica se genera por equipo y se imprime en la consola serie al arrancar) y canal (1 a 13).
    :align: center
    :width: 90%
 
-   **Punto de acceso (AP)** — el punto de acceso propio de la estación: nombre de red, contraseña y canal (1 a 13).
+   **Punto de acceso (AP)** — el punto de acceso propio de la estación: nombre de red, contraseña (al menos 8 caracteres, o vacía para un punto de acceso abierto; la de fábrica se genera por equipo y se imprime en la consola serie al arrancar) y canal (1 a 13).
 
 .. figure:: /_static/webadmin/wireless_fs02.png
    :alt: Cliente WiFi n.º 1 — uno de los cinco espacios de cliente, cada uno con su interruptor Habilitar, nombre de red y contraseña.
@@ -75,11 +75,11 @@ El módem de audio necesita 240 MHz: a menor frecuencia la cadena de recepción
 no alcanza a procesar las muestras.
 
 .. figure:: /_static/webadmin/system_fs01.png
-   :alt: Acceso al administrador web — la cuenta de administrador (admin / admin de fábrica). Cámbiala antes de que la estación sea accesible desde una red que no controlas.
+   :alt: Acceso al administrador web — la cuenta de administrador (admin / admin de fábrica). Cámbiala primero: hasta entonces solo la página Sistema acepta cambios.
    :align: center
    :width: 90%
 
-   **Acceso al administrador web** — la cuenta de administrador (``admin`` / ``admin`` de fábrica). Cámbiala antes de que la estación sea accesible desde una red que no controlas.
+   **Acceso al administrador web** — la cuenta de administrador (``admin`` / ``admin`` de fábrica). Cámbiala primero: hasta entonces solo la página Sistema acepta cambios.
 
 .. figure:: /_static/webadmin/system_fs02.png
    :alt: Acceso web de solo lectura — una segunda cuenta opcional que puede ver todas las páginas pero no cambiar nada.

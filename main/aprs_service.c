@@ -89,9 +89,17 @@ static const char *TAG = "aprs_service";
 // encode (the digipeater's own copy of the frame is static, see
 // aprs_msg_callback()); igateProcess() building and sending its APRS-IS line;
 // the message, query, Winlink and Telegram routing parsers; LAST HEARD and
-// the traffic log. Set with headroom; the high-water mark is logged at
-// ESP_LOGD after every frame, which is the figure to right-size it against.
-#define APRS_RX_TASK_STACK_BYTES 6144
+// the traffic log. A message received here can also transmit from this
+// stack: its acknowledgement, and a Winlink answer the message provokes, run
+// the whole RF transmit chain (txPacketLegs() -> messageTxHandler() ->
+// send_rf_impl() -> modem_send_tnc2() -> frame build and HDLC encode). The
+// compiler's own stack accounting (-fcallgraph-info=su, -O2) puts that path
+// at 6000 bytes of application frames before the C library's printf and the
+// kernel calls at its leaves, so the budget leaves about two kilobytes above
+// the measured figure. The hourly stack report (CONFIG_APRS_STACK_REPORT) and
+// the high-water mark logged at ESP_LOGD after every frame are the figures to
+// right-size it against; a build at -Og needs more.
+#define APRS_RX_TASK_STACK_BYTES 8192
 
 // Priority of rxTask: one below the modem's service task, so that the task
 // driving quiet time, carrier detect, key-up, teardown and the transmitter
@@ -619,9 +627,10 @@ static bool send_rf_impl(const char *packet, size_t len, const ax25_msg_t *frame
     // back than the current instant. Off by default (g_config.duty_cycle_en);
     // when on, only non-critical traffic is held back here - message traffic
     // and digipeat repeats (critical == true) always transmit. A held-back
-    // frame is not lost: every non-critical caller is a periodic task that
-    // re-offers the same report on its own next interval, so this is a defer
-    // rather than a drop, even though it is counted alongside the other
+    // frame is not lost: every non-critical caller either is a periodic task
+    // that re-offers the same report on its own next interval, or is an
+    // automatic acknowledgement that is sent again when the sender retries
+    // its message, so this is a defer rather than a drop, even though it is counted alongside the other
     // reasons in DROP_TX_DUTY_CYCLE for visibility on the dashboard.
     if (!critical && g_config.duty_cycle_en) {
         uint8_t ceiling = g_config.duty_cycle_pct;
@@ -1280,15 +1289,13 @@ static void msgAssocRemember(const char *call) {
     }
     for (int i = 0; i < IGATE_MSG_ASSOC_MAX; i++) {
         if (s_msgAssoc[i][0] == 0) {
-            strncpy(s_msgAssoc[i], call, sizeof(s_msgAssoc[i]) - 1);
-            s_msgAssoc[i][sizeof(s_msgAssoc[i]) - 1] = 0;
+            str_copy_bounded(s_msgAssoc[i], sizeof(s_msgAssoc[i]), call);
             return;
         }
     }
 
     memmove(&s_msgAssoc[0], &s_msgAssoc[1], (IGATE_MSG_ASSOC_MAX - 1) * sizeof(s_msgAssoc[0]));
-    strncpy(s_msgAssoc[IGATE_MSG_ASSOC_MAX - 1], call, sizeof(s_msgAssoc[0]) - 1);
-    s_msgAssoc[IGATE_MSG_ASSOC_MAX - 1][sizeof(s_msgAssoc[0]) - 1] = 0;
+    str_copy_bounded(s_msgAssoc[IGATE_MSG_ASSOC_MAX - 1], sizeof(s_msgAssoc[0]), call);
 }
 
 // Index of the slot one station holds in the ring, or -1 when it holds none.
@@ -1378,8 +1385,7 @@ static bool inet2rfRateAllow(const char *call) {
             oldest = i;
     }
 
-    strncpy(s_inet2rfRate[oldest].call, call, sizeof(s_inet2rfRate[oldest].call) - 1);
-    s_inet2rfRate[oldest].call[sizeof(s_inet2rfRate[oldest].call) - 1] = 0;
+    str_copy_bounded(s_inet2rfRate[oldest].call, sizeof(s_inet2rfRate[oldest].call), call);
     s_inet2rfRate[oldest].stamp = now;
     return true;
 }
@@ -1767,7 +1773,7 @@ static void inet2rfHandler(const char *line) {
         query_process(line, QUERY_SRC_INET);
 #endif
 
-        // Everything from here on is the IGate's Internet-to-RF gate.
+    // Everything from here on is the IGate's Internet-to-RF gate.
 #ifdef ENABLE_IGATE
     if (g_config.inet2rf) {
         // Generic queries ("?APRS?", "?WX?", "?IGATE?", ...) are never gated
@@ -2156,11 +2162,58 @@ static void inet2rfHandler(const char *line) {
 // Outbound message TX: message.c and query.c hand us a built TNC2 packet +
 // channel mask.
 // ---------------------------------------------------------------------------
+// Token bucket of automatic RF frames (see APRS_AUTO_TX_BURST in
+// aprs_service.h): s_autoTxTokens frames are available, and one more becomes
+// available every APRS_AUTO_TX_REFILL_S seconds since s_autoTxRefillUs, up to
+// the burst size. Shared by every task that answers received traffic.
+static portMUX_TYPE s_autoTxLock = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t s_autoTxTokens = APRS_AUTO_TX_BURST;
+static int64_t s_autoTxRefillUs;
+
+// Takes one automatic RF frame from the budget. Returns false when it is spent.
+static bool auto_tx_take(void) {
+    const int64_t period = (int64_t)APRS_AUTO_TX_REFILL_S * 1000000;
+    int64_t now = esp_timer_get_time();
+    bool ok = false;
+    portENTER_CRITICAL(&s_autoTxLock);
+    if (s_autoTxTokens >= APRS_AUTO_TX_BURST) {
+        s_autoTxRefillUs = now;
+    } else {
+        int64_t earned = (now - s_autoTxRefillUs) / period;
+        if (earned > 0) {
+            uint64_t tokens = (uint64_t)s_autoTxTokens + (uint64_t)earned;
+            s_autoTxTokens = tokens >= APRS_AUTO_TX_BURST ? APRS_AUTO_TX_BURST : (uint32_t)tokens;
+            s_autoTxRefillUs += earned * period;
+        }
+    }
+    if (s_autoTxTokens > 0) {
+        s_autoTxTokens--;
+        ok = true;
+    }
+    portEXIT_CRITICAL(&s_autoTxLock);
+    return ok;
+}
+
 static void messageTxHandler(const char *packet, size_t len, uint8_t channels) {
-    // Critical: APRS messages (and their acks/retries) are exempt from the
-    // duty-cycle ceiling in send_tnc2_impl() - see the block comment there.
-    if (channels & MSG_CHANNEL_RF)
-        send_tnc2_impl(packet, len, true);
+    if (channels & MSG_CHANNEL_RF) {
+        if (channels & MSG_CHANNEL_AUTO) {
+            // A frame the station generated on its own in answer to received
+            // traffic: drawn from the automatic-frame budget and subject to
+            // the duty-cycle ceiling like any other non-critical frame.
+            if (auto_tx_take()) {
+                send_tnc2_impl(packet, len, false);
+            } else {
+                atomic_fetch_add_explicit(&s_statDrop, 1, memory_order_relaxed);
+                igate_note_drop(DROP_AUTO_TX_RATE);
+                ESP_LOGW(TAG, "automatic RF frame budget spent, not transmitted: %.*s", (int)len, packet);
+            }
+        } else {
+            // Critical: APRS messages the operator sends, their retries and
+            // query answers are exempt from the duty-cycle ceiling in
+            // send_tnc2_impl() - see the block comment there.
+            send_tnc2_impl(packet, len, true);
+        }
+    }
     if (channels & MSG_CHANNEL_INET)
         igate_send_raw(packet, len);
 }

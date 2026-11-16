@@ -135,6 +135,19 @@ lines in place for the spawn the next routed line triggers, or for the drain
 the running worker performs on its way out. Nothing is lost either way; the
 only cost is a delay of a second or so.
 
+A teardown never releases anything the polling task is still using.
+``telegram_stop()`` raises the stop request together with the cancellation
+flag of both client handles (``telegram_bot_client_set_cancel()``), so the
+request in progress makes no further transport attempt and abandons the wait
+before one; what is left is a single long-poll attempt, and the call waits for
+that, ``poll_timeout_s`` plus twenty seconds. If the task is still inside it
+when the wait ends, ``telegram_stop()`` and ``telegram_deinit()`` report
+``ESP_ERR_TIMEOUT`` and release nothing: the service stays up with its stop
+request raised, the worker queues the same action again for the next tick, no
+notification drain is started meanwhile, and the teardown completes once the
+task has left. Only the task the service records as its own may mark it
+stopped on its way out.
+
 While the bot runs, the same 1 Hz tick republishes its counters and notices
 an uplink that went away or a polling task that has ended, so a station that
 loses its connection reports "waiting for a network route" instead of an

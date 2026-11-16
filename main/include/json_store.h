@@ -95,7 +95,7 @@ typedef enum {
     JSON_STORE_OK = 0,  /**< File read and parsed; the document is returned. */
     JSON_STORE_MISSING, /**< File does not exist yet (first boot, or erased). */
     JSON_STORE_EMPTY,   /**< File exists but holds no bytes. */
-    JSON_STORE_OOM,     /**< File exists but there was no RAM to read it into. */
+    JSON_STORE_OOM,     /**< File exists but could not be read: no RAM for it, or its size or its bytes could not be read. Left untouched. */
     JSON_STORE_CORRUPT, /**< File was read but is not parseable JSON. */
 } json_store_status_t;
 
@@ -154,6 +154,14 @@ static inline void json_store_lock_give(SemaphoreHandle_t *lock) {
  * probably fine, so overwriting it on the strength of a failed malloc would
  * destroy a good configuration.
  *
+ * ::JSON_STORE_OOM also covers a file whose size cannot be established or
+ * that cannot be read in full: its content is unknown rather than known to be
+ * bad, so it is treated like a failed allocation and left for a later attempt.
+ *
+ * The stream is read unbuffered, in one fread() into the buffer sized from the
+ * file, so the load never triggers newlib's lazy allocation of a stdio buffer
+ * the size of a flash block.
+ *
  * ::JSON_STORE_OOM therefore covers both places memory can run out, not just
  * the obvious one. The read buffer is a single allocation sized from the file
  * and fails visibly; the parse that follows makes hundreds of small ones and
@@ -179,10 +187,26 @@ static inline json_store_status_t json_store_read(const char *path, const char *
         return JSON_STORE_MISSING;
     }
 
-    fseek(f, 0, SEEK_END);
-    long sz = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (sz <= 0) {
+    // Unbuffered: the whole file is taken in one fread() into the buffer
+    // allocated below, which newlib then serves straight from the file system.
+    // A buffered stream would first allocate its own stdio buffer, sized from
+    // st_blksize (the 4096-byte flash block esp_littlefs reports), on a heap
+    // where that allocation is the one most likely to fail.
+    setvbuf(f, NULL, _IONBF, 0);
+
+    // A file whose size cannot be established, or that cannot be read in
+    // full, is reported as ::JSON_STORE_OOM: its content is unknown rather
+    // than known to be bad, so it is left for a later attempt instead of
+    // being replaced by defaults.
+    long sz = -1;
+    if (fseek(f, 0, SEEK_END) == 0)
+        sz = ftell(f);
+    if (sz < 0 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        ESP_LOGW(tag, "%s could not be sized - left untouched", path);
+        return JSON_STORE_OOM;
+    }
+    if (sz == 0) {
         fclose(f);
         return JSON_STORE_EMPTY;
     }
@@ -195,8 +219,13 @@ static inline json_store_status_t json_store_read(const char *path, const char *
     }
 
     size_t rd = fread(buf, 1, (size_t)sz, f);
-    buf[rd] = 0;
     fclose(f);
+    if (rd != (size_t)sz) {
+        free(buf);
+        ESP_LOGW(tag, "%s read short (%u of %ld bytes) - left untouched", path, (unsigned)rd, sz);
+        return JSON_STORE_OOM;
+    }
+    buf[rd] = 0;
 
     cJSON *doc = cJSON_Parse(buf);
     if (doc == NULL) {

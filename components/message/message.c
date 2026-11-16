@@ -39,7 +39,7 @@
 #include "esp32idf_radioamateur_modem_config.h" // MODEM_PTT_GPIO: the fixed PTT pin, checked directly below
 #include "gps.h"                                // gps_gpio_is_reserved(): keep the GNSS serial pins out of the alarm pin
 #include "json_escape.h"                        // json_escape()
-#include "lastheard.h"                          // lastheard_last_seen_bm(): which channel the addressee was last seen on
+#include "lastheard.h"                          // lastheard_last_seen_bm()/_heard_rf_within(): which channel a station was last seen on
 #include "message.h"
 #include "query.h"             // query_process_directed(): second consumer of the ::ADDRESSEE: payload, for "CALL:?query?"
 #include "sensors_local_i2c.h" // sensors_local_i2c_gpio_is_reserved(): keep the I2C pins out of the alarm pin
@@ -465,9 +465,9 @@ static void replyAckRemember(const char *call, const char *mm) {
     }
 
     memset(s_replyAck[slot].callsign, 0, sizeof(s_replyAck[slot].callsign));
-    strncpy(s_replyAck[slot].callsign, call, sizeof(s_replyAck[slot].callsign) - 1);
+    str_copy_bounded(s_replyAck[slot].callsign, sizeof(s_replyAck[slot].callsign), call);
     memset(s_replyAck[slot].mm, 0, sizeof(s_replyAck[slot].mm));
-    strncpy(s_replyAck[slot].mm, mm, sizeof(s_replyAck[slot].mm) - 1);
+    str_copy_bounded(s_replyAck[slot].mm, sizeof(s_replyAck[slot].mm), mm);
     s_replyAck[slot].seq = ++s_replyAckSeq;
 }
 
@@ -517,8 +517,8 @@ static bool ackHoldoffPass(const char *call, const char *msgNo) {
 
     ack_holdoff_t *h = &s_ackHoldoff[slot];
     memset(h, 0, sizeof(*h));
-    strncpy(h->callsign, call, sizeof(h->callsign) - 1);
-    strncpy(h->msgNo, msgNo, sizeof(h->msgNo) - 1);
+    str_copy_bounded(h->callsign, sizeof(h->callsign), call);
+    str_copy_bounded(h->msgNo, sizeof(h->msgNo), msgNo);
     h->at_us = now;
     return true;
 }
@@ -728,7 +728,11 @@ static bool destIsInetOnly(const char *toCall) {
 #endif
 }
 
-static void txPacket(const char *myCall, const char *toCall, const char *info) {
+// Builds and hands off both legs of one outgoing packet. rfAllowed lets the
+// caller withhold the RF leg on top of the configuration and the
+// Internet-only addressee rule, and extraFlags is ORed into the channel mask of
+// each leg (::MSG_CHANNEL_AUTO for a packet the station generated itself).
+static void txPacketLegs(const char *myCall, const char *toCall, const char *info, bool rfAllowed, uint8_t extraFlags) {
     if (!s_txHandler) {
         ESP_LOGW(TAG, "No TX handler registered, dropping: %s", info);
         return;
@@ -745,7 +749,7 @@ static void txPacket(const char *myCall, const char *toCall, const char *info) {
     // than sent short - the same discipline the beacon builders follow -
     // because a truncated APRS message loses its trailing "{id" sequence
     // suffix and would never be acked.
-    if (g_config.msg_rf && !inetOnly) {
+    if (g_config.msg_rf && !inetOnly && rfAllowed) {
         // The path presets are snapshotted under app_config_lock() inside the
         // builder; msg_path itself is a single byte, read here the same way the
         // msg_rf/msg_inet flags around it are.
@@ -754,7 +758,7 @@ static void txPacket(const char *myCall, const char *toCall, const char *info) {
         char packet[400];
         size_t len = 0;
         if (str_append(packet, sizeof(packet), &len, "%s>" APRS_TOCALL "%s:%s", myCall, path, info))
-            s_txHandler(packet, len, MSG_CHANNEL_RF);
+            s_txHandler(packet, len, MSG_CHANNEL_RF | extraFlags);
         else
             ESP_LOGW(TAG, "RF message too long for a %u byte frame, dropped: %s", (unsigned)sizeof(packet), info);
     }
@@ -762,10 +766,14 @@ static void txPacket(const char *myCall, const char *toCall, const char *info) {
         char packet[400];
         size_t len = 0;
         if (str_append(packet, sizeof(packet), &len, "%s>" APRS_TOCALL APRS_PATH_TCPIP_SUFFIX ":%s", myCall, info))
-            s_txHandler(packet, len, MSG_CHANNEL_INET);
+            s_txHandler(packet, len, MSG_CHANNEL_INET | extraFlags);
         else
             ESP_LOGW(TAG, "INET message too long for a %u byte frame, dropped: %s", (unsigned)sizeof(packet), info);
     }
+}
+
+static void txPacket(const char *myCall, const char *toCall, const char *info) {
+    txPacketLegs(myCall, toCall, info, true, 0);
 }
 
 // Copies as much of src into dst as fits in APRS_MSG_TEXT_STD_MAX bytes,
@@ -828,9 +836,8 @@ void sendAPRSMessage(const char *toCall, const char *text) {
 
     char myCallUp[10];
     app_config_lock();
-    strncpy(myCallUp, g_config.msg_mycall, sizeof(myCallUp) - 1);
+    str_copy_bounded(myCallUp, sizeof(myCallUp), g_config.msg_mycall);
     app_config_unlock();
-    myCallUp[sizeof(myCallUp) - 1] = 0;
     trimUpper(myCallUp);
 
     char toCallUp[10];
@@ -898,7 +905,7 @@ void sendAPRSMessage(const char *toCall, const char *text) {
     queue_unlock();
 }
 
-void sendAPRSAck(const char *toCall, const char *msgNo) {
+void sendAPRSAck(const char *toCall, const char *msgNo, query_source_t source) {
     char toCallFixed[10];
     memset(toCallFixed, ' ', 9);
     toCallFixed[9] = 0;
@@ -919,8 +926,11 @@ void sendAPRSAck(const char *toCall, const char *msgNo) {
     snprintf(info, sizeof(info), ":%s:ack%s", toCallFixed, msgNo);
     // An ack follows the same route as the message it answers: the addressee
     // here is the station that sent it, and if that station is only reachable
-    // over the network then so is its acknowledgement.
-    txPacket(myCall, toCall, info);
+    // over the network then so is its acknowledgement. A message that arrived
+    // from APRS-IS is answered on APRS-IS, and on RF only when its sender is
+    // also a local station, heard directly inside the IGate's local window.
+    bool rfAllowed = (source == QUERY_SRC_RF) || lastheard_heard_rf_within(toCall, g_config.igate_local_window_sec);
+    txPacketLegs(myCall, toCall, info, rfAllowed, MSG_CHANNEL_AUTO);
     ESP_LOGD(TAG, "Send APRS ACK to %s msgNo %s", toCall, msgNo);
 }
 
@@ -1202,16 +1212,12 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     // otherwise it is ordinary text ("acknowledged, thanks", "rejoining net")
     // and falls through to the message-storing path below.
     bool isAck = (strncmp(message, "ack", 3) == 0) && isValidMsgNoField(message + 3);
-    if (isAck) {
-        strncpy(msgNo, message + 3, sizeof(msgNo) - 1);
-        msgNo[sizeof(msgNo) - 1] = 0;
-    }
+    if (isAck)
+        str_copy_bounded(msgNo, sizeof(msgNo), message + 3);
 
     bool isRej = (strncmp(message, "rej", 3) == 0) && isValidMsgNoField(message + 3);
-    if (isRej) {
-        strncpy(msgNo, message + 3, sizeof(msgNo) - 1);
-        msgNo[sizeof(msgNo) - 1] = 0;
-    }
+    if (isRej)
+        str_copy_bounded(msgNo, sizeof(msgNo), message + 3);
 
     ESP_LOGD(TAG, "Message from %s to %s: %s", fromCall, toCall, message);
 
@@ -1228,22 +1234,22 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
         telegram_app_notify_station_message(fromCall, toCall, message);
 #endif
 
-        // A bulletin is handed to the bot on the same terms, and by the same
-        // reasoning: a bulletin is addressed to the whole network rather than to
-        // any station, so it reaches every account the bot is configured to talk
-        // to instead of being matched against a callsign. Bulletins arrive both
-        // off the air and from the APRS-IS feed and are repeated by their
-        // originator and by every digipeater that hears them, so the routing
-        // itself drops a bulletin identical to one it delivered recently. A
-        // no-op unless the operator has turned "Route Bulletins" on for a bot
-        // that is actually running.
+    // A bulletin is handed to the bot on the same terms, and by the same
+    // reasoning: a bulletin is addressed to the whole network rather than to
+    // any station, so it reaches every account the bot is configured to talk
+    // to instead of being matched against a callsign. Bulletins arrive both
+    // off the air and from the APRS-IS feed and are repeated by their
+    // originator and by every digipeater that hears them, so the routing
+    // itself drops a bulletin identical to one it delivered recently. A
+    // no-op unless the operator has turned "Route Bulletins" on for a bot
+    // that is actually running.
 #ifdef ENABLE_TELEGRAM
     if (!isAck && !isRej && message[0] != 0 && isBulletinAddressee(toCall))
         telegram_app_notify_bulletin(fromCall, toCall, message);
 #endif
 
-        // Everything from here on is the messaging service's own work on a frame
-        // it keeps, so it happens only when that service is built and switched on.
+    // Everything from here on is the messaging service's own work on a frame
+    // it keeps, so it happens only when that service is built and switched on.
 #ifdef ENABLE_MESSAGE
     if (!msg_service_on)
         return;
@@ -1376,7 +1382,7 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
             replyAckRemember(fromCall, ownNo);
             queue_unlock();
             if (ackNow)
-                sendAPRSAck(fromCall, msgNo);
+                sendAPRSAck(fromCall, msgNo, source);
         }
         // The alarm announces traffic the operator has to come and read. A
         // message an observer took is being dealt with by whatever took it, so

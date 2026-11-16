@@ -96,8 +96,9 @@ Modem / Layer-2
        ``duty_cycle_pct`` percent (1-100, default 25) measured over a rolling
        10-minute window, accumulated from the estimated on-air time of every
        frame actually transmitted at the configured baud rate. Only
-       non-critical traffic is held back: message traffic and digipeat repeats
-       always go out. A held-back beacon is deferred, not lost - the owning
+       non-critical traffic is held back: messages the operator sends, query
+       answers and digipeat repeats always go out, while automatic message
+       acknowledgements are held back like beacons. A held-back beacon is deferred, not lost - the owning
        periodic task re-offers it on its next interval - though it is counted
        as ``DROP_TX_DUTY_CYCLE`` for visibility. The dashboard shows measured
        against configured percentage as *TX DUTY CYCLE*, populated even while

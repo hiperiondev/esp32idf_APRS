@@ -667,9 +667,12 @@ static struct FrameHandle *parseFx25Frame(const uint8_t *frame, uint16_t size, u
     if (!rxRingHasRoom(size))
         return NULL;
 
+    // size is the K data bytes of the RS block only: the T parity bytes that
+    // follow them in the receive buffer are never frame content, so neither
+    // the leading-flag skip nor the de-stuffing below may reach them.
     uint16_t i = 0;
     uint16_t k = 0;
-    while (frame[i] == 0x7E)
+    while (i < size && frame[i] == 0x7E)
         i++;
 
     uint8_t bitstuff = 0;
@@ -1248,7 +1251,7 @@ void Ax25BitParse(uint8_t bit, uint8_t modem, uint16_t mV) {
             uint8_t fixed = 0;
             bool fecSuccess = Fx25Decode(rx->frame, sizeof(rx->frame), rx->fx25Mode, &fixed);
             uint16_t crc;
-            struct FrameHandle *h = parseFx25Frame(rx->frame, rx->frameIdx, &crc);
+            struct FrameHandle *h = parseFx25Frame(rx->frame, rx->fx25Mode->K, &crc);
             if (h != NULL) {
                 if (!dedupAccept(crc, modem)) {
                     // another demodulator's copy of a frame already delivered

@@ -239,13 +239,27 @@ void sendAPRSMessage(const char *toCall, const char *text);
 /**
  * @brief Send an APRS message ACK ("ackNN") to `toCall`.
  *
+ * The acknowledgement goes back over the channel the message arrived on. A
+ * message received on RF is acknowledged on the legs messaging is configured
+ * for (g_config.msg_rf / g_config.msg_inet), as any outgoing message is. A
+ * message received from APRS-IS is acknowledged over APRS-IS only, unless its
+ * sender was also heard directly on RF within g_config.igate_local_window_sec
+ * seconds, in which case the RF leg is sent as well: anyone on APRS-IS can
+ * address this station, and an acknowledgement is not a reason to put an
+ * Internet station's traffic on the air.
+ *
+ * The packet is handed to the TX handler with ::MSG_CHANNEL_AUTO, so its RF
+ * leg is limited by the automatic RF frame budget and the duty-cycle ceiling.
+ *
  * @param toCall Callsign to acknowledge.
  * @param msgNo  Message number exactly as it was received, Reply-ACK suffix
  *               included: a message numbered @c "MM}AA" is acknowledged with
  *               @c "ackMM}AA", because the sender matches the whole identifier
  *               it issued rather than any part of it.
+ * @param source Channel the message was received on (::QUERY_SRC_RF or
+ *               ::QUERY_SRC_INET).
  */
-void sendAPRSAck(const char *toCall, const char *msgNo);
+void sendAPRSAck(const char *toCall, const char *msgNo, query_source_t source);
 
 /**
  * @brief Retry any pending outbound messages whose ack window has elapsed.
@@ -412,13 +426,21 @@ size_t message_next_json(uint32_t after_seq, char *out, size_t out_size, uint32_
 
 #define MSG_CHANNEL_RF   (1 << 0) /**< TX-handler channel bit: transmit on RF. */
 #define MSG_CHANNEL_INET (1 << 1) /**< TX-handler channel bit: transmit to APRS-IS (Internet). */
+/**
+ * TX-handler flag bit: the packet was generated automatically in answer to
+ * received traffic (an acknowledgement) rather than sent by the operator. The
+ * handler limits the RF leg of such packets with the automatic RF frame
+ * budget and the duty-cycle ceiling.
+ */
+#define MSG_CHANNEL_AUTO (1 << 2)
 
 #ifdef ENABLE_MESSAGE
 /**
  * @brief Register the function used to actually transmit a built TNC2 packet.
  *
  * The handler's @c channels argument is a bitmask of ::MSG_CHANNEL_RF /
- * ::MSG_CHANNEL_INET selecting where the packet should go.
+ * ::MSG_CHANNEL_INET selecting where the packet should go, optionally with
+ * ::MSG_CHANNEL_AUTO marking a packet the station generated on its own.
  *
  * @param handler Callback invoked with the built packet, its length and the
  *                channel bitmask.

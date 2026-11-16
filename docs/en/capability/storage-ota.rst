@@ -67,6 +67,9 @@ The partition table provides two app slots (``ota_0`` / ``ota_1``), which
 enables OTA update from the web admin's **About / Firmware** page:
 
 #. The operator picks a ``.bin`` and uploads it (``POST /ota_update``).
+#. ``esp_ota_begin()`` erases only as much of the inactive slot as the
+   request's ``Content-Length`` covers (capped at the slot size), not the
+   whole slot.
 #. It is streamed straight into the inactive slot via ``esp_ota_write()`` —
    never buffered whole in RAM — with a progress bar.
 #. Once written and verified, the device reboots into the new slot.

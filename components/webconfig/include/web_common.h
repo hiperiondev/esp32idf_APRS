@@ -93,13 +93,20 @@ bool web_is_readonly(httpd_req_t *req);
  * This is the check for a handler that only reads: anything that changes the
  * station calls web_check_auth_admin() instead.
  *
- * The same-origin check and the Basic Auth check are independent controls:
- * the same-origin check runs first and unconditionally for every POST
- * request, regardless of whether @c g_config.http_username is set. Leaving
- * the username blank disables the password prompt only; it does not disable
- * the same-origin requirement.
+ * Three independent controls run in this order:
+ *  -# the Host check, for every method: the @c Host header must name this
+ *     station - an IPv4 or bracketed IPv6 address literal, the network host
+ *     name of the station or SoftAP interface, or one of the names listed in
+ *     @c CONFIG_APRS_WEB_ALLOWED_HOSTS - or the request is answered
+ *     @c 421 Misdirected Request. This is what keeps a page served under a
+ *     foreign name that resolves to this station (DNS rebinding) out of the
+ *     interface, since such a page is same-origin with its own requests;
+ *  -# the same-origin (CSRF) check, for every POST request, regardless of
+ *     whether @c g_config.http_username is set;
+ *  -# HTTP Basic Auth. Leaving the username blank disables the password
+ *     prompt only; it does not disable the two checks above.
  *
- * On failure this sends the 401 or 403 response itself (with the
+ * On failure this sends the 401, 403, 421 or 429 response itself (with the
  * @c WWW-Authenticate header for the 401 case), so the caller only has to
  * bail out.
  *
@@ -120,7 +127,12 @@ bool web_check_auth(httpd_req_t *req);
  * the handler itself and does not depend on the page having hidden the
  * control.
  *
- * On failure this sends the 401, 403 or 429 response itself, exactly as
+ * While the factory administrator credentials are in use
+ * (web_factory_credentials_active()), the administrator is admitted on the
+ * @c /system route only, where the password is replaced; every other writing
+ * route answers @c 403 with a link to that page.
+ *
+ * On failure this sends the 401, 403, 421 or 429 response itself, exactly as
  * web_check_auth() does.
  *
  * @param req Incoming request.
@@ -128,6 +140,20 @@ bool web_check_auth(httpd_req_t *req);
  *         was rejected (response already sent).
  */
 bool web_check_auth_admin(httpd_req_t *req);
+
+/**
+ * @brief Tell whether the administrator account still has its factory
+ * credentials.
+ *
+ * True when @c g_config.http_username and @c g_config.http_password are
+ * exactly ::APP_CONFIG_DEFAULT_HTTP_USERNAME and
+ * ::APP_CONFIG_DEFAULT_HTTP_PASSWORD. Every page then shows a banner asking
+ * for the password to be changed, and web_check_auth_admin() admits changes on
+ * the System page only.
+ *
+ * @return true while the factory pair is in use.
+ */
+bool web_factory_credentials_active(void);
 
 /**
  * @brief Base URL every page fetches APRS symbol icons from, ending in the

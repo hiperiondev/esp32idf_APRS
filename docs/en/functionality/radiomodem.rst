@@ -394,8 +394,9 @@ persistence roll succeeds.
 
 .. warning::
 
-   Large values delay *everything*, including message acknowledgements and
-   digipeat repeats, which the duty-cycle limiter below deliberately exempts.
+   Large values delay *everything*, including messages, their acknowledgements
+   and digipeat repeats, the first and last of which the duty-cycle limiter
+   below deliberately exempts.
    Above about 5000 ms the station starts to feel unresponsive to anyone trying
    to message it.
 
@@ -461,16 +462,20 @@ ago; this has memory and no opinion about the channel.
 
    * - Class
      - Behaviour once the ceiling is reached
-   * - **Critical** — APRS messages and their acknowledgements, digipeat
-       repeats
+   * - **Critical** — APRS messages the operator sends and their retries,
+       query answers, digipeat repeats
      - Transmitted anyway. Their airtime still counts toward the window; only
        the gate is skipped for them.
    * - **Non-critical** — own-station position beacons, objects and items,
-       weather reports, telemetry, bulletins, bulk IGate INET→RF relay
+       weather reports, telemetry, bulletins, bulk IGate INET→RF relay,
+       automatic message acknowledgements
      - Held back. Each of these is a periodic task that will offer the same
-       report again on its next interval, so this is a deferral rather than a
+       report again on its next interval, or an acknowledgement that is sent
+       again when the sender retries, so this is a deferral rather than a
        loss, although it is counted under ``DROP_TX_DUTY_CYCLE`` on the
-       dashboard for visibility.
+       dashboard for visibility. Automatic acknowledgements are also drawn
+       from the automatic RF frame budget (``DROP_AUTO_TX_RATE``, see
+       :ref:`en-messaging`).
 
 **Uses.**
 

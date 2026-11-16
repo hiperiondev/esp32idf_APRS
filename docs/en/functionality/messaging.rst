@@ -73,6 +73,21 @@ The message engine
   ``MSG_ACK_HOLDOFF_S`` (15 s) share that ack instead of each keying the
   transmitter for one of their own. A copy arriving later than that is the
   sender's own retransmission and is acknowledged again.
+* **An ack goes back the way the message came.** A message received on RF is
+  acknowledged on the legs messaging is configured for (``msg_rf`` /
+  ``msg_inet``), like any outgoing message. A message received from APRS-IS is
+  acknowledged over APRS-IS only, unless its sender was also heard directly on
+  RF within ``igate_local_window_sec``: anyone on APRS-IS can address this
+  station, and an acknowledgement is no reason to put an Internet station's
+  traffic on the air.
+* **Automatic RF frames are budgeted.** The RF leg of an acknowledgement is an
+  automatic frame: it is drawn from a token bucket of ``APRS_AUTO_TX_BURST``
+  (6) frames refilled at one every ``APRS_AUTO_TX_REFILL_S`` (10 s), shared by
+  every sender, and it is subject to the duty-cycle ceiling like a beacon. An
+  ack that finds the bucket empty is not transmitted and is counted as
+  ``DROP_AUTO_TX_RATE``; the sender's retry is answered once the budget has
+  refilled. Messages the operator sends, their retries and query answers are
+  not automatic frames and keep bypassing the duty-cycle ceiling.
 * **Message numbers are checked.** The identifier after ``{`` is used only
   when it is a well-formed APRS message number: one to five letters or digits,
   optionally followed by ``}`` and up to two more (the Reply-ACK). A message

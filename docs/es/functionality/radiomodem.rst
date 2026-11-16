@@ -413,9 +413,9 @@ la tirada de persistencia tenga éxito.
 
 .. warning::
 
-   Los valores grandes retrasan *todo*, incluidos los acuses de recibo de
-   mensajes y las repeticiones del digipeater, que el limitador de ciclo de
-   trabajo de más abajo exime deliberadamente. Por encima de unos 5000 ms la
+   Los valores grandes retrasan *todo*, incluidos los mensajes, sus acuses de
+   recibo y las repeticiones del digipeater, el primero y el último de los
+   cuales el limitador de ciclo de trabajo de más abajo exime deliberadamente. Por encima de unos 5000 ms la
    estación empieza a parecer poco receptiva a quien intente enviarle mensajes.
 
 Buffers de TX
@@ -481,17 +481,20 @@ transmitió hace un minuto; esto tiene memoria y ninguna opinión sobre el canal
 
    * - Clase
      - Comportamiento una vez alcanzado el techo
-   * - **Crítico** — mensajes APRS y sus acuses de recibo, repeticiones del
-       digipeater
+   * - **Crítico** — mensajes APRS que envía el operador y sus reintentos,
+       respuestas a consultas, repeticiones del digipeater
      - Se transmiten igualmente. Su tiempo en el aire sigue contando para la
        ventana; sólo se omite la compuerta para ellos.
    * - **No crítico** — balizas de posición propias, objetos e ítems, informes
        meteorológicos, telemetría, boletines, retransmisión masiva INET→RF del
-       IGate
+       IGate, acuses de recibo automáticos de mensajes
      - Se retienen. Cada uno de ellos es una tarea periódica que volverá a
-       ofrecer el mismo informe en su siguiente intervalo, así que es un
+       ofrecer el mismo informe en su siguiente intervalo, o un acuse que se
+       vuelve a enviar cuando el remitente reintenta, así que es un
        aplazamiento y no una pérdida, aunque se contabilice bajo
-       ``DROP_TX_DUTY_CYCLE`` en el panel para que sea visible.
+       ``DROP_TX_DUTY_CYCLE`` en el panel para que sea visible. Los acuses
+       automáticos además se toman del presupuesto de tramas RF automáticas
+       (``DROP_AUTO_TX_RATE``, ver :ref:`es-messaging`).
 
 **Usos.**
 

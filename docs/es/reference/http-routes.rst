@@ -21,10 +21,17 @@ autenticación pueda proteger.
 Las dos cuentas se describen en *Cuentas y roles*, en :ref:`es-web-admin`. En la
 tabla siguiente, toda ruta ``POST`` requiere la cuenta de administrador, igual
 que ``GET /download`` y las acciones sobre archivos de la página de
-almacenamiento. Las tres excepciones son ``/logs/start``, ``/logs/stop`` y
-``/logs/read``: son rutas ``POST`` que una sesión de solo lectura sí puede usar,
-porque lo que conmutan es un espejo de la salida de consola de la propia
-estación y nada de la estación cambia con ello.
+almacenamiento, ``/logs/start`` y ``/logs/stop`` incluidas. La única excepción
+es ``/logs/read``: una ruta ``POST`` que una sesión de solo lectura puede usar
+para mirar una captura que ejecuta el administrador, ya que lo único que cambia
+es el tiempo de inactividad de la captura. Mientras la contraseña de
+administrador de fábrica esté en uso, las rutas de administrador salvo
+``POST /system`` responden ``403`` con un enlace a la página *Sistema*.
+
+Toda ruta, estas incluidas, comprueba primero la cabecera ``Host`` y responde
+``421 Misdirected Request`` cuando no nombra ni una dirección IP, ni el nombre
+de host de red propio de la estación, ni una entrada de
+``CONFIG_APRS_WEB_ALLOWED_HOSTS``; ver :ref:`es-web-admin-host-check`.
 
 El cuerpo de una petición — un formulario o la subida de un archivo — tiene que
 seguir llegando. El servidor atiende todas las peticiones en una sola tarea, así
@@ -124,8 +131,9 @@ predefinidas sin el digipeater.
        reciente (JSON)
    * - GET
      - ``/logs``
-     - visor del registro de consola; mostrarla no toca la copia: el script de
-       la página envía ``/logs/stop`` al cargar
+     - visor del registro de consola; mostrarla no toca la copia. En una sesión
+       de administrador el script de la página envía ``/logs/stop`` al cargar;
+       en una de solo lectura solo consulta ``/logs/read``
    * - POST
      - ``/logs/start``
      - activa la copia de la consola (JSON ``{"ok":…,"seq":…}``)

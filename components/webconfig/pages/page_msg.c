@@ -25,6 +25,7 @@
 #include "esp_log.h"
 #include "message.h"
 #include "pages.h"
+#include "str_append.h" // str_copy_bounded()
 #include "translations.h"
 #include "web_common.h"
 #include "web_help.h"
@@ -147,8 +148,7 @@ esp_err_t page_msg_post(httpd_req_t *req) {
         web_form_get(body, name, group, sizeof(group));
         for (char *p = group; *p; p++)
             *p = (char)toupper((unsigned char)*p);
-        strncpy(g_config.msg_group[i], group, sizeof(g_config.msg_group[i]) - 1);
-        g_config.msg_group[i][sizeof(g_config.msg_group[i]) - 1] = 0;
+        str_copy_bounded(g_config.msg_group[i], sizeof(g_config.msg_group[i]), group);
     }
 
     app_config_unlock();

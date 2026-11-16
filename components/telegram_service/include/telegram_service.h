@@ -477,9 +477,18 @@ esp_err_t telegram_init(const telegram_service_config_t *config);
 /**
  * @brief Stop the service, if running, and release every resource.
  *
+ * The service task is stopped first through @ref telegram_stop(). Nothing is
+ * released while that task is still alive, because it holds the polling
+ * connection, writes into the receive buffer and uses the alert queue and the
+ * internal mutex: if the task does not exit in time the service is left
+ * initialized, with its stop request raised, and the call reports the timeout
+ * so the caller can try again later.
+ *
  * @return
  *  - ESP_OK on success.
  *  - ESP_ERR_INVALID_STATE if the service was not initialized.
+ *  - ESP_ERR_TIMEOUT if the service task did not stop in time; no resource
+ *    was released.
  */
 esp_err_t telegram_deinit(void);
 
@@ -501,12 +510,18 @@ esp_err_t telegram_start(void);
 /**
  * @brief Ask the service task to finish and wait until it has stopped.
  *
- * The call blocks until the current polling cycle completes, which can
- * take up to ::telegram_service_config_t::poll_timeout_s seconds.
+ * The stop request is raised together with the cancellation flag of both
+ * client handles (see `telegram_bot_client_set_cancel()`), so the request in
+ * progress makes no further transport attempt once its current one ends. The
+ * call then blocks for at most one long-poll attempt,
+ * ::telegram_service_config_t::poll_timeout_s plus a fixed transport and
+ * shutdown margin of twenty seconds.
  *
  * @return
  *  - ESP_OK once the task has terminated, or if it was not running.
  *  - ESP_ERR_INVALID_STATE if the service is not initialized.
+ *  - ESP_ERR_TIMEOUT if the task was still running when the wait ended. The
+ *    stop request stays raised, so the task exits on its own afterwards.
  */
 esp_err_t telegram_stop(void);
 

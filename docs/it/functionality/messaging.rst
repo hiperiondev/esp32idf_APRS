@@ -78,6 +78,22 @@ Il motore dei messaggi
   ``MSG_ACK_HOLDOFF_S`` (15 s) condividono quell'ack invece di attivare
   ciascuna il trasmettitore per il proprio. Una copia che arriva più tardi è la
   ritrasmissione del mittente stesso e riceve di nuovo l'ack.
+* **Un ack torna per la strada da cui è arrivato il messaggio.** Un messaggio
+  ricevuto in RF riceve l'ack sui rami per cui è configurata la messaggistica
+  (``msg_rf`` / ``msg_inet``), come qualsiasi messaggio in uscita. Un messaggio
+  ricevuto da APRS-IS riceve l'ack solo via APRS-IS, a meno che il mittente sia
+  stato sentito anche direttamente in RF entro ``igate_local_window_sec``:
+  chiunque su APRS-IS può rivolgersi a questa stazione, e un ack non è un
+  motivo per mettere in aria il traffico di una stazione Internet.
+* **I frame RF automatici hanno un budget.** Il ramo RF di un ack è un frame
+  automatico: viene preso da un secchio di gettoni di ``APRS_AUTO_TX_BURST``
+  (6) frame ricaricato di uno ogni ``APRS_AUTO_TX_REFILL_S`` (10 s), condiviso
+  da tutti i mittenti, ed è soggetto al tetto di duty cycle come un beacon. Un
+  ack che trova il secchio vuoto non viene trasmesso ed è contato come
+  ``DROP_AUTO_TX_RATE``; il ritentativo del mittente riceve risposta quando il
+  budget si è ricaricato. I messaggi inviati dall'operatore, i loro
+  ritentativi e le risposte alle query non sono frame automatici e continuano
+  a non essere soggetti al tetto di duty cycle.
 * **I numeri di messaggio vengono verificati.** L'identificatore dopo ``{``
   viene usato solo quando è un numero di messaggio APRS ben formato: da una a
   cinque lettere o cifre, seguite facoltativamente da ``}`` e fino a due altre

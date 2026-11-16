@@ -587,7 +587,15 @@ presented over the same HTTP Basic realm:
 
 * **Administrator** — ``g_config.http_username`` / ``http_password``, the
   account the station has always had (``admin`` / ``admin`` out of the box).
-  Full access.
+  Full access, once the factory password has been replaced: while the pair is
+  exactly ``admin`` / ``admin`` (``web_factory_credentials_active()``) every
+  page shows a banner and ``web_check_auth_admin()`` admits a change on the
+  ``/system`` route only, answering every other writing route ``403`` with a
+  link to the *System* page. A save that leaves the factory pair in place says
+  so instead of the plain confirmation. A blank username, which turns the
+  password prompt off, is taken only together with the *Disable password
+  protection* box ticked in the same save; without it the administrator pair
+  keeps its values and the page says why.
 * **Read-only** — ``g_config.http_ro_username`` / ``http_ro_password``,
   optional and unset out of the box. It exists only while its username is
   non-empty, and it can never be the administrator name: the two pairs are
@@ -601,9 +609,9 @@ every settings page, the last-heard feed, the storage listing. What a read-only
 session cannot do is change anything: no settings form saves, no file is
 uploaded, downloaded, deleted or formatted, no firmware image is accepted, no
 factory reset runs, nothing is transmitted and no transmitter test keys the
-radio. The one thing it may operate is the log console, whose *Start* and
-*Stop* switch a mirror of the station's own output and change nothing on the
-station itself.
+radio. It can read the log console while the administrator runs it, but not
+start or stop it: a start claims the capture ring from a heap the station
+treats as scarce, and a stop ends a capture somebody else may be watching.
 
 The boundary is enforced in the handlers, in ``web_common.c``:
 
@@ -613,14 +621,17 @@ The boundary is enforced in the handlers, in ``web_common.c``:
   read-only session ``403 Forbidden``, and is what every writing handler opens
   with — every ``POST`` save, ``/upload``, ``/download``, ``/delete``,
   ``/format``, ``/default``, ``/ota_update``, the radio tests and the outgoing
-  message routes. ``/logs/start``, ``/logs/stop`` and ``/logs/read`` are the
-  deliberate exceptions and stay on ``web_check_auth()``.
+  message routes, ``/logs/start`` and ``/logs/stop`` included. ``/logs/read``
+  is the one writing-style route left on ``web_check_auth()``: it only rearms
+  the capture's idle timeout, so the read-only session can watch a capture the
+  administrator runs.
 
 The pages also *look* read-only for that role, but nothing rests on it. A
 banner is rendered above every page; ``web_send_footer()`` appends a small
 script that disables every form control except the navigation drawer and the
-controls a page marks ``.ro-ok`` (the log console button, the dashboard's
-traffic pause and clear — all browser-side view controls); and the Storage page
+controls a page marks ``.ro-ok`` (the dashboard's traffic pause and clear —
+browser-side view controls); the log console button is disabled with the rest,
+and the page's script polls the capture from the moment it loads instead; and the Storage page
 leaves out the upload form, the format button and the per-file download and
 delete actions entirely, since an ``<a href>`` carries no disabled state for a
 script to set. A control re-enabled from a browser console buys a ``403`` and
@@ -665,6 +676,29 @@ latest failure is oldest among those not locked out at that moment; a locked
 source loses its slot only when every slot is locked, so a burst of requests
 from many addresses cannot wipe out the lockout of the one doing the guessing.
 
+.. _en-web-admin-host-check:
+
+Host check (DNS rebinding)
+==========================
+
+``web_check_auth()`` refuses, before anything else and for every method, a
+request whose ``Host`` header does not name this station. It is answered
+``421 Misdirected Request``. A ``Host`` is accepted when it is:
+
+* an IPv4 address literal, or an IPv6 one in brackets, with or without a port
+  — a browser only sends one when the operator typed it;
+* the network host name of the station or SoftAP interface
+  (``esp_netif_get_hostname()``);
+* one of the names listed, comma-separated, in ``CONFIG_APRS_WEB_ALLOWED_HOSTS``
+  (*APRS web admin* menu of ``idf.py menuconfig``, empty by default), for a
+  local DNS entry or a reverse proxy that forwards the original ``Host``.
+
+The same-origin check below compares ``Origin`` with ``Host``, which a page
+served under a foreign name that a DNS server has been made to resolve to this
+station passes: it is same-origin with its own requests, and it can supply
+credentials of its own. Refusing every name the station does not answer to is
+what keeps such a page out of the interface.
+
 Same-origin protection (CSRF)
 ==============================
 
@@ -676,8 +710,9 @@ a request with neither header, or with a mismatching one, is rejected with
 ``403 Forbidden`` regardless of any credentials it carries.
 
 This is deliberately independent of Basic Auth. Clearing the username on the
-System page is a supported way to run the admin UI without a password, but
-it only removes the login prompt — it does not
+System page, with *Disable password protection* ticked in the same save, is a
+supported way to run the admin UI without a password, but it only removes the
+login prompt — it does not
 relax the same-origin requirement, because a browser-borne cross-site
 request is a threat with or without a configured password: with no password
 set there is no credential to steal, but the attacker's page can still make

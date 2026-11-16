@@ -78,6 +78,13 @@ risposta a una sfida, e il testo del servizio che arriva senza una sessione
 aperta o in apertura non tocca la sessione: finisce nella normale
 conversazione dei messaggi invece che nella casella.
 
+Tutto ciò che la sessione prende dal servizio — sfide, *Login valid*, risposte e
+riscontri — deve arrivare esattamente da ``wlServiceCall``, SSID compreso (senza
+SSID e ``-0`` sono lo stesso indirizzo): un altro SSID dello stesso nominativo
+base resta alla normale conversazione. Una sfida che nomina più di tre
+posizioni viene rifiutata e chiude il tentativo, dato che ogni posizione
+nominata è un carattere della password restituito.
+
 Una sessione scade dal lato del servizio dopo circa due ore.
 ``wlSessionMaxMin`` (110 minuti di default) resta al di sotto, così questa
 stazione abbandona la sessione poco prima del servizio invece di scoprire che

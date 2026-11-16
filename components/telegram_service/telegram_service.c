@@ -102,6 +102,14 @@
 // while the network is down.
 #define TELEGRAM_POLL_BACKOFF_MS 5000
 
+// Seconds a long-poll request is allowed beyond the poll timeout Telegram is
+// asked to hold it for, covering the TLS handshake and the transfer itself.
+#define TELEGRAM_POLL_MARGIN_S 10
+
+// Seconds telegram_stop() waits beyond one long-poll attempt, covering the
+// alert drain the task performs before it exits.
+#define TELEGRAM_STOP_MARGIN_S 10
+
 // Payload prefix reserved for the buttons of the built-in menu.
 #define TELEGRAM_SYSTEM_CALLBACK_PREFIX "sys:"
 
@@ -207,6 +215,17 @@ static telegram_bot_client_handle_t s_poll_client = NULL;
 // Connection used by every outgoing message, independent of the polling
 // connection so a long poll never delays a transmission.
 static telegram_bot_client_handle_t s_tx_client = NULL;
+
+// Raises or clears the cancellation flag on whichever of the two client
+// handles exists.
+static void telegram_set_handles_cancel(bool cancel) {
+    if (s_poll_client != NULL) {
+        telegram_bot_client_set_cancel(s_poll_client, cancel);
+    }
+    if (s_tx_client != NULL) {
+        telegram_bot_client_set_cancel(s_tx_client, cancel);
+    }
+}
 
 // Number of transmit batches currently open, counted rather than flagged so
 // batches nest: an application groups a queue drain, and a helper it calls
@@ -575,7 +594,7 @@ esp_err_t telegram_init(const telegram_service_config_t *config) {
     // The polling connection waits for the long poll to expire, so its
     // socket timeout must outlive the timeout requested to the servers.
     telegram_bot_client_config_t poll_config = {
-        .timeout_ms = (s_config.poll_timeout_s + 10) * 1000,
+        .timeout_ms = (s_config.poll_timeout_s + TELEGRAM_POLL_MARGIN_S) * 1000,
         // Sized for the smallest device this service targets: a smaller
         // receive buffer costs more read iterations to drain one answer and
         // buys back heap that a TLS handshake needs in one contiguous piece.
@@ -646,7 +665,15 @@ esp_err_t telegram_deinit(void) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    telegram_stop();
+    // Nothing is released while the polling task is alive: it holds the
+    // polling handle's mutex, writes into the receive buffer and reads the
+    // alert queue and the service lock. A task that has not left yet keeps
+    // the service initialized, with its stop request still raised, and the
+    // caller tries again later.
+    esp_err_t stop_err = telegram_stop();
+    if (stop_err != ESP_OK) {
+        return stop_err;
+    }
 
     telegram_alert_item_t item;
     while (xQueueReceive(s_alert_queue, &item, 0) == pdTRUE) {
@@ -2799,8 +2826,18 @@ static void telegram_process_updates(const char *payload) {
         return;
     }
 
-    const cJSON *item = NULL;
-    cJSON_ArrayForEach(item, result) {
+    // The handlers dispatched below may open a TLS session, whose record
+    // buffers need the largest contiguous blocks the heap has. The result
+    // array is therefore detached and the rest of the answer released before
+    // the first dispatch, and each element is decoded into the descriptor,
+    // which owns copies of every field it carries, and released before its
+    // own update is dispatched. What stays allocated during a dispatch is
+    // only the part of the batch still waiting to be decoded.
+    cJSON *items = cJSON_DetachItemViaPointer(root, (cJSON *)result);
+    cJSON_Delete(root);
+
+    cJSON *item;
+    while ((item = cJSON_DetachItemFromArray(items, 0)) != NULL) {
         int64_t update_id = telegram_json_get_int(item, "update_id");
         if (update_id >= s_next_offset) {
             s_next_offset = update_id + 1;
@@ -2813,6 +2850,7 @@ static void telegram_process_updates(const char *payload) {
         const cJSON *callback = cJSON_GetObjectItemCaseSensitive(item, "callback_query");
         const cJSON *reaction = cJSON_GetObjectItemCaseSensitive(item, "message_reaction");
         const cJSON *reaction_count = cJSON_GetObjectItemCaseSensitive(item, "message_reaction_count");
+        bool known = true;
         if (cJSON_IsObject(message)) {
             telegram_parse_message(message, update);
         } else if (cJSON_IsObject(callback)) {
@@ -2822,6 +2860,10 @@ static void telegram_process_updates(const char *payload) {
         } else if (cJSON_IsObject(reaction_count)) {
             telegram_parse_reaction_count(reaction_count, update);
         } else {
+            known = false;
+        }
+        cJSON_Delete(item);
+        if (!known) {
             continue;
         }
 
@@ -2830,7 +2872,7 @@ static void telegram_process_updates(const char *payload) {
     }
 
     free(update);
-    cJSON_Delete(root);
+    cJSON_Delete(items);
 }
 
 // Reads the identifier of the first update of a getUpdates answer straight
@@ -2882,7 +2924,7 @@ static esp_err_t telegram_poll_once(void) {
     telegram_bot_request_t request = {
         .method = "getUpdates",
         .json_body = body,
-        .timeout_ms = (s_config.poll_timeout_s + 10) * 1000,
+        .timeout_ms = (s_config.poll_timeout_s + TELEGRAM_POLL_MARGIN_S) * 1000,
     };
     telegram_bot_response_t response = {
         .buffer = s_rx_buffer,
@@ -2979,6 +3021,11 @@ static void telegram_discard_pending_updates(void) {
 void telegram_task(void *arg) {
     (void)arg;
 
+    // A task created by the application rather than by telegram_start() is
+    // recorded here, so the exit path below recognises it as the current one.
+    if (s_task_handle == NULL) {
+        s_task_handle = xTaskGetCurrentTaskHandle();
+    }
     s_running = true;
     s_stop_requested = false;
     s_start_time_us = esp_timer_get_time();
@@ -3047,8 +3094,13 @@ void telegram_task(void *arg) {
     }
 
     ESP_LOGI(TAG, "Service task stopped");
-    s_running = false;
-    s_task_handle = NULL;
+    // Only the task the service currently records may clear its state, so a
+    // task that outlives its own service generation can never mark a newer
+    // one as stopped.
+    if (s_task_handle == xTaskGetCurrentTaskHandle()) {
+        s_running = false;
+        s_task_handle = NULL;
+    }
     vTaskDelete(NULL);
 }
 
@@ -3068,9 +3120,11 @@ esp_err_t telegram_start(void) {
 
     // The running flag is raised before the task exists, so a stop or a
     // release requested right after this call waits for the task instead
-    // of tearing the service down under it.
+    // of tearing the service down under it. The cancellation flags a previous
+    // stop raised on the two handles are cleared here, before any request.
     s_stop_requested = false;
     s_running = true;
+    telegram_set_handles_cancel(false);
 
     BaseType_t created;
     if (s_config.task_core_id >= 0) {
@@ -3098,9 +3152,14 @@ esp_err_t telegram_stop(void) {
 
     s_stop_requested = true;
 
-    // The task can be blocked in a long poll, so the wait covers the
-    // polling timeout plus the transport margin.
-    int wait_ms = (s_config.poll_timeout_s + 20) * 1000;
+    // Raising the cancellation flag on both handles ends the request in
+    // progress after its current attempt: no further attempt is made and the
+    // wait before one is abandoned. What is left to wait for is therefore
+    // one attempt, bounded by the long-poll timeout plus the transport
+    // margin, and the drain of the alerts the task sends on its way out.
+    telegram_set_handles_cancel(true);
+
+    int wait_ms = (s_config.poll_timeout_s + TELEGRAM_POLL_MARGIN_S + TELEGRAM_STOP_MARGIN_S) * 1000;
     while (s_running && wait_ms > 0) {
         vTaskDelay(pdMS_TO_TICKS(100));
         wait_ms -= 100;
@@ -3108,6 +3167,7 @@ esp_err_t telegram_stop(void) {
 
     if (s_running) {
         ESP_LOGW(TAG, "Service task did not stop within the expected delay");
+        return ESP_ERR_TIMEOUT;
     }
     return ESP_OK;
 }

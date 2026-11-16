@@ -109,7 +109,7 @@ Task map
        ``aprs_rx`` queue; pinned to the same core as the RX DSP task, whose
        AX.25 ring it consumes
    * - ``aprs_rx``
-     - 6144 B
+     - 8192 B
      - 4
      - any
      - ``aprs_service_start()``
@@ -137,7 +137,7 @@ Task map
      - ``AFSK_init()``
      - one DAC sample every 1/38400 s
    * - ``igate_task``
-     - 6144 B
+     - 9216 B
      - 5
      - any
      - ``igate_start()``

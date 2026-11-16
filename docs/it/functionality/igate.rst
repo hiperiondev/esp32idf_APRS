@@ -235,7 +235,17 @@ singolo aggregato opaco.
    con ``}`` porta una propria riga interna completa
    ``SRC>DST,PATH:payload``. Se quel percorso interno porta già ``TCPIP`` o
    ``TCPXX``, il frame ha già raggiunto APRS-IS una volta e viene scartato
-   come loop (``DROP_3RDPARTY_LOOP``). Altrimenti l'intestazione RF esterna
+   come loop (``DROP_3RDPARTY_LOOP``). L'intestazione interna è poi tenuta alle
+   regole con cui viene instradata l'intestazione AX.25 esterna, e se non le
+   rispetta il frame viene scartato con ``DROP_3RDPARTY_BAD_HEADER``: origine e
+   destinazione devono essere nominativi validi (da una a nove lettere
+   maiuscole o cifre con un SSID facoltativo di uno o due caratteri), l'origine
+   non può essere un segnaposto NOCALL/N0CALL/WIDE/TRACE/TCP, il percorso può
+   contenere al massimo otto nominativi o alias validi (``*`` ammesso come
+   marcatore di uso) e nessuno può essere ``NOGATE``, ``RFONLY``, un token
+   ``TCP*`` o un costrutto q, e nessun campo può essere troppo lungo per il suo
+   buffer — un campo interno non viene mai troncato in un'intestazione diversa.
+   Altrimenti l'intestazione RF esterna
    viene scartata del tutto e tutte le fasi restanti — dal filtro per tipo di
    payload in poi — vengono eseguite contro il pacchetto interno: la sua
    propria origine, destinazione, percorso e payload, esattamente come se
@@ -591,7 +601,8 @@ Lo snapshot ``igate_stats_t`` (``igate_get_stats()``) porta:
    * - ``dropByReason[]``
      - Contatori di scarto per-ragione, indicizzati da ``drop_reason_t``. Le
        fasi RF→INET sopra coprono ``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``,
-       ``DROP_SAT_NOT_USED``, ``DROP_3RDPARTY_LOOP``, ``DROP_GENERIC_QUERY``,
+       ``DROP_SAT_NOT_USED``, ``DROP_3RDPARTY_LOOP``,
+       ``DROP_3RDPARTY_BAD_HEADER``, ``DROP_GENERIC_QUERY``,
        ``DROP_TYPE_FILTER``, ``DROP_RANGE_FILTER``, ``DROP_PREFIX_FILTER``,
        ``DROP_BUDLIST``, ``DROP_IS_LINE_TOO_LONG`` e ``DROP_TX_FAIL``; il
        lettore di righe RX copre ``DROP_IS_RX_LINE_TOO_LONG``. L'array

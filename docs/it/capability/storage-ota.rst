@@ -71,6 +71,9 @@ che abilita l'aggiornamento OTA dalla pagina **About / Firmware**
 dell'amministrazione web:
 
 #. L'operatore sceglie un ``.bin`` e lo carica (``POST /ota_update``).
+#. ``esp_ota_begin()`` cancella solo la parte dello slot inattivo coperta dal
+   ``Content-Length`` della richiesta (limitata alla dimensione dello slot), non
+   l'intero slot.
 #. È trasmesso a flusso direttamente nello slot inattivo via ``esp_ota_write()``
    — mai memorizzato interamente in RAM — con una barra di progresso.
 #. Una volta scritto e verificato, il dispositivo si riavvia nel nuovo slot.

@@ -638,7 +638,16 @@ La administración web conoce dos cuentas, ambas configuradas en la página
 
 * **Administrador** — ``g_config.http_username`` / ``http_password``, la cuenta
   que la estación siempre tuvo (``admin`` / ``admin`` de fábrica). Acceso
-  completo.
+  completo, una vez reemplazada la contraseña de fábrica: mientras el par sea
+  exactamente ``admin`` / ``admin`` (``web_factory_credentials_active()``) todas
+  las páginas muestran un aviso y ``web_check_auth_admin()`` admite cambios solo
+  en la ruta ``/system``, respondiendo ``403`` con un enlace a la página
+  *Sistema* en todas las demás rutas que escriben. Un guardado que deja el par
+  de fábrica lo dice en lugar de la confirmación normal. Un usuario en blanco,
+  que desactiva el aviso de contraseña, solo se acepta junto con la casilla
+  *Desactivar la protección por contraseña* marcada en el mismo guardado; sin
+  ella el par de administrador conserva sus valores y la página explica por
+  qué.
 * **Solo lectura** — ``g_config.http_ro_username`` / ``http_ro_password``,
   opcional y sin configurar de fábrica. Existe solo mientras su usuario no esté
   vacío, y nunca puede ser el nombre del administrador: los dos pares se cotejan
@@ -654,9 +663,10 @@ estaciones oídas, el listado de almacenamiento. Lo que una sesión de solo
 lectura no puede hacer es cambiar nada: ningún formulario de ajustes guarda,
 ningún archivo se sube, descarga, borra ni formatea, no se acepta ninguna imagen
 de firmware, no se ejecuta ningún reinicio de fábrica, no se transmite nada y
-ninguna prueba de transmisor activa la radio. Lo único que sí puede manejar es
-la consola de registro, cuyos *Iniciar* y *Detener* conmutan un espejo de la
-salida de la propia estación y no cambian nada en ella.
+ninguna prueba de transmisor activa la radio. Puede leer la consola de registro
+mientras el administrador la ejecuta, pero no iniciarla ni detenerla: un inicio
+toma el anillo de captura de un heap que la estación trata como escaso, y una
+detención termina una captura que otra persona puede estar mirando.
 
 El límite se aplica en los manejadores, en ``web_common.c``:
 
@@ -666,16 +676,19 @@ El límite se aplica en los manejadores, en ``web_common.c``:
   ``403 Forbidden`` a una sesión de solo lectura, y es con lo que empieza todo
   manejador que escribe: todo guardado ``POST``, ``/upload``, ``/download``,
   ``/delete``, ``/format``, ``/default``, ``/ota_update``, las pruebas de radio
-  y las rutas de mensajes salientes. ``/logs/start``, ``/logs/stop`` y
-  ``/logs/read`` son las excepciones deliberadas y siguen con
-  ``web_check_auth()``.
+  y las rutas de mensajes salientes, ``/logs/start`` y ``/logs/stop``
+  incluidas. ``/logs/read`` es la única ruta de ese tipo que queda en
+  ``web_check_auth()``: solo rearma el tiempo de inactividad de la captura, así
+  la sesión de solo lectura puede mirar una captura que ejecuta el
+  administrador.
 
 Las páginas además *parecen* de solo lectura para ese rol, pero nada descansa en
 ello. Se dibuja un aviso sobre cada página; ``web_send_footer()`` añade un
 pequeño script que desactiva todos los controles de formulario salvo el cajón de
-navegación y los que una página marca ``.ro-ok`` (el botón de la consola de
-registro, la pausa y el borrado del tráfico en el panel, todos controles de
-vista del navegador); y la página de almacenamiento omite por completo el
+navegación y los que una página marca ``.ro-ok`` (la pausa y el borrado del
+tráfico en el panel, controles de vista del navegador); el botón de la consola
+de registro se desactiva con el resto, y el script de la página consulta la
+captura desde que carga; y la página de almacenamiento omite por completo el
 formulario de subida, el botón de formateo y las acciones de descarga y borrado
 por archivo, ya que un ``<a href>`` no lleva estado desactivado que un script
 pueda fijar. Un control reactivado desde la consola del navegador compra un
@@ -722,6 +735,30 @@ ese momento; un origen bloqueado pierde su entrada solo cuando todas están
 bloqueadas, de modo que una ráfaga de peticiones desde muchas direcciones no
 puede borrar el bloqueo de quien está probando contraseñas.
 
+.. _es-web-admin-host-check:
+
+Comprobación de Host (DNS rebinding)
+====================================
+
+``web_check_auth()`` rechaza, antes que nada y para todo método, una petición
+cuya cabecera ``Host`` no nombre a esta estación. Se responde
+``421 Misdirected Request``. Un ``Host`` se acepta cuando es:
+
+* un literal de dirección IPv4, o uno IPv6 entre corchetes, con o sin puerto —
+  un navegador solo envía uno cuando el operador lo escribió;
+* el nombre de host de red de la interfaz de estación o del SoftAP
+  (``esp_netif_get_hostname()``);
+* uno de los nombres listados, separados por comas, en
+  ``CONFIG_APRS_WEB_ALLOWED_HOSTS`` (menú *APRS web admin* de
+  ``idf.py menuconfig``, vacío por defecto), para una entrada DNS local o un
+  proxy inverso que reenvía el ``Host`` original.
+
+La comprobación de mismo origen de abajo compara ``Origin`` con ``Host``, y la
+supera una página servida bajo un nombre ajeno que un servidor DNS resuelve a
+esta estación: es del mismo origen que sus propias peticiones y puede aportar
+credenciales propias. Rechazar todo nombre al que la estación no responde es lo
+que deja fuera a una página así.
+
 Protección de mismo origen (CSRF)
 ==================================
 
@@ -735,7 +772,8 @@ coincide, se rechaza con ``403 Forbidden`` sin importar qué credenciales
 lleve.
 
 Esto es deliberadamente independiente de Basic Auth. Dejar el usuario en
-blanco en la página System es una forma admitida de ejecutar el panel de
+blanco en la página System, con *Desactivar la protección por contraseña*
+marcada en el mismo guardado, es una forma admitida de ejecutar el panel de
 administración sin contraseña, pero solo elimina el aviso de inicio de
 sesión — no relaja el requisito de mismo origen, porque una petición
 entre sitios originada en el navegador es una amenaza con o sin contraseña

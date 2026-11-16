@@ -30,8 +30,10 @@
 #include "aprs_service.h"                       // APRS_SOFTWARE_NAME: the firmware name shown as the HTTP auth realm and page title
 #include "esp32idf_radioamateur_modem_config.h" // MODEM_ADC_GPIO/MODEM_DAC_GPIO/MODEM_PTT_GPIO: fixed audio front-end + PTT pins for the GPIO registry
 #include "esp_log.h"
+#include "esp_netif.h"         // esp_netif_get_hostname(): the station host name accepted in the Host header
 #include "esp_timer.h"         // esp_timer_get_time(): monotonic clock for the login lockout window
 #include "gps.h"               // GPS_UART_RX_GPIO/TX_GPIO: fixed pins for the GPIO registry
+#include "lwip/inet.h"         // inet_pton(): IP literals accepted in the Host header
 #include "lwip/sockets.h"      // getpeername(): client IP for the per-source login lockout
 #include "sensors_local_i2c.h" // SENSORS_LOCAL_I2C_SDA_GPIO/SCL_GPIO: fixed pins for the GPIO registry
 #include "str_append.h"        // str_is_line_break_char()
@@ -273,6 +275,103 @@ static bool web_check_csrf_origin(httpd_req_t *req) {
     return false; // neither header present: can't confirm same-origin
 }
 
+// ---------------------------------------------------------------- Host check
+//
+// The same-origin check above compares Origin with the request's own Host, so
+// it cannot tell this station from a foreign name that a DNS server has been
+// made to resolve to this station's address. A page served under such a name
+// is same-origin with every request it sends here, cached credentials or not,
+// and can supply credentials of its own. What closes that gap is refusing any
+// Host the station does not answer to: an IP address literal (a browser only
+// sends one when the operator typed it, never for a name it resolved), the
+// station's own network host name, and the names listed in
+// CONFIG_APRS_WEB_ALLOWED_HOSTS for a reverse proxy or a local DNS entry.
+
+// Case-insensitive comparison of a length-delimited name against a
+// NUL-terminated one.
+static bool web_host_name_equals(const char *name, size_t len, const char *other) {
+    return other != NULL && strlen(other) == len && len > 0 && strncasecmp(name, other, len) == 0;
+}
+
+// True if the comma-separated list contains the length-delimited name.
+// Blanks around each entry are ignored.
+static bool web_host_in_list(const char *name, size_t len, const char *list) {
+    const char *p = list;
+    while (p != NULL && *p != 0) {
+        while (*p == ' ' || *p == ',')
+            p++;
+        const char *end = p;
+        while (*end != 0 && *end != ',')
+            end++;
+        const char *last = end;
+        while (last > p && last[-1] == ' ')
+            last--;
+        if ((size_t)(last - p) == len && len > 0 && strncasecmp(p, name, len) == 0)
+            return true;
+        p = end;
+    }
+    return false;
+}
+
+// True if the authority sent in the Host header names this station.
+static bool web_host_is_allowed(const char *host) {
+    // Splits "name[:port]" or "[v6]:port" into the name part alone.
+    const char *name = host;
+    size_t len;
+    if (host[0] == '[') {
+        const char *close = strchr(host, ']');
+        if (close == NULL)
+            return false;
+        name = host + 1;
+        len = (size_t)(close - name);
+        if (close[1] != 0 && close[1] != ':')
+            return false;
+    } else {
+        const char *colon = strchr(host, ':');
+        len = colon != NULL ? (size_t)(colon - host) : strlen(host);
+    }
+    if (len == 0 || len >= 64)
+        return false;
+
+    char literal[64];
+    memcpy(literal, name, len);
+    literal[len] = 0;
+    // A trailing dot names the same host in DNS, so it is matched without it.
+    if (len > 1 && literal[len - 1] == '.')
+        literal[--len] = 0;
+
+    unsigned char addr[16];
+    if (inet_pton(AF_INET, literal, addr) == 1)
+        return true;
+    if (host[0] == '[' && inet_pton(AF_INET6, literal, addr) == 1)
+        return true;
+
+    const char *ifkeys[] = { "WIFI_STA_DEF", "WIFI_AP_DEF" };
+    for (size_t i = 0; i < sizeof(ifkeys) / sizeof(ifkeys[0]); i++) {
+        esp_netif_t *netif = esp_netif_get_handle_from_ifkey(ifkeys[i]);
+        const char *hostname = NULL;
+        if (netif != NULL && esp_netif_get_hostname(netif, &hostname) == ESP_OK && web_host_name_equals(literal, len, hostname))
+            return true;
+    }
+
+    return web_host_in_list(literal, len, CONFIG_APRS_WEB_ALLOWED_HOSTS);
+}
+
+// Refuses, with 421, a request whose Host header does not name this station.
+// A request without a Host header is an HTTP/1.0 client, which no browser is,
+// and is refused the same way.
+static bool web_check_host(httpd_req_t *req) {
+    char host[128];
+    if (httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host)) == ESP_OK && host[0] != 0 && web_host_is_allowed(host))
+        return true;
+
+    ESP_LOGW(TAG, "request for %s refused: Host header does not name this station", req->uri);
+    httpd_resp_set_status(req, "421 Misdirected Request");
+    httpd_resp_set_type(req, "text/html");
+    web_send_standalone_page(req, "<h1>" TR_FORBIDDEN_HOST "</h1>");
+    return false;
+}
+
 // ---------------------------------------------------------------- Basic Auth
 //
 // Two accounts share one Basic realm. The administrator pair is the one the
@@ -351,11 +450,31 @@ bool web_is_readonly(httpd_req_t *req) {
     return web_request_role(req) == WEB_ROLE_READONLY;
 }
 
+bool web_factory_credentials_active(void) {
+    return strcmp(g_config.http_username, APP_CONFIG_DEFAULT_HTTP_USERNAME) == 0 && strcmp(g_config.http_password, APP_CONFIG_DEFAULT_HTTP_PASSWORD) == 0;
+}
+
+// True if the request path, without its query string, is exactly path.
+static bool web_request_path_is(httpd_req_t *req, const char *path) {
+    size_t len = strlen(path);
+    return strncmp(req->uri, path, len) == 0 && (req->uri[len] == 0 || req->uri[len] == '?');
+}
+
 bool web_check_auth_admin(httpd_req_t *req) {
     if (!web_check_auth(req))
         return false;
-    if (web_request_role(req) == WEB_ROLE_ADMIN)
-        return true;
+    if (web_request_role(req) == WEB_ROLE_ADMIN) {
+        // The factory pair is published in the documentation, so while it is
+        // in use the administrator account can do one thing only: replace it
+        // on the System page.
+        if (!web_factory_credentials_active() || web_request_path_is(req, "/system"))
+            return true;
+        ESP_LOGW(TAG, "factory credentials in use, %s refused", req->uri);
+        httpd_resp_set_status(req, "403 Forbidden");
+        httpd_resp_set_type(req, "text/html");
+        web_send_standalone_page(req, "<h1>" TR_FORBIDDEN_DEFAULT_PASSWORD "</h1><p><a href='/system'>" TR_DEFAULT_PASSWORD_GO_SYSTEM "</a></p>");
+        return false;
+    }
 
     // A read-only session that reached a writing handler either typed the URL
     // or posted a form the page did not offer it. Either way the answer is the
@@ -370,6 +489,13 @@ bool web_check_auth_admin(httpd_req_t *req) {
 }
 
 bool web_check_auth(httpd_req_t *req) {
+    // The Host check comes before everything else and covers every method: a
+    // request addressed to a name the station does not answer to is refused
+    // whatever it carries, which is what keeps a page served from a foreign
+    // name out of this interface even when it is resolved to this address.
+    if (!web_check_host(req))
+        return false;
+
     // Same-origin check first, before Basic Auth is even evaluated and before
     // the "no password configured" bypass below: a cross-site request has no
     // business reaching this handler regardless of whether it happens to
@@ -1083,6 +1209,10 @@ void web_send_header(httpd_req_t *req, const char *title, const char *active_men
     // responding rather than like the viewer it is.
     if (web_is_readonly(req))
         httpd_resp_sendstr_chunk(req, "<p class='ro-banner'>" TR_RO_BANNER "</p>");
+    // Shown to everyone while the factory pair is in use, because every page
+    // but System refuses its changes until the password is replaced.
+    if (web_factory_credentials_active())
+        httpd_resp_sendstr_chunk(req, "<p class='ro-banner'>" TR_DEFAULT_PASSWORD_BANNER "</p>");
 
     if (title) {
         httpd_resp_sendstr_chunk(req, "<h1>");
@@ -1179,9 +1309,8 @@ void web_send_footer(httpd_req_t *req) {
     // Two kinds of control stay live. The navigation checkbox carries the
     // drawer's open/closed state on a narrow screen and is not a form field at
     // all, and anything a page marks .ro-ok is a view control rather than a
-    // station control: the log console's Start/Stop and the dashboard's
-    // traffic pause and clear, none of which change anything outside the
-    // browser window they are pressed in.
+    // station control: the dashboard's traffic pause and clear, neither of
+    // which changes anything outside the browser window it is pressed in.
     //
     // The pass is re-run on every DOM change because several pages build rows
     // from their own script after load - the Winlink message list, the chat

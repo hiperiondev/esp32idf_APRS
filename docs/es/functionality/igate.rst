@@ -232,7 +232,16 @@ agregado opaco.
    empieza por ``}`` lleva su propia línea interior completa
    ``SRC>DST,PATH:carga``. Si esa ruta interior ya lleva ``TCPIP`` o
    ``TCPXX``, la trama ya llegó a APRS-IS una vez y se descarta como bucle
-   (``DROP_3RDPARTY_LOOP``). En caso contrario se descarta por completo la
+   (``DROP_3RDPARTY_LOOP``). La cabecera interior se somete luego a las reglas
+   con que se pasa la cabecera AX.25 exterior, y si no las cumple se descarta
+   con ``DROP_3RDPARTY_BAD_HEADER``: origen y destino deben ser indicativos
+   válidos (de uno a nueve letras mayúsculas o dígitos con un SSID opcional de
+   uno o dos caracteres), el origen no puede ser un comodín NOCALL/N0CALL/WIDE/
+   TRACE/TCP, la ruta puede tener como máximo ocho indicativos o alias válidos
+   (``*`` admitido como marca de usado) y ninguno puede ser ``NOGATE``,
+   ``RFONLY``, un token ``TCP*`` ni una construcción q, y ningún campo puede ser
+   demasiado largo para su búfer — un campo interior nunca se trunca en una
+   cabecera distinta. En caso contrario se descarta por completo la
    cabecera RF exterior y el resto de las etapas — desde el filtro por tipo de
    carga útil en adelante — se ejecutan contra el paquete interior: su propio
    origen, destino, ruta y carga útil, exactamente como si esa estación se
@@ -591,7 +600,8 @@ La instantánea ``igate_stats_t`` (``igate_get_stats()``) lleva:
    * - ``dropByReason[]``
      - Contadores de descarte por-razón, indexados por ``drop_reason_t``. Las
        etapas RF→INET anteriores cubren ``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``,
-       ``DROP_SAT_NOT_USED``, ``DROP_3RDPARTY_LOOP``, ``DROP_GENERIC_QUERY``,
+       ``DROP_SAT_NOT_USED``, ``DROP_3RDPARTY_LOOP``,
+       ``DROP_3RDPARTY_BAD_HEADER``, ``DROP_GENERIC_QUERY``,
        ``DROP_TYPE_FILTER``, ``DROP_RANGE_FILTER``, ``DROP_PREFIX_FILTER``,
        ``DROP_BUDLIST``, ``DROP_IS_LINE_TOO_LONG`` y ``DROP_TX_FAIL``; el
        lector de línea RX cubre ``DROP_IS_RX_LINE_TOO_LONG``. El arreglo

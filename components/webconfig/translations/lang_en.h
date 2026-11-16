@@ -44,6 +44,15 @@
 #define TR_FORBIDDEN_CSRF "403 Forbidden: request origin could not be verified"
 /** Body of the HTTP 403 response sent when a read-only account requests something that would change the station. */
 #define TR_FORBIDDEN_READONLY "403 Forbidden: this account is read-only"
+/** Body of the HTTP 421 response sent when the Host header of a request does not name this station. */
+#define TR_FORBIDDEN_HOST "421 Misdirected Request: this host name is not served here. Open the web admin by the station's IP address."
+/** Body of the HTTP 403 response sent while the factory administrator password is in use and the request is not on the System page. */
+#define TR_FORBIDDEN_DEFAULT_PASSWORD "403 Forbidden: the factory administrator password is still in use. Change it on the System page first."
+/** Link to the System page shown under the factory-password refusal. */
+#define TR_DEFAULT_PASSWORD_GO_SYSTEM "Go to the System page"
+/** Banner shown at the top of every page while the factory administrator password is in use. */
+#define TR_DEFAULT_PASSWORD_BANNER                                                                                                                             \
+    "The factory administrator password (admin / admin) is still in use. Change it on the System page: until then no other page accepts changes."
 /** Banner shown at the top of every page while the session is signed in with the read-only account. */
 #define TR_RO_BANNER "Read-only session: everything on this page is shown, nothing on it can be changed."
 /** Interstitial shown after a successful save, while the browser is redirected back to the form. */
@@ -1000,14 +1009,23 @@
 #define TR_SYS_WEB_ADMIN_LOGIN "Web Admin Login"
 /** System page note clarifying that a blank username only disables the password prompt, rendered on the System page. */
 #define TR_SYS_WEB_ADMIN_LOGIN_NOTE                                                                                                                            \
-    "Leaving the username blank disables the password prompt only. Same-origin requests are still required for every change made through this admin "          \
-    "interface."
+    "Leaving the username blank disables the password prompt only, and needs 'Disable password protection' ticked in the same save. Same-origin requests to "  \
+    "a host name this station answers to are still required for every change made through this admin interface."
+/** System page label of the checkbox that confirms a blank administrator username, rendered on the System page. */
+#define TR_SYS_AUTH_OFF "Disable password protection"
+/** Message shown after a System page save that left the administrator username blank without ticking the confirmation box. */
+#define TR_SYS_AUTH_OFF_REFUSED                                                                                                                                \
+    "The other settings were saved, but the administrator login was left unchanged: a blank username turns password protection off, which needs 'Disable "     \
+    "password protection' ticked in the same save."
+/** Message shown after a System page save that keeps the factory administrator password. */
+#define TR_SYS_DEFAULT_PASSWORD_KEPT                                                                                                                           \
+    "Saved, but the administrator login is still the factory admin / admin. Choose a different password: until then no other page accepts changes."
 /** System page legend for the read-only account credentials, rendered on the System page. */
 #define TR_SYS_WEB_RO_LOGIN "Web Read-Only Login"
 /** System page note describing what the read-only account may and may not do, rendered on the System page. */
 #define TR_SYS_WEB_RO_LOGIN_NOTE                                                                                                                               \
-    "A second account that sees every page but changes nothing: no setting is saved, no file is uploaded, downloaded, deleted or formatted, and nothing is "   \
-    "transmitted. Only the log console can be started and stopped. Leave the username blank to have no read-only account at all."
+    "A second account that sees every page but changes nothing: no setting is saved, no file is uploaded, downloaded, deleted or formatted, nothing is "       \
+    "transmitted, and the log console can be read but not started or stopped. Leave the username blank to have no read-only account at all."
 /** System page label for the read-only account username, rendered on the System page. */
 #define TR_SYS_RO_USERNAME "Read-only username"
 /** System page label for the read-only account password, rendered on the System page. */
@@ -1205,6 +1223,10 @@
 #define TR_WIFI_STA_NEEDS_SSID                                                                                                                                 \
     "Saved, but this will NOT connect: Mode selects a station, yet no WiFi Client block has both 'Enable' ticked and an SSID filled in. Fix that and Save "    \
     "again."
+/** Message shown after a Wireless page save whose access point password is one to seven characters long. */
+#define TR_WIFI_AP_PASS_TOO_SHORT                                                                                                                              \
+    "The other settings were saved, but the access point password was left unchanged: it must be at least 8 characters long, or empty for an open access "     \
+    "point."
 /** Wireless page label for scanning, rendered on the Wireless page. */
 #define TR_WIFI_SCANNING "Scanning..."
 /** Wireless page label for scan failed, rendered on the Wireless page. */
@@ -2576,6 +2598,14 @@
 #define TR_H_SYS_RO_USERNAME                                                                                                                                   \
     "Login name of the account that may look at the station but not change it. Leave it blank and no such account exists; it can never be the administrator "  \
     "name, which always wins."
+/** Contextual help for the "Disable password protection" option. */
+#define TR_H_SYS_AUTH_OFF                                                                                                                                      \
+    "Confirms a blank administrator username for this save. Without it a blank username is refused and the login stays as it was. The box is never "           \
+    "remembered."
+/** Contextual help for the "AP Password" option. */
+#define TR_H_WIFI_AP_PASSWORD                                                                                                                                  \
+    "WPA2 password of the station's own access point: at least 8 characters. Leave it empty to run an open access point. The factory password is drawn per "   \
+    "device and printed on the serial console at every boot until it is changed."
 /** Contextual help for the "Username" option. */
 #define TR_H_F_USERNAME "Login name for the service. For APRS-IS it is the station callsign that the passcode was issued for."
 /** Contextual help for the "Callsign" option. */

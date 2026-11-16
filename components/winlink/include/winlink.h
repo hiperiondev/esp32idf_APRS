@@ -475,8 +475,13 @@ bool winlink_comment_active(void);
  *
  * @details Compared on the base callsign, ignoring any @c "-SSID" suffix on
  * either side, the same rule handleIncomingAPRS() applies to an addressee. Used
- * by the messaging engine to route Winlink traffic and by the IGate's
- * message-gating rule to recognise a service reply.
+ * by the IGate's message-gating rule to recognise a service reply relayed for
+ * a neighbouring station.
+ *
+ * This station's own session is stricter: it takes challenges and replies
+ * only from a sender that matches ::app_config_t::wl_service_call exactly,
+ * SSID included (no SSID and @c "-0" being the same address), and it answers
+ * a challenge of at most three digits once per login attempt.
  *
  * @param call Callsign to test. NULL or empty is never the service.
  * @return true when @p call is the service callsign.

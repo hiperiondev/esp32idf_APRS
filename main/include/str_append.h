@@ -130,6 +130,43 @@ static inline bool str_append_truncated(size_t used, size_t buf_size) {
 }
 
 /**
+ * @brief Copy as much of @p src as fits into @p dst, always NUL-terminated.
+ *
+ * The copy for a fixed-width field that holds a prefix of a longer string by
+ * design: a callsign table, a message identifier, a command kept for
+ * retransmission. At most @p dst_size - 1 bytes of @p src are read, and the
+ * byte after the last one copied is set to NUL, so the result is a C string
+ * whatever the length of @p src.
+ *
+ * Unlike strncpy() it never leaves the destination unterminated and never
+ * pads it with zeros, and unlike snprintf("%s") it does not make the compiler
+ * reason about a format, so a deliberate truncation is not reported as a
+ * possible one.
+ *
+ * The cut is made at a byte boundary. Every field this is used for holds
+ * ASCII; free text whose cut must land on a whole UTF-8 character goes through
+ * str_copy_utf8_safe() instead.
+ *
+ * @param dst      Destination buffer.
+ * @param dst_size Size of @p dst in bytes; nothing is written when it is 0.
+ * @param src      NUL-terminated source; NULL copies the empty string.
+ * @return true if the whole of @p src fit, false if it was cut short or
+ *         @p dst_size is 0.
+ */
+static inline bool str_copy_bounded(char *dst, size_t dst_size, const char *src) {
+    if (dst == NULL || dst_size == 0)
+        return false;
+    size_t n = (src != NULL) ? strnlen(src, dst_size) : 0;
+    bool fit = n < dst_size;
+    if (!fit)
+        n = dst_size - 1;
+    if (n > 0)
+        memcpy(dst, src, n);
+    dst[n] = 0;
+    return fit;
+}
+
+/**
  * @brief Test whether @p c is one of the characters str_copy_strip_reserved()
  * removes from operator-editable free text.
  *

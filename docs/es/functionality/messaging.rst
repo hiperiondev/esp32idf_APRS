@@ -76,6 +76,22 @@ El motor de mensajes
   ``MSG_ACK_HOLDOFF_S`` (15 s) comparten ese ack en lugar de activar cada una
   el transmisor para el suyo. Una copia que llega más tarde es la propia
   retransmisión del remitente y se reconoce de nuevo.
+* **Un ack vuelve por donde llegó el mensaje.** Un mensaje recibido por RF se
+  reconoce por las patas para las que está configurada la mensajería
+  (``msg_rf`` / ``msg_inet``), como cualquier mensaje saliente. Un mensaje
+  recibido de APRS-IS se reconoce solo por APRS-IS, salvo que su remitente
+  también se haya oído directamente por RF dentro de ``igate_local_window_sec``:
+  cualquiera en APRS-IS puede dirigirse a esta estación, y un ack no es motivo
+  para poner en el aire el tráfico de una estación de Internet.
+* **Las tramas RF automáticas tienen presupuesto.** La pata RF de un ack es una
+  trama automática: se toma de un cubo de fichas de ``APRS_AUTO_TX_BURST`` (6)
+  tramas que se recarga a razón de una cada ``APRS_AUTO_TX_REFILL_S`` (10 s),
+  compartido por todos los remitentes, y está sujeta al techo de ciclo de
+  trabajo como una baliza. Un ack que encuentra el cubo vacío no se transmite
+  y se cuenta como ``DROP_AUTO_TX_RATE``; el reintento del remitente se
+  responde cuando el presupuesto se ha recargado. Los mensajes que envía el
+  operador, sus reintentos y las respuestas a consultas no son tramas
+  automáticas y siguen sin estar sujetos al techo de ciclo de trabajo.
 * **Los números de mensaje se verifican.** El identificador que sigue a ``{``
   se usa solo cuando es un número de mensaje APRS bien formado: de una a cinco
   letras o dígitos, seguidos opcionalmente de ``}`` y hasta dos más (el

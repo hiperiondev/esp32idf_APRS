@@ -93,6 +93,9 @@ esp_err_t page_system_get(httpd_req_t *req) {
         httpd_resp_sendstr_chunk(req, buf);
     }
     web_password_toggle(req, "pwd_httpPass");
+    // Unticked on every render: turning the password prompt off is confirmed
+    // with each save that leaves the username blank, never remembered.
+    web_field_checkbox(req, TR_SYS_AUTH_OFF, "authOff", false);
     httpd_resp_sendstr_chunk(req, "<p><small>" TR_SYS_WEB_ADMIN_LOGIN_NOTE "</small></p>");
     web_fieldset_close(req);
 
@@ -167,8 +170,24 @@ esp_err_t page_system_post(httpd_req_t *req) {
     }
 
     app_config_lock();
-    web_form_get(body, "httpUser", g_config.http_username, sizeof(g_config.http_username));
-    web_form_get_password(body, "httpPass", g_config.http_password, sizeof(g_config.http_password));
+    // A blank username turns the password prompt off, so it is only taken
+    // together with the confirmation box. Without it the administrator pair
+    // keeps its current values and the operator is told why after the save.
+    bool authOffRefused = false;
+    {
+        char user[sizeof(g_config.http_username)];
+        char pass[sizeof(g_config.http_password)];
+        memcpy(user, g_config.http_username, sizeof(user));
+        memcpy(pass, g_config.http_password, sizeof(pass));
+        web_form_get(body, "httpUser", user, sizeof(user));
+        web_form_get_password(body, "httpPass", pass, sizeof(pass));
+        if (user[0] == 0 && !web_form_get_bool(body, "authOff")) {
+            authOffRefused = true;
+        } else {
+            memcpy(g_config.http_username, user, sizeof(user));
+            memcpy(g_config.http_password, pass, sizeof(pass));
+        }
+    }
     web_form_get(body, "httpRoUser", g_config.http_ro_username, sizeof(g_config.http_ro_username));
     web_form_get_password(body, "httpRoPass", g_config.http_ro_password, sizeof(g_config.http_ro_password));
     // An operator who types the administrator name into the read-only field
@@ -210,6 +229,18 @@ esp_err_t page_system_post(httpd_req_t *req) {
     // right after app_config_load() at boot, so this selection is re-applied
     // on every subsequent power-up too.
     cpu_freq_apply();
+
+    // The two credential outcomes that need the operator's attention are
+    // reported in place of the plain confirmation, once the save itself has
+    // succeeded: a blank username without the confirmation box, and a save
+    // that leaves the factory pair in use, which keeps every other page
+    // refusing changes.
+    if (ok && (authOffRefused || web_factory_credentials_active())) {
+        httpd_resp_set_type(req, "text/html");
+        web_send_standalone_page(req, authOffRefused ? "<p class='err'>" TR_SYS_AUTH_OFF_REFUSED "</p><p><a href='/system'>&larr; /system</a></p>"
+                                                     : "<p class='err'>" TR_SYS_DEFAULT_PASSWORD_KEPT "</p><p><a href='/system'>&larr; /system</a></p>");
+        return ESP_OK;
+    }
     web_send_save_result(req, ok, "/system");
     return ESP_OK;
 }

@@ -20,10 +20,16 @@ credentials, so there is nothing for an auth check to guard.
 The two accounts are described under *Accounts and roles* in
 :ref:`en-web-admin`. In the table below, every ``POST`` route requires the
 administrator account, as do ``GET /download`` and the file actions on the
-Storage page. The three exceptions are ``/logs/start``, ``/logs/stop`` and
-``/logs/read``: they are ``POST`` routes a read-only session may use, because
-what they switch is a mirror of the station's own console output and nothing on
-the station changes with it.
+Storage page, ``/logs/start`` and ``/logs/stop`` included. The one exception is
+``/logs/read``: a ``POST`` route a read-only session may use to watch a capture
+the administrator runs, since all it changes is the capture's idle timeout.
+While the factory administrator password is in use, the administrator routes
+other than ``POST /system`` answer ``403`` with a link to the *System* page.
+
+Every route, these included, first checks the ``Host`` header and answers
+``421 Misdirected Request`` when it names neither an IP address, the station's
+own network host name nor an entry of ``CONFIG_APRS_WEB_ALLOWED_HOSTS``; see
+:ref:`en-web-admin-host-check`.
 
 A request body — a form or a file upload — has to keep arriving. The server
 serves every request on one task, so a client that announces a
@@ -120,8 +126,9 @@ and ``/digi`` stays as the path preset page without the digipeater.
      - the replies the service has sent, oldest first (JSON)
    * - GET
      - ``/logs``
-     - console log viewer; rendering it has no effect on the mirror, the
-       page's script posts ``/logs/stop`` as it loads
+     - console log viewer; rendering it has no effect on the mirror. In an
+       administrator session the page's script posts ``/logs/stop`` as it
+       loads; in a read-only one it only polls ``/logs/read``
    * - POST
      - ``/logs/start``
      - switch the console mirror on (JSON ``{"ok":…,"seq":…}``)

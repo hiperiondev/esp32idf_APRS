@@ -20,11 +20,18 @@ proteggere.
 
 I due account sono descritti in *Account e ruoli*, in :ref:`it-web-admin`. Nella
 tabella seguente ogni route ``POST`` richiede l'account amministratore, così
-come ``GET /download`` e le azioni sui file della pagina di archiviazione. Le
-tre eccezioni sono ``/logs/start``, ``/logs/stop`` e ``/logs/read``: sono route
-``POST`` che una sessione di sola lettura può usare, perché ciò che commutano è
-uno specchio dell'output di console della stazione stessa e nulla della
-stazione cambia con esso.
+come ``GET /download`` e le azioni sui file della pagina di archiviazione,
+``/logs/start`` e ``/logs/stop`` comprese. L'unica eccezione è ``/logs/read``:
+una route ``POST`` che una sessione di sola lettura può usare per guardare una
+cattura avviata dall'amministratore, dato che l'unica cosa che cambia è il
+timeout di inattività della cattura. Finché la password di amministratore di
+fabbrica è in uso, le route di amministratore diverse da ``POST /system``
+rispondono ``403`` con un collegamento alla pagina *Sistema*.
+
+Ogni route, queste comprese, controlla prima l'intestazione ``Host`` e risponde
+``421 Misdirected Request`` quando non nomina né un indirizzo IP, né il nome
+host di rete della stazione, né una voce di ``CONFIG_APRS_WEB_ALLOWED_HOSTS``;
+vedi :ref:`it-web-admin-host-check`.
 
 Il corpo di una richiesta — un modulo o il caricamento di un file — deve
 continuare ad arrivare. Il server serve ogni richiesta su un solo task, quindi
@@ -127,8 +134,9 @@ percorsi predefiniti senza il digipeater.
      - le risposte inviate dal servizio, dalla più vecchia (JSON)
    * - GET
      - ``/logs``
-     - visore del registro di console; mostrarla non tocca la copia: lo script
-       della pagina invia ``/logs/stop`` al caricamento
+     - visore del registro di console; mostrarla non tocca la copia. In una
+       sessione di amministratore lo script della pagina invia ``/logs/stop``
+       al caricamento; in una di sola lettura interroga solo ``/logs/read``
    * - POST
      - ``/logs/start``
      - attiva la copia della console (JSON ``{"ok":…,"seq":…}``)

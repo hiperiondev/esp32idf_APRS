@@ -143,6 +143,20 @@ el lanzamiento que dispare la próxima línea reenviada, o hasta el vaciado que
 la tarea en marcha hace al salir. No se pierde nada en ninguno de los dos
 casos; lo único que cuesta es un retraso de un segundo o poco más.
 
+Un apagado nunca libera nada que la tarea de sondeo siga usando.
+``telegram_stop()`` levanta la petición de parada junto con la bandera de
+cancelación de ambos manejadores de cliente
+(``telegram_bot_client_set_cancel()``), de modo que la petición en curso no hace
+ningún intento de transporte más y abandona la espera previa a uno; lo que queda
+es un único intento de sondeo largo, y la llamada espera por él,
+``poll_timeout_s`` más veinte segundos. Si la tarea sigue dentro cuando termina
+la espera, ``telegram_stop()`` y ``telegram_deinit()`` informan
+``ESP_ERR_TIMEOUT`` y no liberan nada: el servicio sigue arriba con su petición
+de parada levantada, la tarea trabajadora vuelve a encolar la misma acción para
+el tick siguiente, no se inicia ningún vaciado de notificaciones mientras tanto,
+y el apagado se completa cuando la tarea ha salido. Solo la tarea que el
+servicio registra como propia puede marcarlo detenido al salir.
+
 Mientras el bot funciona, el mismo tick de 1 Hz vuelve a publicar sus
 contadores y detecta un enlace a internet que desapareció o una tarea de
 sondeo que terminó, de modo que una estación que pierde su conexión informa

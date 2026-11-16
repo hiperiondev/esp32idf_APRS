@@ -53,11 +53,13 @@
 // the capture the operator is watching in another window, without any script
 // of this page ever running.
 //
-// The page is the one part of the admin UI a read-only account can operate.
-// Starting and stopping the mirror switches a copy of the station's own output
-// on and off and changes nothing else on it - no setting is written, nothing
-// is transmitted - so all three endpoints below stay on web_check_auth(),
-// where the rest of the POST routes take web_check_auth_admin().
+// Starting and stopping the mirror are administrator actions, like every
+// other POST route: a start claims the capture ring from a heap the station
+// treats as scarce, and a stop ends a capture somebody else may be watching.
+// Reading is open to the read-only account as well. A read-only session
+// therefore watches the capture the administrator runs: its page polls
+// /logs/read from the moment it loads and shows the lines while a capture is
+// running, and its button stays disabled.
 //
 // All three endpoints behind the page - /logs/start, /logs/stop and
 // /logs/read - are POST, not GET, for the reason set out in web_common.c:
@@ -90,7 +92,7 @@ static void logs_send_json(httpd_req_t *req, const char *json) {
 }
 
 esp_err_t page_logs_start_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
 
     bool ok = logcapture_start();
@@ -107,7 +109,7 @@ esp_err_t page_logs_start_post(httpd_req_t *req) {
 }
 
 esp_err_t page_logs_stop_post(httpd_req_t *req) {
-    if (!web_check_auth(req))
+    if (!web_check_auth_admin(req))
         return ESP_OK;
 
     logcapture_stop();
@@ -176,11 +178,9 @@ esp_err_t page_logs_get(httpd_req_t *req) {
     web_send_header(req, TR_F_LOGS, "logs");
 
     web_fieldset_open(req, TR_LOGS_FS_CONSOLE);
-    // Marked .ro-ok so the read-only pass in web_send_footer() leaves it
-    // alone: starting and stopping the mirror is a view control, and this page
-    // is nothing but a view. Its three endpoints admit the read-only role for
-    // the same reason.
-    web_raw(req, "<div class='log-actions'><button type='button' id='logBtn' class='ro-ok' "
+    // The read-only pass in web_send_footer() disables the button for a
+    // read-only session, whose start and stop requests the server refuses.
+    web_raw(req, "<div class='log-actions'><button type='button' id='logBtn' "
                  "onclick='logToggle()'>" TR_LOGS_BTN_START "</button> <span id='logStatus'></span></div>");
     web_raw(req, "<pre id='logBox' class='log-box'></pre>");
     web_fieldset_close(req);
@@ -190,22 +190,26 @@ esp_err_t page_logs_get(httpd_req_t *req) {
     // are translated, and the depth is the firmware's own ring size, so
     // trimming the browser's copy of the window to anything else would show a
     // number of rows the station never agreed to keep.
+    // LOG_RO tells the script it runs in a read-only session, which only
+    // watches: it polls from the start and never posts a start or a stop.
     {
-        char vars[384];
-        snprintf(vars, sizeof(vars), "<script>var LOG_START=\"%s\",LOG_STOP=\"%s\",LOG_MAX=%d,LOG_ERR_START=\"%s\",LOG_ERR_NET=\"%s\";", TR_LOGS_BTN_START,
-                 TR_LOGS_BTN_STOP, LOGCAPTURE_CAPACITY, TR_LOGS_ERR_START, TR_LOGS_ERR_NETWORK);
+        char vars[400];
+        snprintf(vars, sizeof(vars), "<script>var LOG_START=\"%s\",LOG_STOP=\"%s\",LOG_MAX=%d,LOG_ERR_START=\"%s\",LOG_ERR_NET=\"%s\",LOG_RO=%d;",
+                 TR_LOGS_BTN_START, TR_LOGS_BTN_STOP, LOGCAPTURE_CAPACITY, TR_LOGS_ERR_START, TR_LOGS_ERR_NETWORK, web_is_readonly(req) ? 1 : 0);
         web_raw(req, vars);
     }
 
-    // Polling runs on a fixed one-second tick and does nothing while the
-    // button is in its Start state, so the page costs the station nothing
-    // until a capture is asked for. Requests are not allowed to overlap: on a
+    // Polling runs on a fixed one-second tick and, in an administrator
+    // session, does nothing while the button is in its Start state, so the
+    // page costs the station nothing until a capture is asked for. A
+    // read-only session polls from the start, since the capture it shows is
+    // started and stopped by someone else. Requests are not allowed to overlap: on a
     // busy station an answer can take longer than the interval, and without
     // the in-flight guard the queued fetches would pile up against the
     // three-connection limit the admin server runs with.
     //
-    // The script's own first act is the /logs/stop that clears whatever an
-    // earlier visit left running. It is fired and forgotten: the window opens
+    // In an administrator session the script's own first act is the
+    // /logs/stop that clears whatever an earlier visit left running. It is fired and forgotten: the window opens
     // empty and the button reads Start regardless of the answer, and if the
     // request never lands the mirror still stops itself on its idle timeout.
     //
@@ -230,7 +234,7 @@ esp_err_t page_logs_get(httpd_req_t *req) {
                                   "fetch('/logs/"
                                   "read?since='+logSeq,{method:'POST'}).then(function(r){return "
                                   "r.json();}).then(function(v){"
-                                  "if(!v.run){logRun=false;logButton();return;}"
+                                  "if(!v.run){if(!LOG_RO){logRun=false;logButton();}return;}"
                                   "logSeq=v.seq;"
                                   "if(v.lines&&v.lines.length){"
                                   "for(var i=0;i<v.lines.length;i++)logLines.push(v.lines[i]);"
@@ -256,12 +260,14 @@ esp_err_t page_logs_get(httpd_req_t *req) {
                                   "logSeq=v.seq;logLines=[];logRender();logRun=true;logButton();"
                                   "}).catch(function(){btn.disabled=false;status.textContent=' '+LOG_ERR_NET;});"
                                   "}"
+                                  "if(LOG_RO){logRun=true;}else{"
                                   "logButton();"
                                   "fetch('/logs/stop',{method:'POST'}).catch(function(){});"
+                                  "}"
                                   "var logTimer=setInterval(logPoll,1000);"
                                   "window.addEventListener('pagehide',function(){"
                                   "clearInterval(logTimer);"
-                                  "if(logRun)logStop(true);"
+                                  "if(logRun&&!LOG_RO)logStop(true);"
                                   "});"
                                   "</script>");
 

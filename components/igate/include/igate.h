@@ -90,29 +90,33 @@ typedef enum {
  * traffic that was in fact transmitted.
  */
 typedef enum {
-    DROP_DUP = 0,            /**< Reserved: duplicates are tracked separately in igate_stats_t.dupCount and do not currently bump this array (kept for
-                                future/other-component use). */
-    DROP_TOO_SHORT,          /**< RF frame's info field shorter than the minimum usable length (IGate RF->INET). */
-    DROP_SRC_PLACEHOLDER,    /**< RF frame's source callsign matches one of the APRS-IS basic RX-IGate blacklist prefixes - NOCALL, N0CALL, WIDE, TRACE, TCP -
-                                which never identifies a real originating station and must never be gated onto APRS-IS (IGate RF->INET). */
-    DROP_NOT_APRS,           /**< RF frame is not a valid AX.25 UI frame with PID 0xF0 (no layer 3) - IGating.aspx requires exactly that shape of every frame
-                                gated onto APRS-IS, checked here independently of the modem's own allowNonAprs RX setting (IGate RF->INET). */
-    DROP_PATH_TOKEN,         /**< RF frame's path carries RFONLY/TCPIP/qA/NOGATE (IGate RF->INET). */
-    DROP_3RDPARTY_LOOP,      /**< RF frame is third-party ('}') traffic whose inner header already carries TCPIP/TCPXX, i.e. it already reached APRS-IS once
-                                (IGate RF->INET). */
-    DROP_3RDPARTY_NESTED,    /**< INET->RF selective third-party unwrap: the whitelisted station's payload is itself third-party-wrapped (a second '}'
-                                immediately after the unwrapped inner header's ':'), so unwrapping it further would re-gate an already multiply-wrapped frame.
-                                Rejected outright rather than unwrapped again or truncated (see aprs_service.c's inet2rfHandler()). */
-    DROP_3RDPARTY_NESTED_RF, /**< RF frame is third-party ('}') traffic whose payload, once unwrapped, is itself third-party-wrapped (a second '}'
-                                immediately after the unwrapped inner header's ':'). Rejected outright instead of being unwrapped only once and passed on,
-                                which would otherwise leave a still-'}'-prefixed payload for the type filter to catch incidentally rather than by design
-                                (see igate.c's thirdPartyUnwrap()). */
-    DROP_SAT_NOT_USED,       /**< RF frame repeated via a known satellite gate whose call isn't marked used ('*') (IGate RF->INET). */
-    DROP_GENERIC_QUERY,      /**< Frame/line is a generic query (info field starts with '?', e.g. "?APRS?", "?WX?") - dropped unconditionally in both
-                                directions regardless of rf2inetFilter/inet2rfFilter, since relaying one lets a single RF station trigger a flood of
-                                responses across the whole APRS-IS network. A directed query (":CALLSIGN :?APRSD", data type ':') is unaffected. */
-    DROP_TYPE_FILTER,        /**< Payload type not allowed by rf2inetFilter (RF->INET) or inet2rfFilter (INET->RF). */
-    DROP_RANGE_FILTER,       /**< Blocked by the local RF->INET range gate (g_config.rf2inet_range_en/rf2inet_range_km, see aprs_filter_haversine_km()). */
+    DROP_DUP = 0,             /**< Reserved: duplicates are tracked separately in igate_stats_t.dupCount and do not currently bump this array (kept for
+                                 future/other-component use). */
+    DROP_TOO_SHORT,           /**< RF frame's info field shorter than the minimum usable length (IGate RF->INET). */
+    DROP_SRC_PLACEHOLDER,     /**< RF frame's source callsign matches one of the APRS-IS basic RX-IGate blacklist prefixes - NOCALL, N0CALL, WIDE, TRACE, TCP -
+                                 which never identifies a real originating station and must never be gated onto APRS-IS (IGate RF->INET). */
+    DROP_NOT_APRS,            /**< RF frame is not a valid AX.25 UI frame with PID 0xF0 (no layer 3) - IGating.aspx requires exactly that shape of every frame
+                                 gated onto APRS-IS, checked here independently of the modem's own allowNonAprs RX setting (IGate RF->INET). */
+    DROP_PATH_TOKEN,          /**< RF frame's path carries RFONLY/TCPIP/qA/NOGATE (IGate RF->INET). */
+    DROP_3RDPARTY_LOOP,       /**< RF frame is third-party ('}') traffic whose inner header already carries TCPIP/TCPXX, i.e. it already reached APRS-IS once
+                                 (IGate RF->INET). */
+    DROP_3RDPARTY_NESTED,     /**< INET->RF selective third-party unwrap: the whitelisted station's payload is itself third-party-wrapped (a second '}'
+                                 immediately after the unwrapped inner header's ':'), so unwrapping it further would re-gate an already multiply-wrapped frame.
+                                 Rejected outright rather than unwrapped again or truncated (see aprs_service.c's inet2rfHandler()). */
+    DROP_3RDPARTY_NESTED_RF,  /**< RF frame is third-party ('}') traffic whose payload, once unwrapped, is itself third-party-wrapped (a second '}'
+                                 immediately after the unwrapped inner header's ':'). Rejected outright instead of being unwrapped only once and passed on,
+                                 which would otherwise leave a still-'}'-prefixed payload for the type filter to catch incidentally rather than by design
+                                 (see igate.c's thirdPartyUnwrap()). */
+    DROP_3RDPARTY_BAD_HEADER, /**< RF frame is third-party ('}') traffic whose unwrapped inner header fails the checks the outer AX.25 header gets: a
+                                 source or destination that is not a valid callsign, a NOCALL/N0CALL/WIDE/TRACE/TCP source, a path element that is not a
+                                 valid callsign or alias, more than eight path elements, or a path carrying NOGATE, RFONLY, TCP* or a q construct. Also
+                                 counts an inner field too long for its buffer, which is never truncated into a different header. */
+    DROP_SAT_NOT_USED,        /**< RF frame repeated via a known satellite gate whose call isn't marked used ('*') (IGate RF->INET). */
+    DROP_GENERIC_QUERY,       /**< Frame/line is a generic query (info field starts with '?', e.g. "?APRS?", "?WX?") - dropped unconditionally in both
+                                 directions regardless of rf2inetFilter/inet2rfFilter, since relaying one lets a single RF station trigger a flood of
+                                 responses across the whole APRS-IS network. A directed query (":CALLSIGN :?APRSD", data type ':') is unaffected. */
+    DROP_TYPE_FILTER,         /**< Payload type not allowed by rf2inetFilter (RF->INET) or inet2rfFilter (INET->RF). */
+    DROP_RANGE_FILTER,        /**< Blocked by the local RF->INET range gate (g_config.rf2inet_range_en/rf2inet_range_km, see aprs_filter_haversine_km()). */
     DROP_PREFIX_FILTER, /**< Blocked by the local RF->INET callsign-prefix gate (g_config.rf2inet_prefix_en/rf2inet_prefixes, see aprs_filter_prefix_match()).
                          */
     DROP_BUDLIST,       /**< Blocked by the local callsign whitelist/blacklist (see aprs_filter_budlist_pass()). */
@@ -156,10 +160,14 @@ typedef enum {
     DROP_MODEM_NOT_READY,     /**< RF TX attempted before the audio modem finished bring-up. */
     DROP_TX_QUEUE_FULL,       /**< RF TX ring already holds "TX buffers" pending frames; new frame discarded instead of queued. */
     DROP_TX_TOO_LONG,         /**< Outgoing TNC2 packet longer than the modem's frame buffer. */
-    DROP_TX_DUTY_CYCLE,       /**< Non-critical RF TX (beacon, object/item, weather, telemetry, or bulk IGate INET->RF relay) held back because the
+    DROP_TX_DUTY_CYCLE,       /**< Non-critical RF TX (beacon, object/item, weather, telemetry, automatic ack, or bulk IGate INET->RF relay) held back as the
                                  station's measured transmit airtime over the rolling duty-cycle window has reached the configured ceiling
-                                 (g_config.duty_cycle_en/duty_cycle_pct). Message traffic and digipeat repeats are exempt and always transmit; the deferred
-                                 frame is simply re-offered on its own next scheduled attempt, so this is a hold-back rather than a permanent loss. */
+                                 (g_config.duty_cycle_en/duty_cycle_pct). Messages the operator sends, query answers and digipeat repeats are exempt and
+                                 always transmit; automatic message acknowledgements are not. The deferred frame is re-offered on its own next scheduled
+                                 attempt, or answered again when the sender retries, so this is a hold-back rather than a permanent loss. */
+    DROP_AUTO_TX_RATE,        /**< Automatically generated RF frame (a message acknowledgement) held back because the automatic-frame budget is spent
+                                 (APRS_AUTO_TX_BURST frames, refilled at one every APRS_AUTO_TX_REFILL_S seconds). Keeps a flood of messages from
+                                 keying the transmitter without bound; the sender's own retry is answered once the budget has refilled. */
     DROP_TX_SELF_TEST,        /**< RF TX refused because the LOOP TEST owns the transmitter: while it runs, the PTT line is inhibited and the modem is in
                                  full duplex, so no other producer's frame may reach the transmit ring. Every such caller re-offers its traffic on its
                                  own schedule (periodic reports) or retry (messages). */
@@ -461,10 +469,14 @@ bool igate_is_connected(void);
 
 /**
  * @brief Register the handler invoked for every raw TNC2 text line received
- * from APRS-IS (INET -> RF direction), e.g. to hand it to the message
- * component and/or re-transmit it on RF via aprs_service_send_tnc2(). With
- * ::ENABLE_IGATE it is only called when g_config.inet2rf is true; without the
- * IGate there is no Internet-to-RF switch and it is called for every line.
+ * from APRS-IS, e.g. to hand it to the message component and/or re-transmit
+ * it on RF via aprs_service_send_tnc2().
+ *
+ * It is called for every packet line (server comment lines starting with
+ * '#' and over-long lines excepted) whatever g_config.inet2rf says: the
+ * modules that read the APRS-IS feed - messaging, the query responder, the
+ * Telegram routing, last heard - all hang off this handler, and the handler
+ * applies the Internet-to-RF switch itself, to the RF retransmission only.
  * @param handler Function receiving each NUL-terminated TNC2 line, or NULL to
  *                detach it.
  */

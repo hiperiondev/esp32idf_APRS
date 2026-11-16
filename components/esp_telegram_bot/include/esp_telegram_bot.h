@@ -289,6 +289,30 @@ esp_err_t telegram_bot_client_destroy(telegram_bot_client_handle_t handle);
 esp_err_t telegram_bot_client_disconnect(telegram_bot_client_handle_t handle);
 
 /**
+ * @brief Raise or clear the cancellation flag of a client handle.
+ *
+ * While the flag is raised, @ref telegram_bot_client_call() refuses new
+ * requests on @p handle, and a request already in progress on another task
+ * performs no further attempt: the attempt currently running is allowed to
+ * finish (it is bounded by the request timeout), the wait before the next
+ * attempt is abandoned within a tenth of a second, and the call returns the
+ * error of the last attempt.
+ *
+ * This is what bounds the time a task needs to leave a long poll when the
+ * service owning the handle is being stopped. The flag is stored atomically
+ * and the handle mutex is not taken, so it can be raised from any task while
+ * a request is running. It stays raised until it is cleared explicitly.
+ *
+ * @param[in] handle Handle returned by @ref telegram_bot_client_create().
+ * @param[in] cancel true to raise the flag, false to clear it.
+ *
+ * @return
+ *  - ESP_OK on success.
+ *  - ESP_ERR_INVALID_ARG if @p handle is NULL.
+ */
+esp_err_t telegram_bot_client_set_cancel(telegram_bot_client_handle_t handle, bool cancel);
+
+/**
  * @brief Invoke a Telegram API method and capture its JSON answer.
  *
  * Builds the request URL from the configured token, the method name and
@@ -326,7 +350,9 @@ esp_err_t telegram_bot_client_disconnect(telegram_bot_client_handle_t handle);
  *  - ESP_OK if the request completed, whatever the HTTP status code.
  *  - ESP_ERR_INVALID_ARG if @p handle or @p request is NULL, or if
  *    ::telegram_bot_request_t::method is NULL or empty.
- *  - ESP_ERR_INVALID_STATE if the transport has not been initialized.
+ *  - ESP_ERR_INVALID_STATE if the transport has not been initialized, or
+ *    if the cancellation flag of @p handle is raised (see
+ *    @ref telegram_bot_client_set_cancel()).
  *  - ESP_ERR_INVALID_SIZE if the built URL exceeds
  *    ::TELEGRAM_BOT_URL_MAX_LEN characters.
  *  - ESP_ERR_TIMEOUT if the handle mutex could not be taken.

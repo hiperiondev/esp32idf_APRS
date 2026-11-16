@@ -46,6 +46,18 @@
 /** Spanish text for the body of the HTTP 403 response sent when a read-only account requests something that would change the station. English: "403 Forbidden:
  * this account is read-only". */
 #define TR_FORBIDDEN_READONLY "403 Prohibido: esta cuenta es de solo lectura"
+/** Spanish text for the body of the HTTP 421 response sent when the Host header of a request does not name this station. English: "421 Misdirected Request:
+ * this host name is not served here. Open the web admin by the station's IP address.". */
+#define TR_FORBIDDEN_HOST "421 Solicitud mal dirigida: este nombre de host no se atiende aquí. Abra el administrador web por la dirección IP de la estación."
+/** Spanish text for the body of the HTTP 403 response sent while the factory administrator password is in use. English: "403 Forbidden: the factory
+ * administrator password is still in use. Change it on the System page first.". */
+#define TR_FORBIDDEN_DEFAULT_PASSWORD "403 Prohibido: la contraseña de administrador de fábrica sigue en uso. Cámbiela primero en la página Sistema."
+/** Spanish text for the link to the System page shown under the factory-password refusal. English: "Go to the System page". */
+#define TR_DEFAULT_PASSWORD_GO_SYSTEM "Ir a la página Sistema"
+/** Spanish text for the banner shown at the top of every page while the factory administrator password is in use. */
+#define TR_DEFAULT_PASSWORD_BANNER                                                                                                                             \
+    "La contraseña de administrador de fábrica (admin / admin) sigue en uso. Cámbiela en la página Sistema: hasta entonces ninguna otra página acepta "        \
+    "cambios."
 /** Spanish text for the banner shown at the top of every page while the session is signed in with the read-only account. English: "Read-only session:
  * everything on this page is shown, nothing on it can be changed.". */
 #define TR_RO_BANNER "Sesión de solo lectura: todo lo de esta página se muestra, nada de ella se puede cambiar."
@@ -1069,14 +1081,25 @@
 #define TR_SYS_WEB_ADMIN_LOGIN "Acceso al administrador web"
 /** System page note clarifying that a blank username only disables the password prompt, rendered on the System page. */
 #define TR_SYS_WEB_ADMIN_LOGIN_NOTE                                                                                                                            \
-    "Dejar el usuario en blanco desactiva solo el aviso de contraseña. Las solicitudes deben seguir siendo del mismo origen para cualquier cambio "            \
-    "realizado a través de este panel de administración."
+    "Dejar el usuario en blanco desactiva solo el aviso de contraseña, y requiere marcar 'Desactivar la protección por contraseña' en el mismo guardado. Las " \
+    "solicitudes deben seguir siendo del mismo origen y dirigidas a un nombre de host que la estación atiende para cualquier cambio realizado a través de "    \
+    "este panel de administración."
+/** Spanish text for the System page label of the checkbox that confirms a blank administrator username. English: "Disable password protection". */
+#define TR_SYS_AUTH_OFF "Desactivar la protección por contraseña"
+/** Spanish text for the message shown after a System page save that left the administrator username blank without the confirmation box. */
+#define TR_SYS_AUTH_OFF_REFUSED                                                                                                                                \
+    "Los demás ajustes se guardaron, pero el acceso de administrador quedó sin cambios: un usuario en blanco desactiva la protección por contraseña, y eso "   \
+    "requiere marcar 'Desactivar la protección por contraseña' en el mismo guardado."
+/** Spanish text for the message shown after a System page save that keeps the factory administrator password. */
+#define TR_SYS_DEFAULT_PASSWORD_KEPT                                                                                                                           \
+    "Guardado, pero el acceso de administrador sigue siendo el de fábrica admin / admin. Elija otra contraseña: hasta entonces ninguna otra página acepta "    \
+    "cambios."
 /** Spanish text for the system page legend for the read-only account credentials, rendered on the System page. English: "Web Read-Only Login". */
 #define TR_SYS_WEB_RO_LOGIN "Acceso web de solo lectura"
 /** System page note describing what the read-only account may and may not do, rendered on the System page. */
 #define TR_SYS_WEB_RO_LOGIN_NOTE                                                                                                                               \
-    "Una segunda cuenta que ve todas las páginas pero no cambia nada: no guarda ningún ajuste, no sube, descarga, borra ni formatea ningún archivo y no "      \
-    "transmite nada. Solo puede iniciar y detener la consola de registro. Deje el usuario en blanco para no tener cuenta de solo lectura."
+    "Una segunda cuenta que ve todas las páginas pero no cambia nada: no guarda ningún ajuste, no sube, descarga, borra ni formatea ningún archivo, no "       \
+    "transmite nada, y puede leer la consola de registro pero no iniciarla ni detenerla. Deje el usuario en blanco para no tener cuenta de solo lectura."
 /** Spanish text for the system page label for the read-only account username, rendered on the System page. English: "Read-only username". */
 #define TR_SYS_RO_USERNAME "Usuario de solo lectura"
 /** Spanish text for the system page label for the read-only account password, rendered on the System page. English: "Read-only password". */
@@ -1278,6 +1301,10 @@
 #define TR_WIFI_STA_NEEDS_SSID                                                                                                                                 \
     "Guardado, pero NO se conectará: el Modo selecciona estación, pero ningún bloque Cliente WiFi tiene 'Habilitar' marcado y un SSID cargado. Corríjalo y "   \
     "guarde de nuevo."
+/** Spanish text for the message shown after a Wireless page save whose access point password is one to seven characters long. */
+#define TR_WIFI_AP_PASS_TOO_SHORT                                                                                                                              \
+    "Los demás ajustes se guardaron, pero la contraseña del punto de acceso quedó sin cambios: debe tener al menos 8 caracteres, o estar vacía para un punto " \
+    "de acceso abierto."
 /** Spanish text for the wireless page label for scanning, rendered on the Wireless page. English: "Scanning...". */
 #define TR_WIFI_SCANNING "Escaneando..."
 /** Spanish text for the wireless page label for scan failed, rendered on the Wireless page. English: "Scan failed". */
@@ -2724,6 +2751,14 @@
 #define TR_H_SYS_RO_USERNAME                                                                                                                                   \
     "Nombre de acceso de la cuenta que puede mirar la estación pero no cambiarla. Déjelo en blanco y esa cuenta no existe; nunca puede ser el nombre del "     \
     "administrador, que siempre prevalece."
+/** Spanish text of the contextual help for the "Disable password protection" option. */
+#define TR_H_SYS_AUTH_OFF                                                                                                                                      \
+    "Confirma un usuario de administrador en blanco para este guardado. Sin ella, un usuario en blanco se rechaza y el acceso queda como estaba. La casilla "  \
+    "nunca se recuerda."
+/** Spanish text of the contextual help for the "AP Password" option. */
+#define TR_H_WIFI_AP_PASSWORD                                                                                                                                  \
+    "Contraseña WPA2 del punto de acceso propio de la estación: al menos 8 caracteres. Déjela vacía para un punto de acceso abierto. La contraseña de "        \
+    "fábrica se genera para cada equipo y se imprime en la consola serie en cada arranque hasta que se cambia."
 /** Spanish text of the contextual help for the "Username" option. */
 #define TR_H_F_USERNAME "Nombre de acceso al servicio. Para APRS-IS es el indicativo de estación para el que se emitió el código de acceso."
 /** Spanish text of the contextual help for the "Callsign" option. */

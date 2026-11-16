@@ -19,6 +19,7 @@
 // services and the radio modem, bringing up the web admin server last once free
 // heap allows it.
 
+#include <stdio.h>
 #include <string.h>
 
 #include "driver/gpio.h"
@@ -313,7 +314,21 @@ static void wifi_apply_ap_config(void) {
     memcpy(ap_cfg.ap.password, g_config.wifi_ap_pass, pass_len);
     ap_cfg.ap.channel = g_config.wifi_ap_ch;
     ap_cfg.ap.max_connection = 4;
-    ap_cfg.ap.authmode = strlen(g_config.wifi_ap_pass) >= 8 ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+    // The password is validated on save and on load, so a short one never
+    // reaches this point: an empty password is the open access point the
+    // operator asked for, anything else is WPA2.
+    ap_cfg.ap.authmode = pass_len >= WIFI_AP_PASS_MIN_LEN ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+    if (ap_cfg.ap.authmode == WIFI_AUTH_OPEN) {
+        ESP_LOGW(TAG, "SoftAP \"%s\" is OPEN: no password is set", g_config.wifi_ap_ssid);
+    } else {
+        ESP_LOGI(TAG, "SoftAP \"%s\" uses WPA2-PSK", g_config.wifi_ap_ssid);
+        // A generated password has to be readable somewhere for the first
+        // connection, and the serial console is the one place that needs
+        // physical access to the board. It is written with printf() rather
+        // than through the log, so it never reaches the web log capture.
+        if (app_config_ap_password_is_generated(g_config.wifi_ap_pass))
+            printf("\nSoftAP \"%s\" factory password: %s\n\n", g_config.wifi_ap_ssid, g_config.wifi_ap_pass);
+    }
 
     if (ap_cfg.ap.channel < WIFI_AP_CH_MIN || ap_cfg.ap.channel > WIFI_AP_CH_MAX) {
         ESP_LOGW(TAG, "SoftAP channel %u outside %u-%u, using %u", (unsigned)ap_cfg.ap.channel, (unsigned)WIFI_AP_CH_MIN, (unsigned)WIFI_AP_CH_MAX,

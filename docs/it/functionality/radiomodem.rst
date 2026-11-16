@@ -415,9 +415,9 @@ il canale è sentito libero e il lancio di persistenza riesce.
 
 .. warning::
 
-   I valori grandi ritardano *tutto*, inclusi i riscontri dei messaggi e le
-   ripetizioni del digipeater, che il limitatore di duty cycle più sotto esenta
-   deliberatamente. Oltre i 5000 ms circa la stazione comincia a sembrare poco
+   I valori grandi ritardano *tutto*, inclusi i messaggi, i loro riscontri e le
+   ripetizioni del digipeater, il primo e l'ultimo dei quali il limitatore di
+   duty cycle più sotto esenta deliberatamente. Oltre i 5000 ms circa la stazione comincia a sembrare poco
    reattiva a chi prova a messaggiarla.
 
 Buffer TX
@@ -485,16 +485,20 @@ canale.
 
    * - Classe
      - Comportamento una volta raggiunto il tetto
-   * - **Critico** — messaggi APRS e relativi riscontri, ripetizioni del
-       digipeater
+   * - **Critico** — messaggi APRS inviati dall'operatore e loro ritentativi,
+       risposte alle query, ripetizioni del digipeater
      - Vengono trasmessi comunque. Il loro tempo in aria continua a contare per
        la finestra; solo il controllo viene saltato per essi.
    * - **Non critico** — beacon di posizione propri, oggetti e item, rapporti
-       meteo, telemetria, bollettini, ritrasmissione massiva INET→RF dell'IGate
+       meteo, telemetria, bollettini, ritrasmissione massiva INET→RF dell'IGate,
+       riscontri automatici dei messaggi
      - Vengono trattenuti. Ciascuno di essi è un task periodico che offrirà di
-       nuovo lo stesso rapporto al proprio intervallo successivo, quindi si
-       tratta di un rinvio e non di una perdita, anche se viene conteggiato sotto
-       ``DROP_TX_DUTY_CYCLE`` nel pannello per renderlo visibile.
+       nuovo lo stesso rapporto al proprio intervallo successivo, o un riscontro
+       inviato di nuovo quando il mittente ritenta, quindi si tratta di un
+       rinvio e non di una perdita, anche se viene conteggiato sotto
+       ``DROP_TX_DUTY_CYCLE`` nel pannello per renderlo visibile. I riscontri
+       automatici vengono inoltre presi dal budget dei frame RF automatici
+       (``DROP_AUTO_TX_RATE``, vedi :ref:`it-messaging`).
 
 **Usi.**
 

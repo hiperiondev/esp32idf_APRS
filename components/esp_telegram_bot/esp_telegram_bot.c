@@ -27,6 +27,7 @@
 // system, which is what lets the chain be replaced from the web admin's
 // File Storage page without rebuilding the firmware.
 
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,6 +71,11 @@
 // to reassociate and renew its lease.
 #define TELEGRAM_BOT_RETRY_DELAY_MS 2000
 
+// Granularity of the wait between two attempts. The wait is cut into slices
+// of this length so a cancellation raised during it takes effect within one
+// slice instead of at the end of the whole delay.
+#define TELEGRAM_BOT_RETRY_SLICE_MS 100
+
 // Size of the chunks written to the socket when streaming the binary part
 // of a multipart body.
 #define TELEGRAM_BOT_UPLOAD_CHUNK 1024
@@ -110,6 +116,9 @@ struct telegram_bot_client_s {
     esp_http_client_handle_t client;
     SemaphoreHandle_t lock;
     int timeout_ms;
+    // Raised by telegram_bot_client_set_cancel() from any task. Read without
+    // the handle lock, which the task performing the request holds.
+    atomic_bool cancel;
 };
 
 // URL prefix used by every API method call, in the form
@@ -468,6 +477,16 @@ esp_err_t telegram_bot_client_disconnect(telegram_bot_client_handle_t handle) {
     return ESP_OK;
 }
 
+esp_err_t telegram_bot_client_set_cancel(telegram_bot_client_handle_t handle, bool cancel) {
+    if (handle == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    // Lock-free on purpose: the task this is meant to reach holds the handle
+    // mutex for the whole request.
+    atomic_store(&handle->cancel, cancel);
+    return ESP_OK;
+}
+
 // Returns the handle backing the convenience helpers, building it the first
 // time one of them is called.
 static telegram_bot_client_handle_t telegram_bot_default_client(void) {
@@ -601,6 +620,10 @@ esp_err_t telegram_bot_client_call(telegram_bot_client_handle_t handle, const te
         }
     }
 
+    if (atomic_load(&handle->cancel)) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     if (!telegram_bot_lock(handle)) {
         ESP_LOGE(TAG, "Timed out waiting for the client handle lock");
         return ESP_ERR_TIMEOUT;
@@ -645,7 +668,7 @@ esp_err_t telegram_bot_client_call(telegram_bot_client_handle_t handle, const te
         TELEGRAM_BOT_HEAP_BRACKET("before", request->method, attempt);
         err = esp_http_client_perform(handle->client);
         TELEGRAM_BOT_HEAP_BRACKET("after", request->method, attempt);
-        if (err == ESP_OK || attempt >= TELEGRAM_BOT_MAX_ATTEMPTS) {
+        if (err == ESP_OK || attempt >= TELEGRAM_BOT_MAX_ATTEMPTS || atomic_load(&handle->cancel)) {
             break;
         }
         ESP_LOGW(TAG, "%s failed on attempt %d/%d (%s), %u bytes free with a %u byte largest block, reopening and retrying", request->method, attempt,
@@ -663,7 +686,14 @@ esp_err_t telegram_bot_client_call(telegram_bot_client_handle_t handle, const te
         if (request->json_body != NULL) {
             esp_http_client_set_post_field(handle->client, request->json_body, strlen(request->json_body));
         }
-        vTaskDelay(pdMS_TO_TICKS(TELEGRAM_BOT_RETRY_DELAY_MS * attempt));
+        // The wait is cut into slices so a cancellation raised during it
+        // ends the call without the remaining attempts.
+        for (int waited = 0; waited < TELEGRAM_BOT_RETRY_DELAY_MS * attempt && !atomic_load(&handle->cancel); waited += TELEGRAM_BOT_RETRY_SLICE_MS) {
+            vTaskDelay(pdMS_TO_TICKS(TELEGRAM_BOT_RETRY_SLICE_MS));
+        }
+        if (atomic_load(&handle->cancel)) {
+            break;
+        }
     }
 
     if (err == ESP_OK) {

@@ -71,6 +71,9 @@ lo que habilita la actualización OTA desde la página **About / Firmware** de l
 administración web:
 
 #. El operador elige un ``.bin`` y lo sube (``POST /ota_update``).
+#. ``esp_ota_begin()`` borra solo la parte de la ranura inactiva que cubre el
+   ``Content-Length`` de la petición (limitada al tamaño de la ranura), no la
+   ranura entera.
 #. Se transmite en flujo directamente a la ranura inactiva vía
    ``esp_ota_write()`` — nunca se almacena entera en RAM — con una barra de
    progreso.

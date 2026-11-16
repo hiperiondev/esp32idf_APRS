@@ -76,6 +76,13 @@ cuenta solo mientras hay una respuesta a un desafío pendiente, y el texto del
 servicio que llega sin una sesión abierta o en apertura no toca la sesión: va a
 la conversación de mensajes común en lugar del buzón.
 
+Todo lo que la sesión toma del servicio — desafíos, *Login valid*, respuestas y
+acuses — tiene que venir exactamente de ``wlServiceCall``, SSID incluido (sin
+SSID y ``-0`` son la misma dirección): otro SSID del mismo indicativo base queda
+para la conversación común. Un desafío que nombra más de tres posiciones se
+rechaza y termina el intento, ya que cada posición nombrada es un carácter de
+la contraseña que se devuelve.
+
 Una sesión caduca del lado del servicio a las dos horas aproximadamente.
 ``wlSessionMaxMin`` (110 minutos por omisión) queda por debajo, de modo que
 esta estación abandona la sesión un poco antes que el servicio, en lugar de

@@ -217,7 +217,16 @@ the dashboard can show "N dropped because X" rather than one opaque aggregate.
    with ``}`` carries a complete inner ``SRC>DST,PATH:payload`` line of its
    own. If that inner path already carries ``TCPIP`` or ``TCPXX``, the frame
    already reached APRS-IS once and is dropped as a loop
-   (``DROP_3RDPARTY_LOOP``). Otherwise the outer RF header is discarded and
+   (``DROP_3RDPARTY_LOOP``). The inner header is then held to the rules the
+   outer AX.25 header is gated under, and fails them with
+   ``DROP_3RDPARTY_BAD_HEADER``: source and destination must be valid
+   callsigns (one to nine upper-case letters or digits with an optional
+   one- or two-character SSID), the source must not be a NOCALL/N0CALL/WIDE/
+   TRACE/TCP placeholder, the path may hold at most eight valid callsigns or
+   aliases (``*`` allowed as the used marker) and none of them may be
+   ``NOGATE``, ``RFONLY``, a ``TCP*`` token or a q construct, and no field may
+   be too long for its buffer — an inner field is never truncated into a
+   different header. Otherwise the outer RF header is discarded and
    every remaining stage — payload-type filter onward — runs against the
    inner packet: its own source, destination, path and payload, exactly as
    if that station had been heard directly. This is what lets a cross-band or
@@ -560,7 +569,8 @@ The ``igate_stats_t`` snapshot (``igate_get_stats()``) carries:
    * - ``dropByReason[]``
      - Per-reason drop counters, indexed by ``drop_reason_t``. The RF→INET
        stages above cover ``DROP_TOO_SHORT``, ``DROP_PATH_TOKEN``,
-       ``DROP_SAT_NOT_USED``, ``DROP_3RDPARTY_LOOP``, ``DROP_GENERIC_QUERY``,
+       ``DROP_SAT_NOT_USED``, ``DROP_3RDPARTY_LOOP``,
+       ``DROP_3RDPARTY_BAD_HEADER``, ``DROP_GENERIC_QUERY``,
        ``DROP_TYPE_FILTER``, ``DROP_RANGE_FILTER``, ``DROP_PREFIX_FILTER``,
        ``DROP_BUDLIST``, ``DROP_IS_LINE_TOO_LONG`` and ``DROP_TX_FAIL``; the
        RX line reader above covers ``DROP_IS_RX_LINE_TOO_LONG``. The

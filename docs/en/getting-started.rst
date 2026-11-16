@@ -38,13 +38,15 @@ Build in Spanish or Italian instead of English (see :ref:`en-localization`):
 
 .. tip::
 
-   ``sdkconfig`` ships with ``CONFIG_COMPILER_OPTIMIZATION_DEBUG`` (``-Og``)
+   ``sdkconfig`` ships with ``CONFIG_COMPILER_OPTIMIZATION_PERF`` (``-O2``)
    and assertions on, and with ``CONFIG_COMPILER_STACK_CHECK_MODE_NORM`` for
-   the stack canary — the configuration every task stack in the project was
-   budgeted under. Switching to ``CONFIG_COMPILER_OPTIMIZATION_SIZE`` (``-Os``)
-   makes a smaller image with shallower stack frames, but it changes the
-   frame sizes those budgets were set against, so re-check the stack
-   high-water marks (see :ref:`en-troubleshooting`) after doing so.
+   the stack canary. The stacks of the receive task (``aprs_rx``) and of the
+   APRS-IS client (``igate_task``) are budgeted against the compiler's own
+   stack accounting at ``-O2`` (``-fcallgraph-info=su``). Switching to
+   ``CONFIG_COMPILER_OPTIMIZATION_DEBUG`` (``-Og``) makes the frames deeper,
+   and ``CONFIG_COMPILER_OPTIMIZATION_SIZE`` (``-Os``) changes them too, so
+   re-check the stack high-water marks (see :ref:`en-troubleshooting`) after
+   either.
 
 Memory budget
 =============
@@ -86,7 +88,9 @@ lowers the *Min free heap* figure on the dashboard.
      - The web admin is plain HTTP and the APRS-IS uplink is plain TCP, and
        nothing ever listens for TLS: ``CONFIG_ESP_HTTPS_SERVER_ENABLE``,
        ``CONFIG_MBEDTLS_CERTIFICATE_BUNDLE`` and
-       ``CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT`` are all off in ``sdkconfig``.
+       ``CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT`` are all off in ``sdkconfig``, and
+       mbedTLS is built client-only (``CONFIG_MBEDTLS_TLS_CLIENT_ONLY``) with
+       renegotiation off, so no server-side TLS code is linked.
        One code path does open TLS, as a *client*: the Telegram bot talks to
        ``api.telegram.org`` over HTTPS through ``esp_http_client``/``esp_tls``.
        With the certificate bundle off it verifies the server against a PEM
@@ -129,13 +133,24 @@ First boot
 
 #. On a fresh partition, LittleFS auto-formats and ``app_config_load()`` writes
    one configuration file per functionality from factory defaults.
-#. The ESP32 comes up as a **Wi-Fi AP**: SSID ``esp32idf_APRS``, password
-   ``esp32idf_APRS``, channel 1, WPA2-PSK, max 4 clients.
+#. The ESP32 comes up as a **Wi-Fi AP**: SSID ``esp32idf_APRS``, channel 1,
+   WPA2-PSK, max 4 clients. Its password is drawn for this device when the
+   defaults are built (and again on a factory reset) and is printed on the
+   serial console at every boot for as long as it is in use, as
+   ``SoftAP "esp32idf_APRS" factory password: APRS-XXXXX-XXXXX`` — keep the
+   ``idf.py monitor`` started by the flash command open to read it.
 #. Join it and browse to the device (default ``http://192.168.4.1/``).
-#. **Log in:** ``admin`` / ``admin`` — change this on the *System* page. The
-   same page carries an optional second account, *Web Read-Only Login*: it sees
-   every page but saves nothing, moves no files and transmits nothing, and may
-   only start and stop the console log viewer. It is unset out of the box.
+#. **Log in:** ``admin`` / ``admin`` — change the password on the *System*
+   page first: while the factory pair is in use every page shows a banner and
+   no page other than *System* accepts a change. The same page carries an
+   optional second account, *Web Read-Only Login*: it sees every page but saves
+   nothing, moves no files and transmits nothing, and can read the console log
+   viewer while the administrator runs it. It is unset out of the box.
+#. Open the web admin by the station's **IP address**. A request addressed to
+   any other host name is refused with *421 Misdirected Request* unless the
+   name is the station's own network host name or is listed in
+   ``CONFIG_APRS_WEB_ALLOWED_HOSTS`` (*APRS web admin* menu of
+   ``idf.py menuconfig``) — see :ref:`en-web-admin-host-check`.
 #. On *Wireless*: pick **Station** or **AP+STA**, tick **Enable** in a Wi-Fi
    Client block, enter SSID/password, Save.
 #. On *IGate*: set your **callsign**, **SSID**, **passcode**, APRS-IS
@@ -156,9 +171,11 @@ Notable factory defaults
    * - Wi-Fi mode
      - AP (always reachable)
    * - AP SSID / pass
-     - ``esp32idf_APRS`` / ``esp32idf_APRS``
+     - ``esp32idf_APRS`` / generated per device (``APRS-XXXXX-XXXXX``),
+       printed on the serial console at every boot until it is changed
    * - Web login
-     - ``admin`` / ``admin``
+     - ``admin`` / ``admin``; only the *System* page accepts changes until
+       the password is replaced
    * - Web read-only login
      - unset (no read-only account)
    * - CPU frequency

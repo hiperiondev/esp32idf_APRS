@@ -647,7 +647,16 @@ L'amministrazione web conosce due account, entrambi configurati nella pagina
 
 * **Amministratore** — ``g_config.http_username`` / ``http_password``, l'account
   che la stazione ha sempre avuto (``admin`` / ``admin`` di fabbrica). Accesso
-  completo.
+  completo, una volta sostituita la password di fabbrica: finché la coppia è
+  esattamente ``admin`` / ``admin`` (``web_factory_credentials_active()``) ogni
+  pagina mostra un avviso e ``web_check_auth_admin()`` ammette modifiche solo
+  sulla route ``/system``, rispondendo ``403`` con un collegamento alla pagina
+  *Sistema* su ogni altra route che scrive. Un salvataggio che lascia la coppia
+  di fabbrica lo dice al posto della conferma normale. Un nome utente vuoto,
+  che disattiva la richiesta della password, è accettato solo insieme alla
+  casella *Disattiva la protezione con password* selezionata nello stesso
+  salvataggio; senza di essa la coppia di amministratore mantiene i suoi valori
+  e la pagina spiega perché.
 * **Sola lettura** — ``g_config.http_ro_username`` / ``http_ro_password``,
   opzionale e non impostato di fabbrica. Esiste solo finché il suo nome utente
   non è vuoto, e non può mai essere il nome dell'amministratore: le due coppie
@@ -664,9 +673,10 @@ sola lettura non può fare è cambiare qualcosa: nessun modulo di impostazioni
 salva, nessun file viene caricato, scaricato, eliminato o formattato, nessuna
 immagine di firmware viene accettata, nessun ripristino di fabbrica viene
 eseguito, nulla viene trasmesso e nessuna prova di trasmissione attiva la radio.
-L'unica cosa che può azionare è la console dei log, il cui *Avvia* e *Ferma*
-commutano uno specchio dell'output della stazione stessa e non cambiano nulla su
-di essa.
+Può leggere la console dei log mentre l'amministratore la esegue, ma non
+avviarla né fermarla: un avvio prende l'anello di cattura da un heap che la
+stazione tratta come scarso, e un arresto termina una cattura che qualcun altro
+può stare guardando.
 
 Il confine è imposto nei gestori, in ``web_common.c``:
 
@@ -676,15 +686,18 @@ Il confine è imposto nei gestori, in ``web_common.c``:
   ``403 Forbidden`` a una sessione in sola lettura ed è ciò con cui inizia ogni
   gestore che scrive: ogni salvataggio ``POST``, ``/upload``, ``/download``,
   ``/delete``, ``/format``, ``/default``, ``/ota_update``, le prove radio e le
-  route dei messaggi in uscita. ``/logs/start``, ``/logs/stop`` e
-  ``/logs/read`` sono le eccezioni volute e restano su ``web_check_auth()``.
+  route dei messaggi in uscita, ``/logs/start`` e ``/logs/stop`` comprese.
+  ``/logs/read`` è l'unica route di quel tipo rimasta su ``web_check_auth()``:
+  riarma solo il timeout di inattività della cattura, così la sessione in sola
+  lettura può guardare una cattura avviata dall'amministratore.
 
 Le pagine inoltre *sembrano* di sola lettura per quel ruolo, ma nulla si regge
 su questo. Sopra ogni pagina viene disegnato un avviso; ``web_send_footer()``
 aggiunge un piccolo script che disabilita ogni controllo di modulo tranne il
-cassetto di navigazione e quelli che una pagina marca ``.ro-ok`` (il pulsante
-della console dei log, la pausa e la pulizia del traffico nel cruscotto, tutti
-controlli di vista lato browser); e la pagina di archiviazione omette del tutto
+cassetto di navigazione e quelli che una pagina marca ``.ro-ok`` (la pausa e la
+pulizia del traffico nel cruscotto, controlli di vista lato browser); il
+pulsante della console dei log viene disabilitato con il resto, e lo script
+della pagina interroga la cattura fin dal caricamento; e la pagina di archiviazione omette del tutto
 il modulo di caricamento, il pulsante di formattazione e le azioni di download
 ed eliminazione per file, dato che un ``<a href>`` non porta uno stato
 disabilitato che uno script possa impostare. Un controllo riabilitato dalla
@@ -732,6 +745,30 @@ in quel momento; un'origine bloccata perde la sua voce solo quando tutte sono
 bloccate, così una raffica di richieste da molti indirizzi non può cancellare
 il blocco di chi sta provando le password.
 
+.. _it-web-admin-host-check:
+
+Controllo dell'Host (DNS rebinding)
+===================================
+
+``web_check_auth()`` rifiuta, prima di ogni altra cosa e per ogni metodo, una
+richiesta la cui intestazione ``Host`` non nomina questa stazione. La risposta
+è ``421 Misdirected Request``. Un ``Host`` è accettato quando è:
+
+* un letterale di indirizzo IPv4, o uno IPv6 tra parentesi quadre, con o senza
+  porta — un browser ne invia uno solo quando l'operatore lo ha digitato;
+* il nome host di rete dell'interfaccia stazione o del SoftAP
+  (``esp_netif_get_hostname()``);
+* uno dei nomi elencati, separati da virgole, in
+  ``CONFIG_APRS_WEB_ALLOWED_HOSTS`` (menu *APRS web admin* di
+  ``idf.py menuconfig``, vuoto di default), per una voce DNS locale o un reverse
+  proxy che inoltra l'``Host`` originale.
+
+Il controllo di stessa origine qui sotto confronta ``Origin`` con ``Host``, e lo
+supera una pagina servita sotto un nome estraneo che un server DNS risolve a
+questa stazione: è della stessa origine delle proprie richieste e può fornire
+credenziali proprie. Rifiutare ogni nome a cui la stazione non risponde è ciò
+che tiene fuori una pagina del genere.
+
 Protezione same-origin (CSRF)
 ==============================
 
@@ -745,8 +782,9 @@ entrambe le intestazioni, o con una che non corrisponde, viene rifiutata con
 ``403 Forbidden`` indipendentemente dalle credenziali che porta.
 
 Questo è deliberatamente indipendente da Basic Auth. Lasciare vuoto il nome
-utente nella pagina System è un modo supportato per eseguire il pannello di
-amministrazione senza password, ma disattiva solo la richiesta di login —
+utente nella pagina System, con *Disattiva la protezione con password*
+selezionata nello stesso salvataggio, è un modo supportato per eseguire il
+pannello di amministrazione senza password, ma disattiva solo la richiesta di login —
 non allenta il requisito di stessa origine, perché una richiesta cross-site
 originata dal browser è una minaccia con o senza password configurata:
 senza password non c'è alcuna credenziale da rubare, ma la pagina

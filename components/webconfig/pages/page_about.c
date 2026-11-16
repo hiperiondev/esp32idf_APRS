@@ -178,8 +178,17 @@ static esp_err_t ota_update_receive(httpd_req_t *req) {
         return ESP_OK;
     }
 
+    // The multipart body is the image plus a few hundred bytes of part
+    // headers and boundaries, so its length bounds the image from above. Handing
+    // it to esp_ota_begin() erases only the sectors that bound covers instead of
+    // the whole slot. A body longer than the slot is capped at the slot: its
+    // image may still fit once the part headers are left out, and one that
+    // does not fails on the write that would overflow it.
+    size_t erase_size = req->content_len > 0 ? (size_t)req->content_len : OTA_SIZE_UNKNOWN;
+    if (erase_size != OTA_SIZE_UNKNOWN && erase_size > target->size)
+        erase_size = target->size;
     ota_upload_ctx_t ctx = { .handle = 0, .total = 0, .werr = ESP_OK };
-    esp_err_t err = esp_ota_begin(target, OTA_SIZE_UNKNOWN, &ctx.handle);
+    esp_err_t err = esp_ota_begin(target, erase_size, &ctx.handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(err));
         char detail[128];

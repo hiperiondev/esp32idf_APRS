@@ -199,8 +199,8 @@ still shows there. All three are read for internal 8-bit memory, the same class
 the transport prints on failure, so the two kinds of line can be read against
 each other. The line costs three allocator queries per period and no memory.
 
-The Kconfig default is ten seconds — the shipped ``sdkconfig`` sets it to 60,
-which is the value to lower first when chasing a peak — because the period has
+The period is ten seconds, the Kconfig default and the value the shipped
+``sdkconfig`` carries, because the period has
 to be shorter than the events it is meant to catch, and on this firmware those are short: a TLS handshake, an
 APRS-IS reconnect or a settings save each peak and recover within a few seconds.
 A sampler slower than that is structurally blind to them — it records the heap

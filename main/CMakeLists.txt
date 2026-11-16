@@ -33,6 +33,7 @@ idf_component_register(
         spi_flash
         esp_timer
         esp_pm
+        bootloader_support
         esp_driver_uart
         esp_driver_gpio
         lwip

@@ -285,6 +285,23 @@ static void action_clear_if(telegram_action_t expected) {
     portEXIT_CRITICAL(&s_worker_lock);
 }
 
+// Queues an action again for the next tick, unless a newer instruction has
+// already been queued meanwhile, under the same portMUX as action_clear_if().
+// This is how a teardown that could not complete yet is retried without
+// overriding a save the operator made in the meantime.
+static void action_requeue_if_idle(telegram_action_t action) {
+    portENTER_CRITICAL(&s_worker_lock);
+    if (s_action == TELEGRAM_ACTION_NONE)
+        s_action = action;
+    portEXIT_CRITICAL(&s_worker_lock);
+}
+
+// True while a teardown has been attempted and the service's polling task has
+// not left its last transport attempt yet. Its handles are cancelled for the
+// stop meanwhile, so no notification drain is started: the queue keeps its
+// items for the pass that follows the completed teardown.
+static volatile bool s_teardown_pending;
+
 // True between a successful bring-up and the teardown that follows it. Says
 // that the service owns a task, a client pair and a TLS session, which is what
 // decides whether a stop has real work to do.
@@ -560,6 +577,8 @@ static void start_notice_send(void) {
 // the slot is picked up by notify_worker_kick() as soon as that action hands
 // the slot back.
 static void notify_worker_spawn(void) {
+    if (s_teardown_pending)
+        return;
     worker_spawn(TELEGRAM_ACTION_NONE);
 }
 
@@ -1921,11 +1940,24 @@ static void telegram_worker_task(void *arg) {
     if (action != TELEGRAM_ACTION_NONE) {
         if (action == TELEGRAM_ACTION_STOP || s_service_up) {
             if (s_service_up) {
-                telegram_deinit();
-                s_service_up = false;
-                ESP_LOGI(TAG, "Telegram bot stopped");
+                // A polling task still inside its last transport attempt
+                // keeps every resource of the service in use, so nothing is
+                // released and nothing is brought up over it: the service
+                // stays recorded as up and the same action is queued again,
+                // which the next tick retries once the task has left.
+                esp_err_t derr = telegram_deinit();
+                if (derr == ESP_ERR_TIMEOUT) {
+                    ESP_LOGW(TAG, "Telegram bot still leaving its long poll, teardown retried on the next tick");
+                    action_requeue_if_idle(action);
+                    s_teardown_pending = true;
+                    stopped = true;
+                } else {
+                    s_teardown_pending = false;
+                    s_service_up = false;
+                    ESP_LOGI(TAG, "Telegram bot stopped");
+                }
             }
-            if (action == TELEGRAM_ACTION_STOP) {
+            if (!stopped && action == TELEGRAM_ACTION_STOP) {
                 status_reset(TELEGRAM_APP_STATE_DISABLED, TELEGRAM_APP_REASON_DISABLED);
                 s_retry_in = TELEGRAM_RETRY_NEVER;
                 stopped = true;
@@ -1965,7 +1997,10 @@ static void telegram_worker_task(void *arg) {
     // own when this task was spawned for the queue alone. The batch is opened
     // only when there is something to put in it, since opening one releases
     // the polling connection.
-    if (s_start_notice_pending || s_notify_queue != NULL) {
+    // Skipped while a teardown is still pending: the service's handles are
+    // cancelled for the stop, so anything sent now would only be lost. The
+    // queue keeps its items for the pass that follows the teardown.
+    if (!s_teardown_pending && (s_start_notice_pending || s_notify_queue != NULL)) {
         telegram_tx_batch_begin();
 
         // First in the batch: an operator reading the chat sees that the

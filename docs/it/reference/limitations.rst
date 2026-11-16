@@ -99,8 +99,10 @@ Modem / Livello 2
        ``duty_cycle_pct`` per cento (1-100, default 25) misurato su una
        finestra scorrevole di 10 minuti, accumulato dal tempo in onda stimato
        di ogni frame effettivamente trasmesso alla velocità configurata. Viene
-       trattenuto solo il traffico non critico: i messaggi e le ripetizioni del
-       digipeater partono sempre. Un beacon trattenuto viene differito, non
+       trattenuto solo il traffico non critico: i messaggi inviati
+       dall'operatore, le risposte alle query e le ripetizioni del digipeater
+       partono sempre, mentre i riscontri automatici dei messaggi vengono
+       trattenuti come i beacon. Un beacon trattenuto viene differito, non
        perso - il task periodico che lo genera lo ripropone al suo intervallo
        successivo -, anche se viene conteggiato come ``DROP_TX_DUTY_CYCLE`` per
        renderlo visibile. La dashboard mostra la percentuale misurata rispetto

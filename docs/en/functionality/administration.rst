@@ -25,11 +25,11 @@ Wireless
    **WiFi Mode** — Wi-Fi mode - off, client (STA), access point (AP) or both - and the transmit power, up to 20 dBm.
 
 .. figure:: /_static/webadmin/wireless_fs01.png
-   :alt: Access Point (AP) — the station's own access point: network name, password and channel (1 to 13).
+   :alt: Access Point (AP) — the station's own access point: network name, password (at least 8 characters, or empty for an open access point; the factory one is generated per device and printed on the serial console at boot) and channel (1 to 13).
    :align: center
    :width: 90%
 
-   **Access Point (AP)** — the station's own access point: network name, password and channel (1 to 13).
+   **Access Point (AP)** — the station's own access point: network name, password (at least 8 characters, or empty for an open access point; the factory one is generated per device and printed on the serial console at boot) and channel (1 to 13).
 
 .. figure:: /_static/webadmin/wireless_fs02.png
    :alt: WiFi Client #1 — one of the five client slots, each with its own Enable switch, network name and password.
@@ -73,11 +73,11 @@ The audio modem needs 240 MHz: at a lower clock the receive chain cannot keep
 up with the samples.
 
 .. figure:: /_static/webadmin/system_fs01.png
-   :alt: Web Admin Login — the administrator account (admin / admin from the factory). Change it before the station is reachable from any network you do not control.
+   :alt: Web Admin Login — the administrator account (admin / admin from the factory). Change it first: until then only the System page accepts changes.
    :align: center
    :width: 90%
 
-   **Web Admin Login** — the administrator account (``admin`` / ``admin`` from the factory). Change it before the station is reachable from any network you do not control.
+   **Web Admin Login** — the administrator account (``admin`` / ``admin`` from the factory). Change it first: until then only the System page accepts changes.
 
 .. figure:: /_static/webadmin/system_fs02.png
    :alt: Web Read-Only Login — an optional second account that can see every page but change nothing.

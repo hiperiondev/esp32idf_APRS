@@ -35,6 +35,7 @@
 
 #include "app_config.h"
 #include "aprs_bm.h"
+#include "aprs_call.h" // APRS_CALL_PATH_MAX: the path-entry limit an unwrapped third-party header is held to
 #include "aprs_coord.h"
 #include "aprs_filter.h"
 #include "aprs_service.h"
@@ -78,6 +79,12 @@ struct DupPacketCache {
 // on esp_restart() - which is what the dashboard should show after an OTA
 // reboot, rather than totals carried over from the previous firmware image.
 static igate_stats_t s_stats;
+
+// Every counter in s_stats is bumped with one relaxed atomic add. The modem's
+// service task, the receive task, the APRS-IS client, the beacon scheduler,
+// the 1 Hz tick and the web server all count drops, on both cores, and a
+// plain increment from two of them at once loses one of the two.
+#define IGATE_STAT_INC(field) __atomic_fetch_add(&s_stats.field, 1, __ATOMIC_RELAXED)
 #ifdef BUILD_DUP_CACHE
 static struct DupPacketCache s_dupCache[DUP_CACHE_SIZE_MAX];
 static uint8_t s_dupCacheIndex = 0;
@@ -188,16 +195,24 @@ static void stationIdentity(const char *call, uint8_t ssid, char *out, size_t ou
 #endif
 
 igate_stats_t igate_get_stats(void) {
-    return s_stats;
+    // Each counter is read with its own atomic load. The snapshot is not one
+    // instant across all of them, which a dashboard of running totals does not
+    // need, but no counter in it is ever a torn value.
+    igate_stats_t out;
+    const uint32_t *src = (const uint32_t *)&s_stats;
+    uint32_t *dst = (uint32_t *)&out;
+    for (size_t i = 0; i < sizeof(s_stats) / sizeof(uint32_t); i++)
+        dst[i] = __atomic_load_n(&src[i], __ATOMIC_RELAXED);
+    return out;
 }
 
 void igate_note_drop(drop_reason_t reason) {
     if ((unsigned)reason < DROP_REASON_COUNT)
-        s_stats.dropByReason[reason]++;
+        IGATE_STAT_INC(dropByReason[reason]);
 }
 
 void igate_note_message_gated(void) {
-    s_stats.msgCount++;
+    IGATE_STAT_INC(msgCount);
 }
 
 const char *igate_drop_reason_name(drop_reason_t reason) {
@@ -218,6 +233,8 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "3rd-party nested (INET->RF)";
         case DROP_3RDPARTY_NESTED_RF:
             return "3rd-party nested (RF->INET)";
+        case DROP_3RDPARTY_BAD_HEADER:
+            return "3rd-party inner header rejected";
         case DROP_SAT_NOT_USED:
             return "satellite not used";
         case DROP_GENERIC_QUERY:
@@ -268,6 +285,8 @@ const char *igate_drop_reason_name(drop_reason_t reason) {
             return "TX packet too long";
         case DROP_TX_DUTY_CYCLE:
             return "duty-cycle ceiling reached";
+        case DROP_AUTO_TX_RATE:
+            return "automatic RF frame budget spent";
         case DROP_TX_SELF_TEST:
             return "RF TX held off by LOOP TEST";
         case DROP_RX_QUEUE_FULL:
@@ -478,7 +497,7 @@ static bool sendToAprsIs(const uint8_t *data, size_t len) {
         // RF frames, outbound messages, digi "beacon to internet"), unlike
         // s_stats.txCount below which is only bumped by igateProcess() for
         // the RF->INET gatewaying path specifically.
-        s_stats.isTxCount++;
+        IGATE_STAT_INC(isTxCount);
         ESP_LOGI(TAG, "APRS-IS TX: %.*s", (int)len, (const char *)data);
 #ifdef ENABLE_DASHBOARD
         trafficlog_add_pkt("TX", dx, pkt, "", -1, 0, 0);
@@ -491,7 +510,7 @@ static bool sendToAprsIs(const uint8_t *data, size_t len) {
         // Counting the failure here keeps a beacon or message that never made
         // it to APRS-IS (e.g. "not connected yet") visible on the dashboard's
         // DROP/ERR tally, which reads igate_stats_total_drop().
-        s_stats.dropByReason[DROP_TX_FAIL]++;
+        IGATE_STAT_INC(dropByReason[DROP_TX_FAIL]);
         ESP_LOGW(TAG, "APRS-IS TX failed (not connected?): %.*s", (int)len, (const char *)data);
 #ifdef ENABLE_DASHBOARD
         trafficlog_add_pkt("TX-FAIL", dx, pkt, "", -1, 0, 0);
@@ -506,6 +525,69 @@ bool igate_send_raw(const char *line, size_t len) {
 #endif
 
 #ifdef ENABLE_IGATE
+static bool isSrcPlaceholder(const char *call);
+
+// True for one address of an unwrapped third-party header: one to nine upper
+// case letters or digits in all, an optional '-' followed by a one or two
+// character SSID of letters or digits (the APRS-IS form, of which the AX.25
+// "-0".."-15" is a subset), and, when allowUsed is set, an optional trailing
+// '*' (the has-been-repeated marker of a path entry).
+static bool thirdPartyCallValid(const char *s, size_t len, bool allowUsed) {
+    if (allowUsed && len > 0 && s[len - 1] == '*')
+        len--;
+    if (len == 0 || len > 9)
+        return false;
+    size_t dash = len;
+    for (size_t i = 0; i < len; i++) {
+        char c = s[i];
+        if (c == '-') {
+            if (dash != len)
+                return false;
+            dash = i;
+        } else if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) {
+            return false;
+        }
+    }
+    if (dash == len)
+        return true;
+    size_t ssidLen = len - dash - 1;
+    return dash >= 1 && ssidLen >= 1 && ssidLen <= 2;
+}
+
+// Checks the source, destination and path of an unwrapped third-party header
+// against the rules the outer AX.25 header is gated under. The path is the
+// comma-separated text between the destination and the ':', possibly empty.
+static bool thirdPartyHeaderValid(const char *src, const char *dst, const char *path) {
+    if (!thirdPartyCallValid(src, strlen(src), false) || !thirdPartyCallValid(dst, strlen(dst), false))
+        return false;
+    if (isSrcPlaceholder(src))
+        return false;
+
+    int entries = 0;
+    const char *p = path;
+    while (*p != 0) {
+        const char *end = strchr(p, ',');
+        size_t len = end != NULL ? (size_t)(end - p) : strlen(p);
+        if (++entries > APRS_CALL_PATH_MAX)
+            return false;
+        if (!thirdPartyCallValid(p, len, true))
+            return false;
+        // NOGATE and RFONLY forbid gating; TCPIP/TCPXX and every other TCP*
+        // token, like the q constructs, are written by the APRS-IS side only.
+        // A q construct cannot pass thirdPartyCallValid() (its 'q' is lower
+        // case), so it needs no test of its own here.
+        if ((len >= 6 && strncmp(p, "NOGATE", 6) == 0 && (len == 6 || p[6] == '*')) ||
+            (len >= 6 && strncmp(p, "RFONLY", 6) == 0 && (len == 6 || p[6] == '*')) || (len >= 3 && strncmp(p, "TCP", 3) == 0))
+            return false;
+        if (end == NULL)
+            break;
+        p = end + 1;
+        if (*p == 0)
+            return false;
+    }
+    return true;
+}
+
 // Third-party ('}') unwrap for the RF->INET direction.
 //
 // A third-party payload is itself a complete TNC2-style line prefixed with
@@ -526,19 +608,32 @@ bool igate_send_raw(const char *line, size_t len) {
 // '}' and the trailing ':', so the caller can gate the wrapped packet under
 // its own source/destination/path exactly as if it had been heard directly.
 //
+// The inner header is also checked the way the outer AX.25 header is before
+// it is gated (thirdPartyHeaderValid()), and *isBad reports a header that
+// fails those checks or has a field too long for its buffer: such a header is
+// never gated, since it would put text on APRS-IS under this station's login
+// that no RF address could have produced.
+//
 // info must be NUL-terminated and start with '}'. On success, *innerInfo
 // points at the first byte of the inner payload (still inside info, not a
 // copy) and *innerInfoLen is its length up to the terminating NUL.
 static bool thirdPartyUnwrap(const char *info, char *outSrc, size_t outSrcMax, char *outDst, size_t outDstMax, char *outPath, size_t outPathMax,
-                             const char **innerInfo, size_t *innerInfoLen, bool *isLoop, bool *isNested) {
+                             const char **innerInfo, size_t *innerInfoLen, bool *isLoop, bool *isNested, bool *isBad) {
     const char *gt = strchr(info + 1, '>');
     const char *colon = strchr(info + 1, ':');
     if (!gt || !colon || colon <= gt)
         return false;
 
+    // A field too long for its buffer is never cut down to fit: a prefix of
+    // a callsign or of a path is a different header, so the header is marked
+    // bad instead and the caller refuses it.
+    *isBad = false;
+
     size_t srcLen = (size_t)(gt - (info + 1));
-    if (srcLen >= outSrcMax)
+    if (srcLen >= outSrcMax) {
         srcLen = outSrcMax - 1;
+        *isBad = true;
+    }
     memcpy(outSrc, info + 1, srcLen);
     outSrc[srcLen] = 0;
 
@@ -547,8 +642,10 @@ static bool thirdPartyUnwrap(const char *info, char *outSrc, size_t outSrcMax, c
     while (pathStart < colon && *pathStart != ',')
         pathStart++;
     size_t dstLen = (size_t)(pathStart - dstStart);
-    if (dstLen >= outDstMax)
+    if (dstLen >= outDstMax) {
         dstLen = outDstMax - 1;
+        *isBad = true;
+    }
     memcpy(outDst, dstStart, dstLen);
     outDst[dstLen] = 0;
 
@@ -560,8 +657,10 @@ static bool thirdPartyUnwrap(const char *info, char *outSrc, size_t outSrcMax, c
     outPath[0] = 0;
     if (pathStart < colon && *pathStart == ',') {
         size_t pathLen = (size_t)(colon - (pathStart + 1));
-        if (pathLen >= outPathMax)
+        if (pathLen >= outPathMax) {
             pathLen = outPathMax - 1;
+            *isBad = true;
+        }
         memcpy(outPath, pathStart + 1, pathLen);
         outPath[pathLen] = 0;
     }
@@ -578,6 +677,13 @@ static bool thirdPartyUnwrap(const char *info, char *outSrc, size_t outSrcMax, c
     // wrong, so nesting is rejected here rather than relying on a still-
     // wrapped payload being unclassifiable further downstream.
     *isNested = (colon[1] == '}');
+
+    // The inner header is held to the rules the outer AX.25 header is held
+    // to before a frame is gated: legal addresses, no placeholder source, at
+    // most eight path entries, and none of the path tokens that forbid
+    // gating or that only an APRS-IS server may write.
+    if (!thirdPartyHeaderValid(outSrc, outDst, outPath))
+        *isBad = true;
 
     *innerInfo = colon + 1;
     *innerInfoLen = strlen(colon + 1);
@@ -667,7 +773,7 @@ static bool satGateListPass(const ax25_msg_t *packet, bool report) {
             if (!strncmp(packet->rpt_list[idx].call, satGates[s], satLen)) {
                 if (!AX25_REPEATED(packet, idx)) {
                     if (report)
-                        s_stats.dropByReason[DROP_SAT_NOT_USED]++;
+                        IGATE_STAT_INC(dropByReason[DROP_SAT_NOT_USED]);
                     return false;
                 }
             }
@@ -703,7 +809,7 @@ static bool rf2inetFiltersPass(const char *srcCall, const char *dstCall, const c
     if (!aprs_filter_pass(g_config.rf2inetFilter, type)) {
         if (report) {
             ESP_LOGD(TAG, "RF2INET filtered (%s, mask=0x%03X): %.*s", aprs_filter_type_name(type), (unsigned)g_config.rf2inetFilter, (int)effInfoLen, effInfo);
-            s_stats.dropByReason[DROP_TYPE_FILTER]++;
+            IGATE_STAT_INC(dropByReason[DROP_TYPE_FILTER]);
         }
         return false;
     }
@@ -739,7 +845,7 @@ static bool rf2inetFiltersPass(const char *srcCall, const char *dstCall, const c
             if (d > rangeKm) {
                 if (report) {
                     ESP_LOGD(TAG, "RF2INET range-filtered (%.1f km > %.1f km): %s", d, rangeKm, srcCall);
-                    s_stats.dropByReason[DROP_RANGE_FILTER]++;
+                    IGATE_STAT_INC(dropByReason[DROP_RANGE_FILTER]);
                 }
                 return false;
             }
@@ -753,7 +859,7 @@ static bool rf2inetFiltersPass(const char *srcCall, const char *dstCall, const c
     if (prefixEn && !aprs_filter_prefix_match(srcCall, prefixes)) {
         if (report) {
             ESP_LOGD(TAG, "RF2INET prefix-filtered (%s not in \"%s\")", srcCall, prefixes);
-            s_stats.dropByReason[DROP_PREFIX_FILTER]++;
+            IGATE_STAT_INC(dropByReason[DROP_PREFIX_FILTER]);
         }
         return false;
     }
@@ -764,7 +870,7 @@ static bool rf2inetFiltersPass(const char *srcCall, const char *dstCall, const c
     if (!aprs_filter_budlist_pass(g_config.rf2inet_budlist_mode, srcCall)) {
         if (report) {
             ESP_LOGD(TAG, "RF2INET budlist-filtered (mode=%d): %s", (int)g_config.rf2inet_budlist_mode, srcCall);
-            s_stats.dropByReason[DROP_BUDLIST]++;
+            IGATE_STAT_INC(dropByReason[DROP_BUDLIST]);
         }
         return false;
     }
@@ -778,9 +884,9 @@ static bool rf2inetFiltersPass(const char *srcCall, const char *dstCall, const c
 // caller's scratch buffer holding the NUL-terminated information field, which
 // the returned @p effInfo points into.
 //
-// A '}' payload that cannot be unwrapped, or whose inner header shows it has
-// already reached APRS-IS (TCPIP/TCPXX) or is wrapped more than one level
-// deep, keeps the frame's own view: the type filter classifies a '}' payload
+// A '}' payload that cannot be unwrapped, whose inner header shows it has
+// already reached APRS-IS (TCPIP/TCPXX), is wrapped more than one level deep
+// or fails the inner-header checks, keeps the frame's own view: the type filter classifies a '}' payload
 // as 0, which never passes, so such a frame is refused either way.
 static void effectiveFrameView(const ax25_msg_t *packet, char *info, size_t infoMax, const char **effInfo, size_t *effInfoLen, const char **srcCall,
                                const char **dstCall, char *effSrc, size_t effSrcMax, char *effDst, size_t effDstMax, char *effPath, size_t effPathMax) {
@@ -798,10 +904,10 @@ static void effectiveFrameView(const ax25_msg_t *packet, char *info, size_t info
 
     const char *innerInfo;
     size_t innerInfoLen;
-    bool isLoop, isNested;
-    if (!thirdPartyUnwrap(info, effSrc, effSrcMax, effDst, effDstMax, effPath, effPathMax, &innerInfo, &innerInfoLen, &isLoop, &isNested))
+    bool isLoop, isNested, isBad;
+    if (!thirdPartyUnwrap(info, effSrc, effSrcMax, effDst, effDstMax, effPath, effPathMax, &innerInfo, &innerInfoLen, &isLoop, &isNested, &isBad))
         return;
-    if (isLoop || isNested)
+    if (isLoop || isNested || isBad)
         return;
 
     *effInfo = innerInfo;
@@ -845,10 +951,10 @@ int igateProcess(ax25_msg_t *packet) {
     // outcome below (dup/dropped/sent). Without this, s_stats.rxCount stays
     // permanently at 0 and the dashboard's STATISTICS panel (RF2INET / part
     // of PACKET RX) never updates.
-    s_stats.rxCount++;
+    IGATE_STAT_INC(rxCount);
 
     if (isSrcPlaceholder(packet->src.call)) {
-        s_stats.dropByReason[DROP_SRC_PLACEHOLDER]++;
+        IGATE_STAT_INC(dropByReason[DROP_SRC_PLACEHOLDER]);
         return 0;
     }
 
@@ -858,24 +964,24 @@ int igateProcess(ax25_msg_t *packet) {
     // setting only controls local RX/monitor handling and must never leak
     // non-APRS traffic onto APRS-IS.
     if (!AX25_CTRL_IS_UI(packet->ctrl) || packet->pid != AX25_PID_NOLAYER3) {
-        s_stats.dropByReason[DROP_NOT_APRS]++;
+        IGATE_STAT_INC(dropByReason[DROP_NOT_APRS]);
         return 0;
     }
 
     if (isDuplicatePacket(packet)) {
-        s_stats.dupCount++;
+        IGATE_STAT_INC(dupCount);
         return 0;
     }
 
     if (packet->len < 2) {
-        s_stats.dropByReason[DROP_TOO_SHORT]++;
+        IGATE_STAT_INC(dropByReason[DROP_TOO_SHORT]);
         return 0;
     }
 
     for (idx = 0; idx < packet->rpt_count; idx++) {
         if (!strncmp(packet->rpt_list[idx].call, "RFONLY", 6) || !strncmp(packet->rpt_list[idx].call, "TCP", 3) ||
             !strncmp(packet->rpt_list[idx].call, "qA", 2) || !strncmp(packet->rpt_list[idx].call, "NOGATE", 6)) {
-            s_stats.dropByReason[DROP_PATH_TOKEN]++;
+            IGATE_STAT_INC(dropByReason[DROP_PATH_TOKEN]);
             return 0;
         }
     }
@@ -920,16 +1026,22 @@ int igateProcess(ax25_msg_t *packet) {
         size_t innerInfoLen;
         bool isLoop;
         bool isNested;
-        if (!thirdPartyUnwrap(info, effSrc, sizeof(effSrc), effDst, sizeof(effDst), effPath, sizeof(effPath), &innerInfo, &innerInfoLen, &isLoop, &isNested)) {
-            s_stats.dropByReason[DROP_TOO_SHORT]++;
+        bool isBad;
+        if (!thirdPartyUnwrap(info, effSrc, sizeof(effSrc), effDst, sizeof(effDst), effPath, sizeof(effPath), &innerInfo, &innerInfoLen, &isLoop, &isNested,
+                              &isBad)) {
+            IGATE_STAT_INC(dropByReason[DROP_TOO_SHORT]);
             return 0;
         }
         if (isLoop) {
-            s_stats.dropByReason[DROP_3RDPARTY_LOOP]++;
+            IGATE_STAT_INC(dropByReason[DROP_3RDPARTY_LOOP]);
             return 0;
         }
         if (isNested) {
-            s_stats.dropByReason[DROP_3RDPARTY_NESTED_RF]++;
+            IGATE_STAT_INC(dropByReason[DROP_3RDPARTY_NESTED_RF]);
+            return 0;
+        }
+        if (isBad) {
+            IGATE_STAT_INC(dropByReason[DROP_3RDPARTY_BAD_HEADER]);
             return 0;
         }
         effInfo = innerInfo;
@@ -947,7 +1059,7 @@ int igateProcess(ax25_msg_t *packet) {
     // does not start with '?' and is unaffected; it is still subject to the
     // ordinary type filter below.
     if (effInfoLen > 0 && effInfo[0] == '?') {
-        s_stats.dropByReason[DROP_GENERIC_QUERY]++;
+        IGATE_STAT_INC(dropByReason[DROP_GENERIC_QUERY]);
         return 0;
     }
 
@@ -1039,7 +1151,7 @@ int igateProcess(ax25_msg_t *packet) {
         // character is unusable: the q-construct and the ":" separator are the
         // last things written, so a truncated one would be gated to APRS-IS
         // with a mangled path. Drop it instead.
-        s_stats.dropByReason[DROP_HEADER_OVERFLOW]++;
+        IGATE_STAT_INC(dropByReason[DROP_HEADER_OVERFLOW]);
         return 0;
     }
 
@@ -1060,7 +1172,7 @@ int igateProcess(ax25_msg_t *packet) {
         // beacon builder in the project: a frame that does not fit is
         // dropped whole, never gated as a mangled fragment.
         ESP_LOGW(TAG, "RF2INET frame too long for APRS-IS (%u bytes, limit %u) - dropped", (unsigned)(headerLen + strippedInfoLen), (unsigned)APRS_IS_LINE_MAX);
-        s_stats.dropByReason[DROP_IS_LINE_TOO_LONG]++;
+        IGATE_STAT_INC(dropByReason[DROP_IS_LINE_TOO_LONG]);
         return 0;
     }
 
@@ -1081,11 +1193,11 @@ int igateProcess(ax25_msg_t *packet) {
     }
 
     if (sendToAprsIs(frame, fpos)) {
-        s_stats.txCount++;
+        IGATE_STAT_INC(txCount);
         // An APRS message carries the ':' data type identifier in the first
         // byte of the information field, and messages are what MSG_CNT counts.
         if (effInfoLen > 0 && effInfo[0] == ':')
-            s_stats.msgCount++;
+            IGATE_STAT_INC(msgCount);
         return 1;
     }
     return 0;
@@ -1311,7 +1423,7 @@ static void processAprsIsLine(char *line) {
     // inet2rf is enabled or the line ends up relayed to RF below - this is
     // the total internet RX traffic, not just what was actually transmitted
     // on RF.
-    s_stats.isRxCount++;
+    IGATE_STAT_INC(isRxCount);
 
     // "Log after filters" (IGate page) narrows both views of the APRS-IS feed
     // - the serial console line below and the web traffic table further down -
@@ -1402,16 +1514,12 @@ static void processAprsIsLine(char *line) {
         }
     }
 
-#ifdef ENABLE_IGATE
-    if (g_config.inet2rf && s_inet2rfHandler)
-        s_inet2rfHandler(line);
-#else
-    // No IGate means no Internet-to-RF switch to consult: every line is
-    // handed on, so the modules that read the feed (messaging, the query
-    // responder, the Telegram routing, last heard) see all of it.
+    // Every packet line is handed on whatever the Internet-to-RF setting
+    // says: the handler is where messaging, the query responder, the Telegram
+    // routing and last heard read the feed, and it applies the
+    // Internet-to-RF gate itself, for the retransmission on RF only.
     if (s_inet2rfHandler)
         s_inet2rfHandler(line);
-#endif
 }
 
 // Assembles complete CR/LF-terminated lines out of a chunk of bytes just read
@@ -1448,7 +1556,7 @@ static void feedAprsIsBytes(const char *buf, int len, char *line, size_t lineCap
             // complete packet.
             *discarding = true;
             *linePos = 0;
-            s_stats.dropByReason[DROP_IS_RX_LINE_TOO_LONG]++;
+            IGATE_STAT_INC(dropByReason[DROP_IS_RX_LINE_TOO_LONG]);
             ESP_LOGW(TAG, "APRS-IS RX line exceeded %u bytes - discarding until next line", (unsigned)lineCap);
         }
     }
@@ -2127,10 +2235,23 @@ void igate_get_current_server(char *host, size_t hostLen, uint16_t *port) {
 // it: igateUplinkNeeded() is re-evaluated on every pass, so the task simply
 // closes the socket and idles until one of them is turned back on. s_task is
 // therefore only ever set, and guards against a second task being created.
+// Stack budget of the APRS-IS client task. Every line read off the socket is
+// handed to the line handler on this stack, and a message addressed to this
+// station reaches the messaging engine from there: its acknowledgement, and a
+// Winlink answer it provokes, run the whole RF transmit chain on this task.
+// The compiler's own stack accounting (-fcallgraph-info=su, -O2) puts the
+// deepest such path - the read loop, inet2rfHandler(), handleIncomingAPRS(),
+// the Winlink observer, sendAPRSMessage() and the frame build - at 6544 bytes
+// of application frames before the C library's printf and the kernel calls
+// at its leaves; the budget leaves about two and a half kilobytes above that.
+// The hourly stack report (CONFIG_APRS_STACK_REPORT) is the figure to
+// right-size it against; a build at -Og needs more.
+#define IGATE_TASK_STACK_BYTES 9216
+
 void igate_start(void) {
     if (s_task != NULL)
         return; // already running
     ensureSockMutex();
-    xTaskCreate(igateTask, "igate_task", 6144, NULL, 5, &s_task);
+    xTaskCreate(igateTask, "igate_task", IGATE_TASK_STACK_BYTES, NULL, 5, &s_task);
 }
 #endif // BUILD_APRS_IS

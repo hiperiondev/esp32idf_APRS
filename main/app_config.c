@@ -42,6 +42,7 @@
 // enforces, so what is loaded from flash and what is saved from the web admin
 // can never accept different values.
 #include "aprs_service.h"
+#include "bootloader_random.h" // bootloader_random_enable(): entropy for the generated SoftAP password
 #include "cJSON.h"
 // MODEM_PTT_ACTIVE_HIGH: the board's PTT polarity, #ifndef-guarded in that
 // header and overridden from the top-level CMakeLists.txt. Both it and
@@ -49,6 +50,8 @@
 // no g_config counterpart - see aprs_service_build_modem_config().
 #include "esp32idf_radioamateur_modem_config.h"
 #include "esp_log.h"
+#include "esp_random.h" // esp_fill_random(): the generated SoftAP password
+#include "esp_wifi.h"   // esp_wifi_get_mode(): whether the radio feeds the random number generator
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -228,6 +231,65 @@ static void set_path(char *dst, size_t sz, const char *val, const char *key) {
         ESP_LOGW(TAG, "%s \"%s\" loaded as \"%s\"", key, orig, dst);
 }
 
+// Alphabet of the generated SoftAP password: upper case letters and digits
+// without 0/O, 1/I and L, so the password reads back off a console without
+// ambiguity. Thirty-one symbols, a little under five bits each.
+static const char s_ap_pass_alphabet[] = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+void app_config_default_ap_password(char *out, size_t out_size) {
+    if (out == NULL || out_size == 0)
+        return;
+    out[0] = 0;
+    if (out_size < WIFI_AP_PASS_GENERATED_LEN + 1)
+        return;
+
+    uint8_t rnd[2 * WIFI_AP_PASS_GENERATED_GROUP];
+    // With the radio running, the random number generator is fed by its noise.
+    // The boot-time load runs before Wi-Fi and before the modem claims the
+    // ADC, so there the internal entropy source, which borrows the ADC, stands
+    // in for the radio for the length of this draw. A factory reset requested
+    // from the web interface always runs with the radio up.
+    wifi_mode_t mode;
+    bool radio_up = (esp_wifi_get_mode(&mode) == ESP_OK);
+    if (!radio_up)
+        bootloader_random_enable();
+    esp_fill_random(rnd, sizeof(rnd));
+    if (!radio_up)
+        bootloader_random_disable();
+
+    const size_t symbols = sizeof(s_ap_pass_alphabet) - 1;
+    size_t pos = strlen(WIFI_AP_PASS_GENERATED_PREFIX);
+    memcpy(out, WIFI_AP_PASS_GENERATED_PREFIX, pos);
+    for (size_t i = 0; i < sizeof(rnd); i++) {
+        if (i == WIFI_AP_PASS_GENERATED_GROUP)
+            out[pos++] = '-';
+        out[pos++] = s_ap_pass_alphabet[rnd[i] % symbols];
+    }
+    out[pos] = 0;
+}
+
+bool app_config_ap_password_is_generated(const char *pass) {
+    const size_t prefix = strlen(WIFI_AP_PASS_GENERATED_PREFIX);
+    if (pass == NULL || strlen(pass) != WIFI_AP_PASS_GENERATED_LEN || strncmp(pass, WIFI_AP_PASS_GENERATED_PREFIX, prefix) != 0)
+        return false;
+    for (size_t i = prefix; i < WIFI_AP_PASS_GENERATED_LEN; i++) {
+        if (i == prefix + WIFI_AP_PASS_GENERATED_GROUP) {
+            if (pass[i] != '-')
+                return false;
+        } else if (strchr(s_ap_pass_alphabet, pass[i]) == NULL || pass[i] == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool app_config_ap_password_is_valid(const char *pass) {
+    if (pass == NULL)
+        return false;
+    size_t len = strlen(pass);
+    return len == 0 || len >= WIFI_AP_PASS_MIN_LEN;
+}
+
 void app_config_set_defaults(app_config_t *c) {
     memset(c, 0, sizeof(*c));
 
@@ -269,7 +331,7 @@ void app_config_set_defaults(app_config_t *c) {
     }
     c->wifi_ap_ch = WIFI_AP_CH_DEFAULT;
     set_str(c->wifi_ap_ssid, sizeof(c->wifi_ap_ssid), "esp32idf_APRS");
-    set_str(c->wifi_ap_pass, sizeof(c->wifi_ap_pass), "esp32idf_APRS");
+    app_config_default_ap_password(c->wifi_ap_pass, sizeof(c->wifi_ap_pass));
 
     // IGATE
     c->igate_en = true;
@@ -552,9 +614,10 @@ void app_config_set_defaults(app_config_t *c) {
     set_str(c->ntp_host[2], sizeof(c->ntp_host[2]), "time.cloudflare.com");
     c->ntp_resync_sec = 3600;
 
-    // System / HTTP auth  (README documented default: admin/admin)
-    set_str(c->http_username, sizeof(c->http_username), "admin");
-    set_str(c->http_password, sizeof(c->http_password), "admin");
+    // System / HTTP auth. The web interface accepts changes on the System page
+    // only for as long as this pair is in use (web_factory_credentials_active()).
+    set_str(c->http_username, sizeof(c->http_username), APP_CONFIG_DEFAULT_HTTP_USERNAME);
+    set_str(c->http_password, sizeof(c->http_password), APP_CONFIG_DEFAULT_HTTP_PASSWORD);
     // No read-only account out of the box: an empty username means the second
     // credential pair matches nothing, so a station only ever answers to the
     // one account until the operator names a read-only user on the System page.
@@ -1333,7 +1396,16 @@ static void section_read_wireless(cJSON *d, app_config_t *c) {
         c->wifi_ap_ch = WIFI_AP_CH_DEFAULT;
     }
     set_str(c->wifi_ap_ssid, sizeof(c->wifi_ap_ssid), jget_str(d, "WiFiAP_SSID", c->wifi_ap_ssid));
-    set_str(c->wifi_ap_pass, sizeof(c->wifi_ap_pass), jget_str(d, "WiFiAP_PASS", c->wifi_ap_pass));
+    {
+        // A password of one to seven characters cannot be used by WPA2 and is
+        // never run open in its place: the value already in the structure is
+        // kept and the file is reported.
+        const char *ap_pass = jget_str(d, "WiFiAP_PASS", c->wifi_ap_pass);
+        if (app_config_ap_password_is_valid(ap_pass))
+            set_str(c->wifi_ap_pass, sizeof(c->wifi_ap_pass), ap_pass);
+        else
+            ESP_LOGW(TAG, "stored SoftAP password shorter than %d characters ignored", WIFI_AP_PASS_MIN_LEN);
+    }
     {
         cJSON *arr = cJSON_GetObjectItemCaseSensitive(d, "WiFiSTA");
         if (arr && cJSON_IsArray(arr)) {

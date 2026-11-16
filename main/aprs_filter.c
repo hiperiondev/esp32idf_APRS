@@ -439,7 +439,7 @@ uint16_t aprs_filter_classify_tnc2(const char *line) {
 
 static void set_err(char *err, size_t errSize, const char *msg) {
     if (err && errSize)
-        snprintf(err, errSize, "%s", msg);
+        str_copy_bounded(err, errSize, msg);
 }
 
 // Is `s` (length len) a valid signed decimal number (int or float)?
