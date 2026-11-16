@@ -85,8 +85,9 @@ static const char *TAG = "aprs_service";
 // Stack budget for rxTask, the task every received RF frame is decoded and
 // dispatched on (see on_rx_frame()). It carries the whole receive chain: the
 // ax25_msg_t decode target, the received frame's TNC2 render and, when the
-// digipeater repeats it, a second render plus the TNC2/AX.25 encode chain
-// down to hdlcFrame(); igateProcess() building and sending its APRS-IS line;
+// digipeater repeats it, a second render for the logs plus the binary AX.25
+// encode (the digipeater's own copy of the frame is static, see
+// aprs_msg_callback()); igateProcess() building and sending its APRS-IS line;
 // the message, query, Winlink and Telegram routing parsers; LAST HEARD and
 // the traffic log. Set with headroom; the high-water mark is logged at
 // ESP_LOGD after every frame, which is the figure to right-size it against.
@@ -543,21 +544,22 @@ static uint32_t duty_cycle_baud_rate(void) {
     }
 }
 
-// Estimated on-air time, in milliseconds, of transmitting a TNC2 line of
-// `tnc2_len` bytes at the current modem settings: the configured TXDelay
+// Estimated on-air time, in milliseconds, of transmitting a frame of
+// `frame_len` bytes at the current modem settings: the configured TXDelay
 // preamble, the encoded frame at the configured baud rate and the TXTail.
 //
-// tnc2_len stands in for the actual encoded AX.25 frame's byte count, which
-// is not available at this layer - modem_send_tnc2() does its own
-// ax25_encode() internally. The two are not identical (binary AX.25 address
-// fields are 7 bytes each versus their longer ASCII TNC2 rendering), but
-// DUTY_CYCLE_FRAME_OVERHEAD_BYTES and DUTY_CYCLE_BITSTUFF_PCT keep the
-// estimate on the conservative side, which is all a duty-cycle *budget*
-// needs: it only has to bound cumulative airtime, not time an individual
-// frame to the bit.
-static uint32_t estimate_tx_airtime_ms(size_t tnc2_len) {
+// For a frame sent in binary form (a digipeat, see send_rf_impl()) frame_len
+// is the encoded AX.25 byte count itself. For a TNC2 line it is the line's
+// length, standing in for the encoded count, which is not available at this
+// layer - modem_send_tnc2() does its own ax25_encode() internally. The two are
+// not identical (binary AX.25 address fields are 7 bytes each versus their
+// longer ASCII TNC2 rendering), but DUTY_CYCLE_FRAME_OVERHEAD_BYTES and
+// DUTY_CYCLE_BITSTUFF_PCT keep the estimate on the conservative side, which is
+// all a duty-cycle *budget* needs: it only has to bound cumulative airtime,
+// not time an individual frame to the bit.
+static uint32_t estimate_tx_airtime_ms(size_t frame_len) {
     uint32_t baud = duty_cycle_baud_rate();
-    uint32_t frame_bits = ((uint32_t)tnc2_len + DUTY_CYCLE_FRAME_OVERHEAD_BYTES) * 8;
+    uint32_t frame_bits = ((uint32_t)frame_len + DUTY_CYCLE_FRAME_OVERHEAD_BYTES) * 8;
     frame_bits += frame_bits * DUTY_CYCLE_BITSTUFF_PCT / 100;
     uint32_t data_ms = (frame_bits * 1000u) / baud;
     return (uint32_t)g_config.preamble + data_ms + (uint32_t)g_config.tx_tail; // single-word reads, benign if stale
@@ -581,8 +583,14 @@ static uint32_t estimate_tx_airtime_ms(size_t tnc2_len) {
 // transmit still counts toward the window regardless of `critical`, since
 // message and digipeat traffic is real airtime too; only the gate itself is
 // skipped for it.
+//
+// `frame`, when not NULL, is the frame to transmit in binary form
+// (modem_send_msg()) instead of `packet`: the digipeater's path. `packet` is
+// then the frame's TNC2 rendering, used for the log lines alone, and the TNC2
+// length limit below does not apply - a received frame is bounded by the AX.25
+// frame size, not by the length of its text form.
 // ---------------------------------------------------------------------------
-static bool send_tnc2_impl(const char *packet, size_t len, bool critical) {
+static bool send_rf_impl(const char *packet, size_t len, const ax25_msg_t *frame, bool critical) {
     char buf[AX25_FRAME_MAX_SIZE];
 
     if (len == 0)
@@ -683,33 +691,36 @@ static bool send_tnc2_impl(const char *packet, size_t len, bool critical) {
             return false;
         }
     }
-    if (len >= sizeof(buf)) {
-        atomic_fetch_add_explicit(&s_statDrop, 1, memory_order_relaxed);
-        igate_note_drop(DROP_TX_TOO_LONG);
-        ESP_LOGW(TAG, "TNC2 packet too long (%u bytes), dropped", (unsigned)len);
-        return false;
+    if (frame == NULL) {
+        if (len >= sizeof(buf)) {
+            atomic_fetch_add_explicit(&s_statDrop, 1, memory_order_relaxed);
+            igate_note_drop(DROP_TX_TOO_LONG);
+            ESP_LOGW(TAG, "TNC2 packet too long (%u bytes), dropped", (unsigned)len);
+            return false;
+        }
+        memcpy(buf, packet, len);
+        buf[len] = 0;
     }
-    memcpy(buf, packet, len);
-    buf[len] = 0;
 
     // Holders of the gate keep it only across one ownership test and one
-    // modem_send_tnc2(), itself bounded by the modem's transmit lock time-out,
-    // so waiting for it needs no time-out of its own.
+    // modem_send_tnc2()/modem_send_msg(), itself bounded by the modem's
+    // transmit lock time-out, so waiting for it needs no time-out of its own.
     xSemaphoreTake(s_rfTxGate, portMAX_DELAY);
     TaskHandle_t owner = s_rfTxOwner;
     if ((owner != NULL) && (owner != xTaskGetCurrentTaskHandle())) {
         xSemaphoreGive(s_rfTxGate);
         atomic_fetch_add_explicit(&s_statDrop, 1, memory_order_relaxed);
         igate_note_drop(DROP_TX_SELF_TEST);
-        ESP_LOGW(TAG, "LOOP TEST in progress, RF TX refused: %s", buf);
+        ESP_LOGW(TAG, "LOOP TEST in progress, RF TX refused: %.*s", (int)len, packet);
         return false;
     }
-    esp_err_t err = modem_send_tnc2(buf);
+    uint16_t frameLen = 0;
+    esp_err_t err = (frame != NULL) ? modem_send_msg(frame, &frameLen) : modem_send_tnc2(buf);
     xSemaphoreGive(s_rfTxGate);
     if (err != ESP_OK) {
         atomic_fetch_add_explicit(&s_statErr, 1, memory_order_relaxed);
         igate_note_drop(ERR_MODEM_SEND_FAIL);
-        ESP_LOGW(TAG, "modem_send_tnc2() failed: %s (\"%s\")", esp_err_to_name(err), buf);
+        ESP_LOGW(TAG, "%s failed: %s (\"%.*s\")", (frame != NULL) ? "modem_send_msg()" : "modem_send_tnc2()", esp_err_to_name(err), (int)len, packet);
         return false;
     }
     atomic_fetch_add_explicit(&s_statRadioTx, 1, memory_order_relaxed);
@@ -717,7 +728,7 @@ static bool send_tnc2_impl(const char *packet, size_t len, bool critical) {
     // whether or not the ceiling above is even enabled, so the dashboard's
     // live figure (see aprs_service_get_stats()) is meaningful the moment an
     // operator turns the limiter on rather than starting from a cold window.
-    duty_cycle_add_ms(estimate_tx_airtime_ms(len));
+    duty_cycle_add_ms(estimate_tx_airtime_ms((frame != NULL) ? frameLen : len));
     // Report the backlog right as it stands, not just once the ring finally
     // drains (see ax25.c's "PTT OFF" log). A packet transmits fast enough,
     // relative to how often most of these callers fire, that by the time
@@ -732,6 +743,12 @@ static bool send_tnc2_impl(const char *packet, size_t len, bool critical) {
     return true;
 }
 
+// TNC2 text transmit: every caller except the digipeater, which hands its
+// frame over in binary form.
+static bool send_tnc2_impl(const char *packet, size_t len, bool critical) {
+    return send_rf_impl(packet, len, NULL, critical);
+}
+
 // Public, non-critical entry point: every own-station periodic report
 // (beacon.c, weather.c, telemetry.c, objects_items.c, bulletins.c) reaches RF
 // through this one function, so this is exactly the traffic the duty-cycle
@@ -744,9 +761,10 @@ bool aprs_service_send_tnc2(const char *packet, size_t len) {
 }
 
 // ---------------------------------------------------------------------------
-// AX25Msg -> TNC2 text line ("SRC-N>DST-N,PATH...:info"), shared by the digi
-// re-transmit path, the igate RF->INET path (igate.c builds its own header
-// internally) and message parsing (which works on TNC2 text either way).
+// AX25Msg -> TNC2 text line ("SRC-N>DST-N,PATH...:info"), shared by the RX
+// console/traffic log, the digipeater's log lines (the repeat itself is
+// transmitted in binary form) and message parsing (which works on TNC2 text
+// either way). igate.c builds its own APRS-IS header internally.
 //
 // The component ships exactly the same rendering as modem_format_tnc2(), so
 // this is a thin length-returning wrapper over it rather than a second copy
@@ -947,14 +965,19 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
 
 #ifdef ENABLE_DIGIPEATER
     if (g_config.digi_en) {
-        int action = digiProcess(msg);
-        if (action == 2) {
-            // Path was rewritten in place by digiProcess(); render the
-            // outgoing frame into its own buffer so the received-frame
-            // rendering above stays untouched for the consumers below.
+        // The digipeater rewrites the path of its own copy of the frame, never
+        // of msg: the IGate and every other consumer below gate, parse and
+        // log the frame exactly as it was heard. Static because this callback
+        // only ever runs on rxTask, whose stack already holds msg itself.
+        static ax25_msg_t digiFrame;
+        digiFrame = *msg;
+        int action = digiProcess(&digiFrame);
+        if (action != 0) {
+            // The repeat is transmitted in binary form, byte for byte, from
+            // the rewritten copy; the TNC2 rendering is for the logs only.
             char digiTnc2[APRS_RX_TNC2_BUF_SIZE];
-            int len = ax25ToTnc2(msg, digiTnc2, sizeof(digiTnc2));
-            if (send_tnc2_impl(digiTnc2, (size_t)len, true)) {
+            int len = ax25ToTnc2(&digiFrame, digiTnc2, sizeof(digiTnc2));
+            if (send_rf_impl(digiTnc2, (size_t)len, &digiFrame, true)) {
                 atomic_fetch_add_explicit(&s_statDigi, 1, memory_order_relaxed);
                 ESP_LOGD(TAG, "DIGI TX: %s", digiTnc2);
                 trafficlog_add_pkt("DIGI", callsign, digiTnc2, decoded, -1, symTable, symCode);
@@ -977,8 +1000,8 @@ static void aprs_msg_callback(ax25_msg_t *msg) {
     // never reach query_process_directed() and no message or bulletin would
     // reach Telegram while messaging is turned off. Both this and
     // query_process() below operate on the frame as received, rendered once at
-    // the top of this function, since digiProcess() (if it ran) rewrote the
-    // path for retransmission only, not for these consumers.
+    // the top of this function; digiProcess() (if it ran) rewrote only its own
+    // copy of the frame, for retransmission.
 #ifdef BUILD_MSG_PARSER
     if (msg_parser_wanted())
         handleIncomingAPRS(tnc2, QUERY_SRC_RF);

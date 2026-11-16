@@ -63,20 +63,26 @@ static bool web_const_time_streq(const char *a, const char *b) {
 // Tracks failed Basic-Auth attempts per client IP so an attacker on the
 // network can't brute-force the admin password at full HTTP round-trip
 // speed. After WEB_AUTH_MAX_ATTEMPTS consecutive failures from the same
-// source, that source is locked out for a backoff window that doubles with
-// every further failure while locked out (capped at WEB_AUTH_LOCKOUT_MAX_S),
-// and resets on a successful login. This is intentionally a small fixed-size
-// in-RAM table (no persistent storage / no dynamic allocation) sized for a
-// handful of concurrent offenders, which is appropriate for a single-board
-// admin UI.
+// source, that source is locked out for a window that doubles with every
+// further failure (capped at WEB_AUTH_LOCKOUT_MAX_S). The count survives the
+// end of a lockout window: a source that goes on failing after each window
+// gets the next, longer one, so its steady-state rate is one guess per
+// WEB_AUTH_LOCKOUT_MAX_S. Only a successful login, or WEB_AUTH_FORGET_S
+// without a single failure, clears it. This is intentionally a small
+// fixed-size in-RAM table (no persistent storage / no dynamic allocation)
+// sized for a handful of concurrent offenders, which is appropriate for a
+// single-board admin UI.
 #define WEB_AUTH_MAX_ATTEMPTS   5   // failures allowed before the first lockout
 #define WEB_AUTH_LOCKOUT_BASE_S 5   // initial lockout duration
 #define WEB_AUTH_LOCKOUT_MAX_S  300 // cap on the backoff (5 minutes)
+#define WEB_AUTH_FORGET_S       900 // quiet time after which a source's failures are forgotten
 #define WEB_AUTH_TRACK_SLOTS    16  // distinct source IPs tracked at once
 
 typedef struct {
-    uint32_t ip;          // source IPv4 address in network byte order; 0 = free slot
-    uint16_t fail_count;  // consecutive failures since the last success/reset
+    bool used;            // slot holds a source
+    uint32_t ip;          // source IPv4 address in network byte order; 0 = source could not be determined
+    uint16_t fail_count;  // consecutive failures since the last success or forget
+    int64_t last_fail;    // esp_timer_get_time() microseconds of the latest failure
     int64_t locked_until; // esp_timer_get_time() microseconds; 0 = not locked
 } web_auth_track_t;
 
@@ -103,81 +109,89 @@ static uint32_t web_client_ipv4(httpd_req_t *req) {
     return addr.sin_addr.s_addr;
 }
 
-// Finds this source's tracking slot, evicting the least-recently-failed
-// entry if the table is full and the source isn't already present. Never
-// returns NULL: worst case every source beyond WEB_AUTH_TRACK_SLOTS shares
-// slot 0's counter, which only makes lockouts trigger sooner, never later.
-static web_auth_track_t *web_auth_track_find(uint32_t ip) {
+// Finds this source's tracking slot. One source owns at most one slot. When
+// create is set and the source is not in the table, it takes a free slot, or
+// else the slot of the source whose latest failure is oldest among those not
+// locked out right now - a locked source is evicted only when every slot is
+// locked, and then the one whose lockout ends first. Returns NULL only when
+// create is false and the source is not tracked.
+static web_auth_track_t *web_auth_track_find(uint32_t ip, bool create, int64_t now) {
     web_auth_track_t *free_slot = NULL;
-    web_auth_track_t *oldest = &s_auth_track[0];
+    web_auth_track_t *victim = NULL;
+    bool victim_locked = true;
+
     for (int i = 0; i < WEB_AUTH_TRACK_SLOTS; i++) {
-        if (s_auth_track[i].ip == ip && s_auth_track[i].fail_count > 0)
-            return &s_auth_track[i];
-        if (!free_slot && s_auth_track[i].ip == 0)
-            free_slot = &s_auth_track[i];
-        if (s_auth_track[i].locked_until < oldest->locked_until)
-            oldest = &s_auth_track[i];
+        web_auth_track_t *t = &s_auth_track[i];
+        if (!t->used) {
+            if (!free_slot)
+                free_slot = t;
+            continue;
+        }
+        if (t->ip == ip)
+            return t;
+
+        bool locked = t->locked_until > now;
+        if (victim == NULL || (victim_locked && !locked) ||
+            (locked == victim_locked && (locked ? t->locked_until < victim->locked_until : t->last_fail < victim->last_fail))) {
+            victim = t;
+            victim_locked = locked;
+        }
     }
-    if (free_slot) {
-        free_slot->ip = ip;
-        return free_slot;
-    }
-    oldest->ip = ip;
-    oldest->fail_count = 0;
-    oldest->locked_until = 0;
-    return oldest;
+
+    if (!create)
+        return NULL;
+
+    web_auth_track_t *t = free_slot ? free_slot : victim;
+    memset(t, 0, sizeof(*t));
+    t->used = true;
+    t->ip = ip;
+    return t;
 }
 
 // Returns the seconds remaining in this source's lockout (0 if not locked).
-// A lockout whose window has just elapsed is rearmed here at one failure
-// below the threshold rather than left at its accumulated fail_count: a
-// source that keeps presenting the same stale credentials after every
-// window expires this way re-triggers only the base lockout duration each
-// time, instead of resuming the exponential backoff from wherever it left
-// off and ratcheting straight to the cap.
 static int web_auth_lockout_remaining_s(uint32_t ip) {
-    for (int i = 0; i < WEB_AUTH_TRACK_SLOTS; i++) {
-        if (s_auth_track[i].ip == ip && s_auth_track[i].locked_until > 0) {
-            int64_t remaining_us = s_auth_track[i].locked_until - esp_timer_get_time();
-            if (remaining_us > 0)
-                return (int)(remaining_us / 1000000) + 1;
-            s_auth_track[i].locked_until = 0;
-            s_auth_track[i].fail_count = WEB_AUTH_MAX_ATTEMPTS - 1;
-            return 0;
-        }
-    }
-    return 0;
+    int64_t now = esp_timer_get_time();
+    web_auth_track_t *t = web_auth_track_find(ip, false, now);
+    if (t == NULL || t->locked_until <= now)
+        return 0;
+    return (int)((t->locked_until - now) / 1000000) + 1;
 }
 
 static void web_auth_note_failure(uint32_t ip) {
-    web_auth_track_t *t = web_auth_track_find(ip);
+    int64_t now = esp_timer_get_time();
+    web_auth_track_t *t = web_auth_track_find(ip, true, now);
+
+    // A source that has been quiet for long enough starts over: the backoff is
+    // there to slow down a run of guesses, not to remember a typo made the
+    // day before.
+    if (t->fail_count > 0 && t->locked_until <= now && now - t->last_fail > (int64_t)WEB_AUTH_FORGET_S * 1000000) {
+        t->fail_count = 0;
+        t->locked_until = 0;
+    }
+
     if (t->fail_count < UINT16_MAX)
         t->fail_count++;
+    t->last_fail = now;
 
     if (t->fail_count >= WEB_AUTH_MAX_ATTEMPTS) {
-        // Every failure beyond the threshold doubles the lockout, so a
-        // client that keeps hammering the lockout window (rather than
-        // waiting it out) backs off exponentially instead of retrying at a
+        // Every failure beyond the threshold doubles the lockout, whether it
+        // arrives during a window or after one has elapsed, so a client that
+        // keeps guessing backs off exponentially instead of retrying at a
         // fixed cadence.
         uint32_t over = t->fail_count - WEB_AUTH_MAX_ATTEMPTS;
         uint32_t shift = over > 8 ? 8 : over; // cap the shift so it can't overflow
         uint32_t lockout_s = WEB_AUTH_LOCKOUT_BASE_S << shift;
         if (lockout_s > WEB_AUTH_LOCKOUT_MAX_S)
             lockout_s = WEB_AUTH_LOCKOUT_MAX_S;
-        t->locked_until = esp_timer_get_time() + (int64_t)lockout_s * 1000000;
+        t->locked_until = now + (int64_t)lockout_s * 1000000;
         ESP_LOGW(TAG, "Web admin login: %u consecutive failures, locked out for %u s", (unsigned)t->fail_count, (unsigned)lockout_s);
     }
 }
 
 static void web_auth_note_success(uint32_t ip) {
-    for (int i = 0; i < WEB_AUTH_TRACK_SLOTS; i++) {
-        if (s_auth_track[i].ip == ip) {
-            s_auth_track[i].ip = 0;
-            s_auth_track[i].fail_count = 0;
-            s_auth_track[i].locked_until = 0;
-            return;
-        }
-    }
+    web_auth_track_t *t = web_auth_track_find(ip, false, esp_timer_get_time());
+    if (t != NULL)
+        memset(t, 0, sizeof(*t));
 }
 
 // ------------------------------------------------------------- CSRF (Origin/Referer)
@@ -434,13 +448,17 @@ int web_read_body(httpd_req_t *req, char *buf, size_t buf_size) {
         return -1;
     }
     int total = 0;
+    int timeouts = 0;
     while (total < req->content_len) {
         int r = httpd_req_recv(req, buf + total, req->content_len - total);
         if (r <= 0) {
-            if (r == HTTPD_SOCK_ERR_TIMEOUT)
+            if (r == HTTPD_SOCK_ERR_TIMEOUT && ++timeouts <= WEB_BODY_MAX_TIMEOUTS)
                 continue;
+            if (r == HTTPD_SOCK_ERR_TIMEOUT)
+                ESP_LOGW(TAG, "body stalled after %d of %d bytes, request abandoned", total, (int)req->content_len);
             return -1;
         }
+        timeouts = 0;
         total += r;
     }
     buf[total] = 0;
@@ -774,6 +792,7 @@ esp_err_t web_multipart_receive_file(httpd_req_t *req, web_multipart_data_cb_t c
     size_t remaining = req->content_len;
     esp_err_t result = ESP_FAIL;
     bool found_file_part = false;
+    int timeouts = 0; // consecutive receive time-outs, reset by any data that arrives
 
 #define MP_FILL()                                                                                                                                              \
     do {                                                                                                                                                       \
@@ -785,7 +804,8 @@ esp_err_t web_multipart_receive_file(httpd_req_t *req, web_multipart_data_cb_t c
             if (r > 0) {                                                                                                                                       \
                 buf_len += (size_t)r;                                                                                                                          \
                 remaining -= (size_t)r;                                                                                                                        \
-            } else if (r == HTTPD_SOCK_ERR_TIMEOUT) {                                                                                                          \
+                timeouts = 0;                                                                                                                                  \
+            } else if (r == HTTPD_SOCK_ERR_TIMEOUT && ++timeouts <= WEB_BODY_MAX_TIMEOUTS) {                                                                   \
                 continue;                                                                                                                                      \
             } else {                                                                                                                                           \
                 goto done;                                                                                                                                     \
@@ -1939,7 +1959,7 @@ void web_field_symbol(httpd_req_t *req, const char *label, const char *name_pref
              "<div style='display:flex;gap:6px;align-items:center'>"
              "<span id='%.30s_icn' style='display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;"
              "border-radius:6px;background:#dcfce7;overflow:hidden;flex:none'>"
-             "<img id='%.30s_img' src='http://aprs.dprns.com/symbols/icons/%d-%d.png' width=32 height=32 style='display:block' "
+             "<img id='%.30s_img' src='" WEB_SYMBOL_ICON_BASE "%d-%d.png' width=32 height=32 style='display:block' "
              "onerror=\"this.style.display='none'\">"
              "</span>"
              "<span style='font-size:12px;color:var(--sub)'>%.60s:</span>"
@@ -1963,7 +1983,7 @@ void web_field_symbol(httpd_req_t *req, const char *label, const char *name_pref
                                 "var tn=(tv=='\\\\')?2:1;var cn=cv.charCodeAt(0);"
                                 "var pfx=t.slice(0,-5);"
                                 "var img=document.getElementById(pfx+'_img');"
-                                "if(img){img.style.display='block';img.src='http://aprs.dprns.com/symbols/icons/'+cn+'-'+tn+'.png';}"
+                                "if(img){img.style.display='block';img.src='" WEB_SYMBOL_ICON_BASE "'+cn+'-'+tn+'.png';}"
                                 "}</script>";
     httpd_resp_sendstr_chunk(req, script);
 }

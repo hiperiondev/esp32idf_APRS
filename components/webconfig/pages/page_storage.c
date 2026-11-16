@@ -238,11 +238,20 @@ esp_err_t page_format(httpd_req_t *req) {
 
 // ---------------------------------------------------------------- Upload
 
+// Suffix of the temporary file an upload is written to. Only a complete file is
+// moved over its destination (storage_replace()), so a transfer that fails
+// part-way leaves the previous file exactly as it was.
+#define UPLOAD_TMP_SUFFIX ".upl"
+
+// Size of the sanitized destination name, terminator included.
+#define UPLOAD_NAME_SIZE 100
+
 typedef struct {
     FILE *f;
     const char *raw_name; // -> caller's filename_out buffer; already parsed
                           // from Content-Disposition by the time cb runs
-    char sanitized[100];
+    char sanitized[UPLOAD_NAME_SIZE];
+    char tmp_name[UPLOAD_NAME_SIZE + sizeof(UPLOAD_TMP_SUFFIX)];
     bool opened;
     bool error;
     size_t total;
@@ -256,8 +265,9 @@ static esp_err_t upload_write_cb(void *ctx_v, const uint8_t *data, size_t len) {
     if (!ctx->opened) {
         ctx->opened = true;
         web_sanitize_filename(ctx->raw_name, ctx->sanitized, sizeof(ctx->sanitized));
+        snprintf(ctx->tmp_name, sizeof(ctx->tmp_name), "%s" UPLOAD_TMP_SUFFIX, ctx->sanitized);
         char full[300];
-        snprintf(full, sizeof(full), "%s/%s", STORAGE_BASE_PATH, ctx->sanitized);
+        snprintf(full, sizeof(full), "%s/%s", STORAGE_BASE_PATH, ctx->tmp_name);
         ctx->f = fopen(full, "wb");
         if (!ctx->f) {
             ESP_LOGE(TAG, "fopen('%s') failed", full);
@@ -279,29 +289,31 @@ esp_err_t page_upload(httpd_req_t *req) {
     if (!web_check_auth_admin(req))
         return ESP_OK;
 
-    char raw_name[100] = { 0 };
-    upload_ctx_t ctx = { .f = NULL, .raw_name = raw_name, .sanitized = { 0 }, .opened = false, .error = false, .total = 0 };
+    char raw_name[UPLOAD_NAME_SIZE] = { 0 };
+    upload_ctx_t ctx = { .f = NULL, .raw_name = raw_name, .sanitized = { 0 }, .tmp_name = { 0 }, .opened = false, .error = false, .total = 0 };
 
     esp_err_t perr = web_multipart_receive_file(req, upload_write_cb, &ctx, raw_name, sizeof(raw_name));
+    bool closed = true;
     if (ctx.f)
-        fclose(ctx.f);
+        closed = fclose(ctx.f) == 0;
 
-    // Once the destination has been opened for writing, whatever was there
-    // before is gone - including, potentially, a file a subsystem keeps a
-    // parsed copy of in RAM (any of the per-functionality configuration files,
-    // telemetry.json, bulletins.json, objitems.json). Announce the change so
-    // those copies are dropped, whether
-    // the transfer went on to succeed or not.
-    if (ctx.opened)
-        storage_note_external_change();
-
-    bool ok = (perr == ESP_OK) && !ctx.error && ctx.opened && ctx.total > 0;
+    // The transfer was written to a temporary file. Only a complete one is
+    // moved over the destination, under the storage writer gate and with the
+    // generation bump that tells every subsystem holding a parsed copy of the
+    // file in RAM (any of the per-functionality configuration files,
+    // telemetry.json, bulletins.json, objitems.json) to drop it.
+    bool ok = (perr == ESP_OK) && !ctx.error && closed && ctx.opened && ctx.total > 0;
+    if (ok && !storage_replace(ctx.tmp_name, ctx.sanitized)) {
+        ESP_LOGE(TAG, "upload could not be moved into place as '%s'", ctx.sanitized);
+        ok = false;
+    }
     if (!ok) {
         ESP_LOGW(TAG, "upload failed: parse=%s opened=%d total=%u", esp_err_to_name(perr), (int)ctx.opened, (unsigned)ctx.total);
-        if (ctx.opened && ctx.sanitized[0]) {
-            // Don't leave a truncated/empty file behind after a failed upload.
+        if (ctx.opened && ctx.tmp_name[0]) {
+            // The destination was never touched; only the partial temporary
+            // file has to go.
             char full[300];
-            snprintf(full, sizeof(full), "%s/%s", STORAGE_BASE_PATH, ctx.sanitized);
+            snprintf(full, sizeof(full), "%s/%s", STORAGE_BASE_PATH, ctx.tmp_name);
             remove(full);
         }
     }

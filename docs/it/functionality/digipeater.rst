@@ -26,16 +26,22 @@ restituisce uno di tre valori:
    * - ``0``
      - Non ripetere (scarta / non per noi / già ritrasmesso / malformato).
    * - ``1``
-     - Ripeti così com'è — il percorso porta già il nostro indicativo usato (es.
-       un ``*`` di bypass); il chiamante ritrasmette il frame invariato.
+     - Ripeti — la voce di percorso che nomina questa stazione è stata solo
+       marcata come usata (e, con l'instradamento per SSID di destinazione, il
+       contatore di salti della destinazione è stato decrementato).
    * - ``2``
-     - Ripeti con percorso modificato — il chiamante ricodifica l'intestazione
-       riscritta e la trasmette in RF.
+     - Ripeti — il percorso è stato riscritto (decremento dei salti,
+       inserimento o sostituzione del nominativo).
 
-Quando ``digiProcess()`` restituisce ``2``, lo smistamento di ``aprs_service.c``
-ri-rende il frame in TNC2, chiama ``aprs_service_send_tnc2()`` e, se ha successo,
-incrementa il contatore ``digi`` della dashboard e registra una voce di traffico
-``DIGI``.
+Qualsiasi valore di ritorno diverso da zero significa che il frame riscritto va
+in onda. Lo smistamento di ``aprs_service.c`` passa a ``digiProcess()`` una
+copia del frame ricevuto, così l'IGate, l'analizzatore dei messaggi e i log
+continuano a vedere il frame esattamente come è stato ascoltato, e trasmette la
+copia riscritta in forma binaria con ``modem_send_msg()``: il campo informativo
+viene ripetuto byte per byte, contenuto binario compreso, e un frame è limitato
+solo dalla dimensione del frame AX.25, non dalla lunghezza del suo testo TNC2.
+Se ha successo, incrementa il contatore ``digi`` della dashboard e registra una
+voce di traffico ``DIGI``.
 
 La tabella degli alias
 ======================
@@ -189,10 +195,11 @@ stesso comportamento che avrebbero a scansione spenta.
 
 .. note::
 
-   La trama che questa stazione rimette in onda viene ricodificata dalla sua
-   rappresentazione TNC2, che esprime un indirizzo solo come nominativo, SSID e
-   marcatore di usato. Per questo il bit riservato basso acceso dalla modalità
-   di marcatura è mantenuto nella trama decodificata ma non raggiunge il canale.
+   La trama che questa stazione rimette in onda viene codificata in binario a
+   partire dai campi decodificati, e ogni indirizzo del percorso conserva i bit
+   riservati del suo ottetto SSID. Per questo il bit riservato basso acceso
+   dalla modalità di marcatura arriva sul canale, e un indirizzo che questa
+   stazione non riscrive porta i suoi bit riservati così come ricevuti.
 
 Instradamento legacy tramite SSID di destinazione
 =================================================

@@ -302,12 +302,40 @@ Un dettaglio utile leggendo la pagina Wireless: i suoi campi passphrase portano
 modulo non toccato invia il suo segnaposto di cinque caratteri senza protestare
 mentre una passphrase davvero digitata resta soggetta all'intera lunghezza WPA2.
 
+Origine delle icone dei simboli: ``WEB_SYMBOL_ICON_BASE``
+=========================================================
+
+Il firmware non contiene uno sprite dei simboli APRS. Le icone della tabella del
+traffico della dashboard, il selettore dei simboli e ogni campo simbolo sono
+immagini che il browser dell'amministratore carica da ``WEB_SYMBOL_ICON_BASE``
+(``web_common.h``), un URL di directory con file ``<codice>-<tabella>.png`` —
+``<codice>`` il valore ASCII decimale del carattere del simbolo, ``<tabella>``
+1 per la tabella primaria e 2 per quella alternativa. Il valore predefinito è
+``//aprs.dprns.com/symbols/icons/``. È relativo allo schema, quindi le icone
+seguono lo schema della pagina di amministrazione stessa e vengono richieste
+via HTTPS quando l'amministrazione sta dietro un proxy che termina TLS, invece
+di essere bloccate come contenuto misto.
+
+La definizione è protetta da ``#ifndef``, così una compilazione che non debba
+far contattare al browser una terza parte — o che replichi le icone su un
+server locale — la sostituisce con una definizione di compilazione, per
+esempio nel ``CMakeLists.txt`` di primo livello:
+
+.. code-block:: cmake
+
+   idf_build_set_property(COMPILE_DEFINITIONS "WEB_SYMBOL_ICON_BASE=\"//192.168.1.10/icons/\"" APPEND)
+
+Un'icona che non può essere caricata viene nascosta, e il selettore dei simboli
+mostra al suo posto il carattere del simbolo.
+
 Preset di percorso e maschere di bit
 ====================================
 
 Ogni servizio (tracker / igate / digi / wx / …) memorizza una **maschera di
 bit**, non una stringa di percorso. Il bit *N* seleziona ``g_config.path[N]``,
-uno dei quattro preset a testo libero modificati nella pagina *Digi*.
+uno dei quattro preset modificati nella pagina *Digi*; ognuno viene memorizzato
+nella forma in cui va in onda, in maiuscolo e con ogni voce un nominativo e un
+SSID legali (vedi :ref:`it-web-admin`).
 ``aprs_path_build_suffix()`` concatena ogni slot selezionato non vuoto; gli slot
 selezionati-ma-vuoti sono saltati. È condivisa dai beacon, dal meteo, dalla
 telemetria, dai messaggi e dalle risposte alle query, e applica il limite AX.25

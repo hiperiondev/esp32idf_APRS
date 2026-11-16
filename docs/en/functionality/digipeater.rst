@@ -25,16 +25,20 @@ one of three values:
    * - ``0``
      - Do not repeat (drop / not for us / already relayed / malformed).
    * - ``1``
-     - Repeat as-is — the path already carries our used call (e.g. a bypass
-       ``*``); the caller re-transmits the frame unchanged.
+     - Repeat — the path entry naming this station was only marked used (and,
+       with destination-SSID routing, the destination hop count decremented).
    * - ``2``
-     - Repeat with a modified path — the caller re-encodes the rewritten header
-       and transmits it on RF.
+     - Repeat — the path was rewritten (hop-count decrement, callsign insertion
+       or substitution).
 
-When ``digiProcess()`` returns ``2``, the dispatch in ``aprs_service.c``
-re-renders the frame to TNC2, calls ``aprs_service_send_tnc2()`` and, on
-success, bumps the ``digi`` dashboard counter and logs a ``DIGI`` traffic
-entry.
+Any non-zero return means the rewritten frame goes on the air. The dispatch in
+``aprs_service.c`` hands ``digiProcess()`` a copy of the received frame, so the
+IGate, the message parser and the logs keep seeing the frame exactly as it was
+heard, and transmits the rewritten copy in binary form through
+``modem_send_msg()``: the information field is repeated byte for byte, binary
+content included, and a frame is limited only by the AX.25 frame size, not by
+the length of its TNC2 text. On success it bumps the ``digi`` dashboard counter
+and logs a ``DIGI`` traffic entry.
 
 The alias table
 ===============
@@ -175,10 +179,11 @@ the scan switched off.
 
 .. note::
 
-   The frame this station puts back on the air is re-encoded from its TNC2
-   rendering, which expresses an address as callsign, SSID and the used marker
-   alone. The low reserved bit set by the marking mode is therefore maintained
-   in the decoded frame but does not reach the channel.
+   The frame this station puts back on the air is encoded in binary from the
+   decoded fields, and each path address keeps the reserved bits of its SSID
+   octet. The low reserved bit set by the marking mode therefore reaches the
+   channel, and an address this station does not rewrite carries its reserved
+   bits exactly as received.
 
 Legacy destination-SSID routing
 ===============================

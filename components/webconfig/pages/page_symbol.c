@@ -151,7 +151,7 @@ static const struct sym_entry COMMON_SYMBOLS[] = {
 // There is no bitmap sprite sheet stored on-device, so the icon image is
 // fetched from the same icon server already relied on elsewhere in this
 // firmware (see fmtIcon() in page_common.c and the "sym" field produced by
-// lastheard.c / trafficlog.c): aprs.dprns.com/symbols/icons/<code>-<table>.png,
+// lastheard.c / trafficlog.c): WEB_SYMBOL_ICON_BASE<code>-<table>.png,
 // where <code> is the decimal ASCII value of the symbol character and
 // <table> is 1 for Primary ('/') or 2 for Alternate ('\'). If the image
 // can't be loaded (e.g. device has no internet access), onerror swaps in a
@@ -184,7 +184,7 @@ static void sym_icon_td(httpd_req_t *req, char table, char code) {
     snprintf(buf, sizeof(buf),
              "<td><span style='display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;"
              "border-radius:6px;background:%s;overflow:hidden'>"
-             "<img src='http://aprs.dprns.com/symbols/icons/%d-%d.png' width=32 height=32 style='display:block' "
+             "<img src='" WEB_SYMBOL_ICON_BASE "%d-%d.png' width=32 height=32 style='display:block' "
              "onerror=\"this.style.display='none';this.nextElementSibling.style.display='inline-flex'\">"
              "<span style='display:none;width:34px;height:34px;align-items:center;justify-content:center;"
              "color:%s;font-weight:700;font-size:1.1em;font-family:monospace'>%s</span>"

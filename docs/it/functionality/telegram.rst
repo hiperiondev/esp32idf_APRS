@@ -483,7 +483,10 @@ o parametri remoti propri al di sopra di esso.
    * - ``/menu``
      - chiunque
      - Mostra l'interfaccia a pulsanti (tastiera inline di Telegram) per i
-       comandi precedenti.
+       comandi precedenti. Il suo pulsante *Settings* esegue il report
+       ``/config``, riservato agli amministratori, quindi viene mostrato solo a
+       loro, e una pressione da parte di chiunque altro riceve lo stesso rifiuto
+       del comando.
    * - ``/stats``
      - chiunque
      - Segnala i contatori propri del servizio: aggiornamenti ricevuti,

@@ -675,10 +675,18 @@ bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg, enum
  * @param frame Destination structure to fill.
  * @param txt   TNC2 monitor string, in the form
  *              "SRC>DST,PATH:payload". Must be NUL-terminated.
+ * Every address must be a callsign of one to six letters or digits, with an
+ * optional SSID of one or two digits worth 0 to 15 and an optional trailing
+ * @c '*' that sets the has-been-repeated bit. Lower-case letters are encoded
+ * as their upper-case form. An address that breaks any of these rules makes
+ * the whole string unencodable instead of being truncated or clamped, since
+ * either would put a different address on the air than the one written.
+ *
  * @param size  Number of bytes of @p txt to parse, i.e. its string length.
  * @return Non-zero on success, zero if the string could not be parsed: an
- *         empty argument, no information field, or a header whose '>' does
- *         not precede the ':' that opens that field.
+ *         empty argument, no information field, a header whose '>' does not
+ *         precede the ':' that opens that field, or an address that is not a
+ *         legal callsign/SSID pair.
  */
 char ax25_encode(ax25_frame_t *frame, char *txt, int size);
 
@@ -702,5 +710,35 @@ char ax25_encode(ax25_frame_t *frame, char *txt, int size);
  *         @p outbuf_len.
  */
 int hdlcFrame(uint8_t *outbuf, size_t outbuf_len, ax25_ctx_t *ctx, ax25_frame_t *pkg);
+
+/**
+ * @brief Serialize a decoded ::ax25_msg_t back into a raw AX.25 frame, byte for
+ *        byte.
+ *
+ * This is the transmit counterpart of ax25_decode(): the frame is built from
+ * the binary fields of @p msg, never from a text rendering, so the information
+ * field goes out exactly as stored - every one of its @c len bytes, @c 0x00
+ * included - and a frame is limited only by ::AX25_FRAME_MAX_SIZE, not by the
+ * length its TNC2 text would have. It is what a digipeater uses to put a
+ * received frame back on the air with a rewritten path.
+ *
+ * Each address is written from its decoded @c call and @c ssid. The
+ * destination and source keep the command/response bit and the two reserved
+ * bits of their raw octet (@c ssidBits); every path address keeps its reserved
+ * bits and takes its has-been-repeated bit from @c rpt_flags. The
+ * address-extension bit is placed on the last address. The control and PID
+ * bytes are copied from @c ctrl and @c pid.
+ *
+ * @param msg     Frame to serialize. Every callsign must be one to six
+ *                upper-case letters or digits and @c rpt_count at most
+ *                ::AX25_MAX_RPT.
+ * @param out     Destination buffer.
+ * @param out_len Size, in bytes, of @p out.
+ * @return Number of bytes written to @p out (address field onwards, no HDLC
+ *         flags and no FCS, the form modem_send_raw() takes), or 0 if an
+ *         argument is NULL, a callsign is not legal, or the frame does not
+ *         fit @p out_len or ::AX25_FRAME_MAX_SIZE.
+ */
+int ax25_encode_msg(const ax25_msg_t *msg, uint8_t *out, size_t out_len);
 
 #endif /* LIB_AX25_H_ */

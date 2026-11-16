@@ -282,12 +282,38 @@ edited by hand, so an untouched form submits its five-character placeholder
 without complaint while a passphrase actually typed in is still held to the
 full WPA2 length.
 
+Symbol icon source: ``WEB_SYMBOL_ICON_BASE``
+============================================
+
+The firmware carries no APRS symbol sprite. The icons on the dashboard's
+traffic table, the symbol picker and every symbol field are images the admin's
+browser loads from ``WEB_SYMBOL_ICON_BASE`` (``web_common.h``), a directory URL
+holding ``<code>-<table>.png`` files — ``<code>`` the decimal ASCII value of the
+symbol character, ``<table>`` 1 for the primary table and 2 for the alternate
+one. The default is ``//aprs.dprns.com/symbols/icons/``. It is scheme-relative,
+so the icons follow the scheme of the admin page itself and are fetched over
+HTTPS when the admin sits behind a TLS-terminating proxy instead of being
+blocked as mixed content.
+
+The definition is guarded with ``#ifndef``, so a build that should not have the
+browser contact a third party — or that mirrors the icons on a local server —
+overrides it with a compile definition, for example in the top-level
+``CMakeLists.txt``:
+
+.. code-block:: cmake
+
+   idf_build_set_property(COMPILE_DEFINITIONS "WEB_SYMBOL_ICON_BASE=\"//192.168.1.10/icons/\"" APPEND)
+
+An icon that cannot be loaded is hidden, and the symbol picker shows the raw
+symbol character in its place.
+
 Path presets and bitmasks
 =========================
 
 Each service (tracker / igate / digi / wx / …) stores a **bitmask**, not a path
-string. Bit *N* selects ``g_config.path[N]``, one of the four free-text presets
-edited on the *Digi* page. ``aprs_path_build_suffix()`` concatenates every
+string. Bit *N* selects ``g_config.path[N]``, one of the four presets edited on
+the *Digi* page; each is stored in the form it goes on the air, upper case and
+with every entry a legal callsign and SSID (see :ref:`en-web-admin`). ``aprs_path_build_suffix()`` concatenates every
 selected non-empty slot; selected-but-empty slots are skipped. It is shared by
 the beacons, weather, telemetry, messages and query answers, and enforces the
 AX.25 8-via limit at transmit time, so a configuration that reached the device

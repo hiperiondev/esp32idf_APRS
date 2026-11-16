@@ -69,6 +69,26 @@ El motor de mensajes
   el historial. Los indicativos de origen se normalizan a mayúsculas al
   analizarlos, de modo que una estación ocupa un solo nombre en el hilo y un ack
   se empareja con el mensaje saliente que reconoce.
+* **Un ack por transmisión.** Un mensaje suele oírse varias veces en pocos
+  segundos — directo, otra vez a través de cada digipeater que lo retransmite,
+  y también por APRS-IS. La primera copia de un remitente y número de mensaje
+  dados se reconoce en el acto, y las copias que siguen dentro de
+  ``MSG_ACK_HOLDOFF_S`` (15 s) comparten ese ack en lugar de activar cada una
+  el transmisor para el suyo. Una copia que llega más tarde es la propia
+  retransmisión del remitente y se reconoce de nuevo.
+* **Los números de mensaje se verifican.** El identificador que sigue a ``{``
+  se usa solo cuando es un número de mensaje APRS bien formado: de una a cinco
+  letras o dígitos, seguidos opcionalmente de ``}`` y hasta dos más (el
+  Reply-ACK). Un mensaje que trae otra cosa ahí se guarda como un mensaje
+  enviado sin número — sin ack ni Reply-ACK pendiente — de modo que ningún byte
+  de un identificador mal formado vuelve nunca al aire bajo el indicativo de
+  esta estación.
+* **Concurrencia.** La cola de la conversación, la tabla de Reply-ACK y el
+  registro de retención de acks están protegidos por un único mutex del módulo
+  de mensajería, tomado solo mientras se leen o escriben esas tablas y nunca
+  durante una transmisión. La página de chat, la tarea de recepción, la tarea
+  de APRS-IS, el ciclo de reintentos y el respondedor de consultas pueden
+  acceder a la cola al mismo tiempo.
 
 Grupos de mensajes
 ==================

@@ -48,6 +48,7 @@
 #include <string.h>
 
 #include "app_config.h"
+#include "aprs_call.h" // aprs_call_normalize_token(): the service callsign is stored as a whole address
 #include "esp_log.h"
 #include "json_escape.h" // json_escape()
 #include "message.h"     // APRS_MSG_TEXT_STD_MAX: the on-air limit every command field is sized to
@@ -326,8 +327,11 @@ esp_err_t page_winlink_post(httpd_req_t *req) {
 
     app_config_lock();
     g_config.wl_enable = web_form_get_bool(body, "wlEnable");
-    web_form_get_call(body, "wlServiceCall", g_config.wl_service_call, sizeof(g_config.wl_service_call));
-    if (g_config.wl_service_call[0] == 0) {
+    // The service callsign is the one call field stored with its SSID
+    // ("WLNK-1"), so it is normalized as a whole address rather than cut to a
+    // base call; an unusable value falls back to the service's own address.
+    web_form_get(body, "wlServiceCall", g_config.wl_service_call, sizeof(g_config.wl_service_call));
+    if (!aprs_call_normalize_token(g_config.wl_service_call, false)) {
         strncpy(g_config.wl_service_call, WL_SERVICE_CALL_DEFAULT, sizeof(g_config.wl_service_call) - 1);
         g_config.wl_service_call[sizeof(g_config.wl_service_call) - 1] = 0;
     }

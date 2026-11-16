@@ -450,7 +450,10 @@ of its own on top of it.
    * - ``/menu``
      - anyone
      - Shows the button interface (Telegram inline keyboard) for the
-       commands above.
+       commands above. Its *Settings* button runs the administrator-only
+       ``/config`` report, so it is shown to administrators alone, and a press
+       of it by anyone else is answered with the same refusal the command
+       gives.
    * - ``/stats``
      - anyone
      - Reports the service's own counters: updates received, commands

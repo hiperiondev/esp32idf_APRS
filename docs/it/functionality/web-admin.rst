@@ -116,6 +116,21 @@ domini ricorrenti (SSID, intervallo di trasmissione, latitudine, longitudine,
 altitudine) provengono dalle costanti ``WEB_RANGE_*`` di ``web_common.h``, così
 un limite è definito una sola volta per tutte le pagine che lo condividono.
 
+I campi nominativo e percorso dei digipeater vengono memorizzati nella forma che
+assumono in onda (``main/include/aprs_call.h``). Un campo nominativo conserva
+solo lettere maiuscole e cifre, al massimo sei — ``lu3vea`` viene memorizzato
+come ``LU3VEA``, e un SSID scritto in un campo nominativo viene scartato, perché
+tutti questi campi hanno il loro SSID in un campo separato. Il nominativo del
+servizio Winlink, l'unico campo nominativo memorizzato con il suo SSID,
+conserva un SSID da 1 a 15. Un percorso predefinito, e il percorso del report
+di telemetria, conservano solo le voci che sono un nominativo legale con un SSID
+facoltativo da 1 a 15 e un ``*`` facoltativo, al massimo otto; una voce come
+``WIDE2-16`` viene scartata invece di essere riscritta, perché qualsiasi
+riscrittura nominerebbe un altro alias. La stessa normalizzazione viene
+eseguita al caricamento di ``config.json`` e ``telemetry.json`` — per
+``config.json`` con un avviso sulla console per ogni valore modificato — così nemmeno un file modificato a
+mano o caricato può mettere in onda un indirizzo che nessun ricevitore accetta.
+
 Aiuto contestuale
 =================
 
@@ -471,6 +486,12 @@ Le pagine
        reset di fabbrica.
    * - **Storage**
      - Navigatore LittleFS: scarica, elimina, upload multipart, uso, formatta.
+       Un upload viene scritto in un file temporaneo ``<nome>.upl`` e spostato
+       sulla destinazione solo quando è completo, così un trasferimento fallito
+       o interrotto lascia intatto il file precedente. Lo spostamento e una
+       cancellazione avvengono entrambi sotto il gate di scrittura
+       dell'archiviazione, così nessuno dei due può cadere nel mezzo del
+       salvataggio di un modulo sullo stesso file.
    * - **About / Firmware**
      - Nome del progetto, versione, data/ora di compilazione, versione di IDF,
        partizione in esecuzione, e il pannello di **OTA Update**.
@@ -694,14 +715,22 @@ una nuova pagina di login senza mai far scattare da soli un blocco.
 
 Dopo 5 credenziali rifiutate consecutive dalla stessa origine, quell'origine
 viene bloccata e ogni richiesta successiva riceve ``429 Too Many Requests``
-con un'intestazione ``Retry-After`` invece di un ``401``, per una finestra che
-parte da 5 s e raddoppia a ogni ulteriore tentativo rifiutato mentre il blocco
-è ancora attivo, con un tetto di 300 s. Una finestra che scade senza un login
-riuscito viene riarmata un fallimento sotto la soglia invece di riprendere dal
-conteggio accumulato, così un client che continua a riprovare le stesse
-credenziali scadute dopo ogni scadenza fa scattare di nuovo solo il blocco
-base di 5 s ogni volta, invece di risalire direttamente al tetto di 300 s. Un
-login riuscito azzera completamente la voce di quell'origine.
+con un'intestazione ``Retry-After`` invece di un ``401``. Le richieste fatte
+durante la finestra vengono rifiutate senza guardarne le credenziali, quindi
+non contano e non aiutano. La prima finestra dura 5 s, e il conteggio
+sopravvive alla sua fine: ogni ulteriore tentativo rifiutato dopo che una
+finestra è scaduta avvia la successiva con durata doppia della precedente, con
+un tetto di 300 s. Un'origine che continua a provare resta così limitata a un
+tentativo ogni cinque minuti. Il conteggio viene azzerato da un login riuscito,
+che libera completamente la voce dell'origine, o da 15 minuti senza un solo
+tentativo rifiutato.
+
+La tabella contiene 16 origini. Ogni origine occupa una sola voce, e quando
+un'origine nuova ne ha bisogno e la tabella è piena, viene ceduta la voce
+dell'origine il cui ultimo fallimento è il più vecchio tra quelle non bloccate
+in quel momento; un'origine bloccata perde la sua voce solo quando tutte sono
+bloccate, così una raffica di richieste da molti indirizzi non può cancellare
+il blocco di chi sta provando le password.
 
 Protezione same-origin (CSRF)
 ==============================

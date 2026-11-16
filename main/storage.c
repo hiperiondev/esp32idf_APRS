@@ -97,10 +97,6 @@ uint32_t storage_generation(void) {
     return __atomic_load_n(&s_generation, __ATOMIC_ACQUIRE);
 }
 
-void storage_note_external_change(void) {
-    __atomic_add_fetch(&s_generation, 1, __ATOMIC_RELEASE);
-}
-
 bool storage_init(void) {
     esp_vfs_littlefs_conf_t conf = {
         .base_path = STORAGE_BASE_PATH,
@@ -130,18 +126,16 @@ bool storage_init(void) {
     return true;
 }
 
-bool storage_delete(const char *path) {
-    if (!s_mounted)
-        return false;
+// Resolves a flat file name under /storage into its full path. Only a single
+// flat filename is ever valid, with at most one leading '/' accepted so a
+// root-relative path is interpreted the same as a bare filename. Any '..'
+// segment or any other path separator - forward or backward slash - anywhere
+// else in the string is rejected here, so every function that takes an
+// externally influenced name is safe whatever checks, if any, the caller
+// already applied.
+static bool storage_full_path(const char *path, char *full, size_t full_size) {
     if (!path || path[0] == 0)
         return false;
-    // Only a single flat filename under /storage is ever a valid delete
-    // target, with at most one leading '/' accepted so a root-relative path
-    // is interpreted the same as a bare filename. Any '..' segment or any
-    // other path separator - forward or backward slash - anywhere else in
-    // the string is rejected here, so this function is safe to call with an
-    // externally influenced path regardless of what checks, if any, the
-    // caller already applied.
     const char *name = (path[0] == '/') ? path + 1 : path;
     if (name[0] == 0 || name[0] == '.')
         return false;
@@ -149,14 +143,45 @@ bool storage_delete(const char *path) {
         if (*p == '/' || *p == '\\')
             return false;
     }
-    char full[300];
-    snprintf(full, sizeof(full), "%s/%s", STORAGE_BASE_PATH, name);
-    if (remove(full) != 0)
+    int n = snprintf(full, full_size, "%s/%s", STORAGE_BASE_PATH, name);
+    return n > 0 && (size_t)n < full_size;
+}
+
+bool storage_delete(const char *path) {
+    if (!s_mounted)
         return false;
+    char full[300];
+    if (!storage_full_path(path, full, sizeof(full)))
+        return false;
+
+    // Under the writer gate, so the removal never lands between the temp-file
+    // write and the rename of a save of the same file.
+    storage_write_lock();
+    bool ok = remove(full) == 0;
     // The file just removed may be one a subsystem holds a parsed copy of, so
     // announce it the same way a format does.
-    __atomic_add_fetch(&s_generation, 1, __ATOMIC_RELEASE);
-    return true;
+    if (ok)
+        __atomic_add_fetch(&s_generation, 1, __ATOMIC_RELEASE);
+    storage_write_unlock();
+    return ok;
+}
+
+bool storage_replace(const char *tmp_name, const char *name) {
+    if (!s_mounted)
+        return false;
+    char tmp_full[300];
+    char full[300];
+    if (!storage_full_path(tmp_name, tmp_full, sizeof(tmp_full)) || !storage_full_path(name, full, sizeof(full)))
+        return false;
+
+    // LittleFS replaces an existing destination atomically on rename, so the
+    // file is at every instant either the previous one or the new one.
+    storage_write_lock();
+    bool ok = rename(tmp_full, full) == 0;
+    if (ok)
+        __atomic_add_fetch(&s_generation, 1, __ATOMIC_RELEASE);
+    storage_write_unlock();
+    return ok;
 }
 
 bool storage_format(void) {

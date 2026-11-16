@@ -26,7 +26,8 @@
 #include <string.h>
 
 #include "app_config.h"
-#include "aprs_df.h" // aprs_df_symbol_matches()
+#include "aprs_call.h" // aprs_call_normalize_path(): path presets are stored in their on-air form
+#include "aprs_df.h"   // aprs_df_symbol_matches()
 #include "esp_log.h"
 #include "gps.h"
 #include "pages.h"
@@ -571,10 +572,14 @@ esp_err_t page_digi_post(httpd_req_t *req) {
     }
 #endif
 
-    web_form_get(body, "path0", g_config.path[0], sizeof(g_config.path[0]));
-    web_form_get(body, "path1", g_config.path[1], sizeof(g_config.path[1]));
-    web_form_get(body, "path2", g_config.path[2], sizeof(g_config.path[2]));
-    web_form_get(body, "path3", g_config.path[3], sizeof(g_config.path[3]));
+    // Each preset is stored in the form it goes on the air: upper case, legal
+    // callsign/SSID entries only, at most eight of them (aprs_call.h).
+    for (size_t i = 0; i < sizeof(g_config.path) / sizeof(g_config.path[0]); i++) {
+        char key[8];
+        snprintf(key, sizeof(key), "path%u", (unsigned)i);
+        web_form_get(body, key, g_config.path[i], sizeof(g_config.path[i]));
+        aprs_call_normalize_path(g_config.path[i], sizeof(g_config.path[i]));
+    }
 
     app_config_unlock();
 

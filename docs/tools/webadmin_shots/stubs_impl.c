@@ -277,6 +277,9 @@ esp_err_t esp_wifi_scan_get_ap_records(uint16_t *n, wifi_ap_record_t *r) {
     *n = 0;
     return 0;
 }
+esp_err_t esp_wifi_clear_ap_list(void) {
+    return 0;
+}
 esp_err_t esp_wifi_connect(void) {
     return 0;
 }
@@ -465,6 +468,8 @@ void igate_request_filter_update(void) {
 }
 void igate_request_reconnect(void) {
 }
+void igate_uplink_demand(igate_uplink_user_t u, bool w) {
+}
 bool igate_send_raw(const char *l, size_t n) {
     return true;
 }
@@ -486,7 +491,8 @@ bool storage_format(void) {
 uint32_t storage_generation(void) {
     return 1;
 }
-void storage_note_external_change(void) {
+bool storage_replace(const char *t, const char *n) {
+    return true;
 }
 bool storage_usage(size_t *u, size_t *t) {
     *u = 36864;

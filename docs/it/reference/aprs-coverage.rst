@@ -570,7 +570,7 @@ Digipeating e il paradigma New-N
      - Disponibile dietro un interruttore spento per impostazione predefinita. Quando è spento, un pacchetto che usa quella convenzione ricade sulla logica del percorso esplicito invece di essere scartato.
    * - Segnalazione di precedenza e di operatore presente con i bit RR
      - ❌
-     - Le proposte che riutilizzano i bit riservati dell'ottetto SSID non sono implementate in nessuna delle due direzioni. La modalità di marcatura del digipeating preventivo accende il bit riservato basso sugli indirizzi che salta, ma la trama viene ricodificata dalla sua rappresentazione TNC2, che non porta quei bit sul canale.
+     - Le proposte che riutilizzano i bit riservati dell'ottetto SSID non sono implementate in nessuna delle due direzioni. La modalità di marcatura del digipeating preventivo accende il bit riservato basso sugli indirizzi che salta, e poiché un frame ripetuto viene codificato in binario dai suoi campi decodificati, quel bit arriva sul canale; ogni indirizzo che il digipeater non riscrive conserva i suoi bit riservati così come ricevuti.
 
 Gateway APRS-IS
 ===============

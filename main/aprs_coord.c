@@ -564,6 +564,12 @@ static bool nmeaDegrees(const char *field, size_t len, int degDigits, int32_t *o
             return false;
         deg = deg * 10 + (field[i] - '0');
     }
+    // Degrees beyond a latitude's or a longitude's range are refused here,
+    // before they are scaled: three digits reach 999, and 999 * NMEA_DEG_SCALE
+    // does not fit an int32_t. Within range the result stays below 181e7 and
+    // fits with room to spare, minutes included.
+    if (deg > (degDigits == 2 ? 90 : 180))
+        return false;
 
     int32_t minutes = 0;
     for (size_t i = (size_t)degDigits; i < need; i++) {
@@ -904,12 +910,16 @@ bool aprs_symbol_from_tnc2_header(const char *line, char dti, char *symTable, ch
     if (!gt)
         return false;
 
+    // An SSID is at most two digits; a longer run of digits is no SSID at all
+    // and reads as none, which also keeps the accumulator from growing past
+    // what an int holds on a hand-crafted header.
     int srcSsid = 0;
     for (const char *p = line; p < gt; p++) {
         if (*p == '-') {
             srcSsid = 0;
+            int digits = 0;
             for (const char *d = p + 1; d < gt; d++) {
-                if (*d < '0' || *d > '9') {
+                if (*d < '0' || *d > '9' || ++digits > 2) {
                     srcSsid = 0;
                     break;
                 }

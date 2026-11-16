@@ -79,14 +79,22 @@ decoder does not count those bits, but stricter ones do — Direwolf's
 about one frame in sixty. FX.25 blocks are not affected: ``writeFx25Frame()``
 stuffs the FCS itself before the Reed–Solomon encoding.
 
-The address field always ends on the last address in use. ``ax25_encode()`` and
-``hdlcFrame()`` set the end-of-address bit (bit 0 of the SSID octet) on that
-address and clear it everywhere else, including the full case of destination,
-source and eight digipeaters, where no empty slot follows the last one. A frame
-without the bit is rejected by Direwolf and KISS TNCs, and the in-tree receiver
-would read the control byte as the end of the address field; since the
-digipeater re-encodes every frame it repeats from TNC2 text, a legal
-eight-digipeater frame goes out again exactly as legal as it came in.
+The address field always ends on the last address in use. ``ax25_encode()``,
+``hdlcFrame()`` and ``ax25_encode_msg()`` set the end-of-address bit (bit 0 of
+the SSID octet) on that address and clear it everywhere else, including the
+full case of destination, source and eight digipeaters, where no empty slot
+follows the last one. A frame without the bit is rejected by Direwolf and KISS
+TNCs, and the in-tree receiver would read the control byte as the end of the
+address field. The digipeater re-encodes every frame it repeats in binary with
+``ax25_encode_msg()``, straight from the decoded fields, so a legal
+eight-digipeater frame goes out again exactly as legal as it came in and its
+information field is repeated byte for byte.
+
+``ax25_encode()`` refuses a TNC2 line containing an address that is not a
+legal callsign — one to six letters or digits, lower case accepted and sent as
+upper case — or whose SSID is not one or two digits worth 0 to 15, instead of
+truncating the callsign or letting an oversized SSID spill into the
+neighbouring bits of the octet.
 
 Every frame closes with one flag followed by the TX tail (``Ax25TxTail()``,
 default 20 ms, rounded up to whole flags), and only then does the ISR drop PTT.

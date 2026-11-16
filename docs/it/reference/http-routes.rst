@@ -26,6 +26,14 @@ tre eccezioni sono ``/logs/start``, ``/logs/stop`` e ``/logs/read``: sono route
 uno specchio dell'output di console della stazione stessa e nulla della
 stazione cambia con esso.
 
+Il corpo di una richiesta — un modulo o il caricamento di un file — deve
+continuare ad arrivare. Il server serve ogni richiesta su un solo task, quindi
+un client che annuncia un ``Content-Length`` e poi smette di inviare riceve
+``WEB_BODY_MAX_TIMEOUTS`` (3) attese di ricezione consecutive da 5 s ciascuna,
+dopo di che la richiesta viene abbandonata, invece di trattenere l'intera
+amministrazione web finché il client resta connesso. Qualsiasi dato in arrivo
+azzera il conteggio, così un caricamento lento ma attivo si completa.
+
 La tabella elenca tutte le route di una compilazione con tutti i moduli
 abilitati. Le route di ogni modulo sono registrate solo quando quel modulo è
 nella compilazione (vedi :ref:`it-config-module-switches`), quindi una route di
@@ -237,8 +245,7 @@ login — è la metà senza credenziali dell'handshake Basic Auth che ogni
 browser esegue da sé. Conta solo una richiesta che ha presentato credenziali
 ed è stata rifiutata. Dopo 5 rifiuti così dalla stessa origine IPv4, le
 richieste successive ricevono ``429 Too Many Requests`` (con
-``Retry-After``) per una finestra che parte da 5 s e raddoppia a ogni rifiuto
-mentre il blocco è attivo, con tetto a 300 s; una finestra che scade senza
-login riuscito viene riarmata un fallimento sotto la soglia, così credenziali
-scadute ripetute fanno scattare solo il blocco base di 5 s ogni volta invece
-di risalire fino al tetto. Vedi :ref:`it-web-admin` per i dettagli.
+``Retry-After``) per una finestra che parte da 5 s; il conteggio sopravvive
+alla finestra, e ogni ulteriore rifiuto dopo che una è scaduta avvia la
+successiva con durata doppia, con tetto a 300 s. Lo azzera un login riuscito
+o 15 minuti senza alcun rifiuto. Vedi :ref:`it-web-admin` per i dettagli.

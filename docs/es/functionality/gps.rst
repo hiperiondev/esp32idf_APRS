@@ -79,6 +79,15 @@ La insignia resume la página en un solo diagnóstico:
 
    **Posición** — latitud, longitud, altitud y separación del geoide.
 
+Una posición se muestra, y se ofrece a la opción *Usar GPS* de las demás
+páginas, solo mientras proviene de un fix vigente: en cuanto el receptor
+informa que no tiene fix — una calidad ``GGA`` de 0 o un ``RMC`` nulo — la
+estación deja de presentar las últimas coordenadas como su ubicación, y la
+antigüedad del fix del panel *Serial Link* indica cuán viejo es el último. Una
+coordenada fuera de rango (latitud mayor a 90°, longitud mayor a 180°, minutos
+de 60 o más) nunca se acepta, aunque venga en una sentencia con checksum
+correcto.
+
 .. figure:: /_static/webadmin/gps_fs03.png
    :alt: Movimiento — velocidad sobre el suelo, rumbo y variación magnética.
    :align: center

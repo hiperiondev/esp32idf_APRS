@@ -303,12 +303,40 @@ solo rige una vez que el campo se editó a mano, así que un formulario sin toca
 envía su marcador de cinco caracteres sin protestar mientras que una contraseña
 realmente escrita sigue sujeta a la longitud WPA2 completa.
 
+Origen de los íconos de símbolo: ``WEB_SYMBOL_ICON_BASE``
+=========================================================
+
+El firmware no lleva un sprite de símbolos APRS. Los íconos de la tabla de
+tráfico del panel, el selector de símbolos y cada campo de símbolo son imágenes
+que el navegador del administrador carga desde ``WEB_SYMBOL_ICON_BASE``
+(``web_common.h``), una URL de directorio con archivos ``<código>-<tabla>.png``
+— ``<código>`` el valor ASCII decimal del carácter del símbolo, ``<tabla>`` 1
+para la tabla primaria y 2 para la alternativa. El valor por omisión es
+``//aprs.dprns.com/symbols/icons/``. Es relativa al esquema, así que los íconos
+siguen el esquema de la propia página de administración y se piden por HTTPS
+cuando la administración está detrás de un proxy que termina TLS, en lugar de
+quedar bloqueados como contenido mixto.
+
+La definición está protegida con ``#ifndef``, de modo que una compilación que
+no deba hacer que el navegador contacte a un tercero — o que replique los
+íconos en un servidor local — la reemplaza con una definición de compilación,
+por ejemplo en el ``CMakeLists.txt`` de nivel superior:
+
+.. code-block:: cmake
+
+   idf_build_set_property(COMPILE_DEFINITIONS "WEB_SYMBOL_ICON_BASE=\"//192.168.1.10/icons/\"" APPEND)
+
+Un ícono que no se puede cargar se oculta, y el selector de símbolos muestra en
+su lugar el carácter del símbolo.
+
 Presets de ruta y máscaras de bits
 ==================================
 
 Cada servicio (tracker / igate / digi / wx / …) almacena una **máscara de bits**,
 no una cadena de ruta. El bit *N* selecciona ``g_config.path[N]``, uno de los
-cuatro presets de texto libre editados en la página *Digi*.
+cuatro presets editados en la página *Digi*; cada uno se guarda en la forma en
+que sale al aire, en mayúsculas y con cada entrada un indicativo y SSID legales
+(ver :ref:`es-web-admin`).
 ``aprs_path_build_suffix()`` concatena cada ranura seleccionada no vacía; las
 ranuras seleccionadas-pero-vacías se saltan. Es compartida por las balizas, el
 tiempo, la telemetría, los mensajes y las respuestas a consultas, y aplica el

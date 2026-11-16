@@ -2199,13 +2199,21 @@ static esp_err_t telegram_cmd_reboot(const telegram_update_t *update, const char
 static esp_err_t telegram_cmd_menu(const telegram_update_t *update, const char *args, void *ctx) {
     (void)args;
     (void)ctx;
+    // The Settings button runs the administrator-only /config report, so it
+    // is offered to administrators alone; the press itself is checked again
+    // in telegram_builtin_menu_callback(), since a button outlives the menu
+    // message it came with and can be pressed by anyone who can see it.
     const telegram_button_t buttons[] = {
         { .label = "Status", .data = TELEGRAM_SYSTEM_CALLBACK_PREFIX "status" },
         { .label = "Sensors", .data = TELEGRAM_SYSTEM_CALLBACK_PREFIX "sensors" },
         { .label = "Uptime", .data = TELEGRAM_SYSTEM_CALLBACK_PREFIX "uptime" },
         { .label = "Settings", .data = TELEGRAM_SYSTEM_CALLBACK_PREFIX "config" },
     };
-    return telegram_send_menu(update->chat_id_str, "Select an action:", buttons, sizeof(buttons) / sizeof(buttons[0]), 2);
+    size_t count = sizeof(buttons) / sizeof(buttons[0]);
+    if (!update->is_admin) {
+        count--;
+    }
+    return telegram_send_menu(update->chat_id_str, "Select an action:", buttons, count, 2);
 }
 
 // Routes the buttons of the built-in menu to the matching built-in
@@ -2224,6 +2232,10 @@ static esp_err_t telegram_builtin_menu_callback(const telegram_update_t *update,
         return telegram_cmd_uptime(update, "", NULL);
     }
     if (strcmp(action, "config") == 0) {
+        // Held to the same rule as the /config command it stands for.
+        if (!update->is_admin) {
+            return telegram_send_message(update->chat_id_str, "This command is reserved for administrators.");
+        }
         return telegram_cmd_config(update, "", NULL);
     }
     return telegram_send_message_fmt(update->chat_id_str, "Unhandled action \"%s\".", action);

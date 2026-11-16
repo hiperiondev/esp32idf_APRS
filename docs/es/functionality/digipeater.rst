@@ -27,16 +27,22 @@ uno de tres valores:
      - No repetir (descartar / no es para nosotros / ya retransmitido / mal
        formado).
    * - ``1``
-     - Repetir tal cual — la ruta ya lleva nuestro indicativo usado (p. ej. un
-       ``*`` de bypass); el llamador retransmite la trama sin cambios.
+     - Repetir — la entrada de ruta que nombra a esta estación solo se marcó
+       como usada (y, con el ruteo por SSID de destino, se decrementó el
+       contador de saltos del destino).
    * - ``2``
-     - Repetir con ruta modificada — el llamador recodifica la cabecera
-       reescrita y la transmite por RF.
+     - Repetir — la ruta se reescribió (decremento de saltos, inserción o
+       sustitución del indicativo).
 
-Cuando ``digiProcess()`` devuelve ``2``, el despacho de ``aprs_service.c``
-re-renderiza la trama a TNC2, llama a ``aprs_service_send_tnc2()`` y, si tiene
-éxito, incrementa el contador ``digi`` del panel y registra una entrada de
-tráfico ``DIGI``.
+Cualquier retorno distinto de cero significa que la trama reescrita sale al
+aire. El despacho de ``aprs_service.c`` le entrega a ``digiProcess()`` una copia
+de la trama recibida, de modo que el IGate, el analizador de mensajes y los
+registros siguen viendo la trama exactamente como se escuchó, y transmite la
+copia reescrita en forma binaria con ``modem_send_msg()``: el campo de
+información se repite byte por byte, contenido binario incluido, y una trama
+queda limitada solo por el tamaño de trama AX.25, no por el largo de su texto
+TNC2. Si tiene éxito, incrementa el contador ``digi`` del panel y registra una
+entrada de tráfico ``DIGI``.
 
 La tabla de alias
 =================
@@ -184,10 +190,11 @@ comportándose exactamente igual que con el escaneo apagado.
 
 .. note::
 
-   La trama que esta estación devuelve al aire se recodifica desde su
-   representación TNC2, que expresa una dirección solo como indicativo, SSID y
-   marca de usada. Por eso el bit reservado bajo que enciende el modo de
-   marcado se mantiene en la trama decodificada pero no llega al canal.
+   La trama que esta estación devuelve al aire se codifica en binario a partir
+   de los campos decodificados, y cada dirección de la ruta conserva los bits
+   reservados de su octeto de SSID. Por eso el bit reservado bajo que enciende
+   el modo de marcado llega al canal, y una dirección que esta estación no
+   reescribe lleva sus bits reservados tal como se recibieron.
 
 Ruteo heredado por SSID de destino
 ==================================

@@ -79,6 +79,15 @@ Il badge riassume la pagina in un'unica diagnosi:
 
    **Posizione** — latitudine, longitudine, altitudine e separazione del geoide.
 
+Una posizione viene mostrata, e offerta all'opzione *Usa GPS* delle altre
+pagine, solo finché proviene da un fix attuale: appena il ricevitore segnala
+di non avere un fix — una qualità ``GGA`` pari a 0 o un ``RMC`` non valido — la
+stazione smette di presentare le ultime coordinate come la propria posizione, e
+l'età del fix nel pannello *Serial Link* indica quanto è vecchio l'ultimo. Una
+coordinata fuori intervallo (latitudine oltre 90°, longitudine oltre 180°,
+minuti pari o superiori a 60) non viene mai accettata, anche da una frase con
+checksum corretto.
+
 .. figure:: /_static/webadmin/gps_fs03.png
    :alt: Movimento — velocità al suolo, rotta e declinazione magnetica.
    :align: center

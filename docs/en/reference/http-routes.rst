@@ -25,6 +25,14 @@ Storage page. The three exceptions are ``/logs/start``, ``/logs/stop`` and
 what they switch is a mirror of the station's own console output and nothing on
 the station changes with it.
 
+A request body — a form or a file upload — has to keep arriving. The server
+serves every request on one task, so a client that announces a
+``Content-Length`` and then stops sending is given ``WEB_BODY_MAX_TIMEOUTS``
+(3) consecutive receive time-outs of 5 s each and the request is then
+abandoned, instead of holding the whole web admin for as long as the client
+stays connected. Any data that arrives restarts the count, so a slow but live
+upload completes.
+
 The table lists every route of a build with all modules enabled. Each module's
 routes are registered only when that module is in the build (see
 :ref:`en-config-module-switches`), so a route of a module left out answers
@@ -229,8 +237,7 @@ credential-less half of the Basic Auth handshake every browser performs on
 its own. Only a request that presented credentials and was rejected counts.
 After 5 such rejections from the same source IPv4 address, further requests
 get ``429 Too Many Requests`` (with ``Retry-After``) for a window starting at
-5 s and doubling on each further rejection while locked out, capped at 300 s;
-a window that elapses without a successful login rearms one failure below the
-threshold, so repeated stale credentials re-trigger only the base 5 s window
-each time rather than climbing back to the cap. See :ref:`en-web-admin` for
+5 s; the count survives the window, and each further rejection after one has
+elapsed starts the next at twice the length, capped at 300 s. It is cleared by
+a successful login or by 15 minutes without a rejection. See :ref:`en-web-admin` for
 details.

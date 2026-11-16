@@ -55,12 +55,24 @@ Sessions
 Sending any command to the service opens a session. When the account has secure
 login switched on, the service answers with a challenge of the form
 ``Login [NNN]``, where each digit is a 1-based character position in the
-password. The answer is those characters plus three arbitrary ones, in any
-order — so the password itself never travels on the air, and an answer that is
-observed on the channel reveals only three of its characters and not where they
-came from. When secure login is off there is no challenge at all and the
-service simply answers the command; the client accepts that just as readily and
-goes straight to command mode.
+password. The answer is those characters, in challenge order, with three
+arbitrary ones split at random between its front and its back — so the
+password itself never travels on the air, and an answer that is observed on
+the channel reveals only three of its characters and neither where they came
+from nor which three of the answer they are. When secure login is off there is
+no challenge at all and the service simply answers the command; the client
+accepts that just as readily and goes straight to command mode.
+
+A challenge is answered only while this station is logging in, and only once
+per login attempt. One that arrives with no login in progress is logged and
+never answered, and a second, different challenge inside the same attempt ends
+the attempt with an error; the service repeating the challenge already
+answered changes nothing. Anyone able to send a message under the service
+callsign could otherwise collect the password a few characters at a time by
+challenging the station themselves. In the same way, *Login valid* is acted on
+only while a challenge answer is outstanding, and text from the service that
+arrives with no session open or being opened does not touch the session: it
+lands in the ordinary message conversation instead of the mailbox.
 
 A session expires on the service's side after about two hours.
 ``wlSessionMaxMin`` (110 minutes by default) sits below that, so this station

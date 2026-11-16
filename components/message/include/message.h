@@ -111,6 +111,34 @@
 #define MSG_QUERY_BURST_MAX 3
 
 /**
+ * @brief Seconds during which further copies of a direct message already
+ * acknowledged are not acknowledged again.
+ *
+ * @details A message is usually heard more than once: directly, and again
+ * through every digipeater that relays it, and also over APRS-IS when the
+ * station is connected there. All of those copies are the same transmission,
+ * and answering each of them with its own ack only multiplies the load on the
+ * channel, since every ack is digipeated in turn. The first copy of a given
+ * sender and message number is acknowledged at once; copies arriving within
+ * this window are stored as the same conversation line and get no ack of their
+ * own. A copy arriving later than this is the sender's own retransmission -
+ * the first ack did not reach it - and is acknowledged again. The value sits
+ * below the shortest retry interval APRS clients use, so a real retransmission
+ * is never held back.
+ */
+#define MSG_ACK_HOLDOFF_S 15
+
+/**
+ * @brief Number of (sender, message number) pairs the ack hold-off of
+ * ::MSG_ACK_HOLDOFF_S remembers at once.
+ *
+ * @details One slot is needed per message acknowledged inside the window; past
+ * that many, the slot written longest ago is reused, which can only cause one
+ * extra ack, never a missing one.
+ */
+#define MSG_ACK_HOLDOFF_SLOTS 8
+
+/**
  * @brief Number of operator-defined message group names g_config.msg_group[]
  * holds, on top of the built-in "ALL"/"QST"/"CQ" set every station reads.
  *
@@ -150,7 +178,17 @@ typedef struct {
 
 #ifdef ENABLE_MESSAGE
 /**
- * @brief Initialize the in-memory message queue. Call once at startup.
+ * @brief Initialize the in-memory message queue. Call once at startup, before
+ * any task that sends or receives messages is started.
+ *
+ * @details Also creates the mutex that guards the conversation queue, the
+ * Reply-ACK table and the ack hold-off record. Every function of this module
+ * takes that mutex itself for as long as it reads or writes those tables, and
+ * never holds it across a transmission, a Telegram call or the RX observer, so
+ * all of them may be called from any task: the HTTP server, the packet receive
+ * task, the APRS-IS task, the service tick and the beacon scheduler all do.
+ * The mutex may be taken while app_config_lock() is held; app_config_lock() is
+ * never taken while it is.
  */
 void message_init(void);
 
@@ -272,7 +310,17 @@ int message_send_pending_to(const char *toCall);
  * retransmission the queue already holds - same sender, same message number,
  * identical text and the same direct/group status - which is answered with a
  * fresh ack when it was a direct message (the sender is asking for one)
- * without appearing twice in the history.
+ * without appearing twice in the history. Copies of one transmission arriving
+ * within ::MSG_ACK_HOLDOFF_S of the ack already sent for it - the same message
+ * relayed by several digipeaters, or heard on both RF and APRS-IS - share that
+ * single ack.
+ *
+ * The identifier after @c '{' is used only when it is a well-formed message
+ * number: one to five alphanumeric characters, optionally followed by @c '}'
+ * and up to two more alphanumeric characters. A message carrying anything else
+ * there is handled as a message sent without a number - stored, but neither
+ * acknowledged nor remembered for the Reply-ACK - so no byte of a malformed
+ * identifier is ever put back on the air by this station.
  *
  * A message number written @c "MM}AA" is a Reply-ACK (APRS 1.1): @c MM is the
  * sender's own number and @c AA a free acknowledgement of one of this station's
@@ -304,6 +352,9 @@ void handleIncomingAPRS(const char *line, query_source_t source);
  * @param msgID APRS message number to match.
  * @param rxtx  Direction to match (true = RX, false = TX).
  * @return Index of the matching slot, or a negative value if none matches.
+ *         The lookup is made under the queue mutex, but the index describes
+ *         the queue at that instant only: a slot can be reused by another task
+ *         as soon as the call returns.
  */
 int pkgMsg_Find(const char *call, uint16_t msgID, bool rxtx);
 #endif

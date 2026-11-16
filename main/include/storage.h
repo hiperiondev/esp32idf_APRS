@@ -50,7 +50,8 @@ bool storage_init(void);
  * '/' or '\' anywhere in the name is rejected internally, independent of any
  * sanitization the caller may already have performed. Bumps
  * ::storage_generation on success, since the file may be one a subsystem
- * holds a RAM copy of.
+ * holds a RAM copy of. The removal is made under ::storage_write_lock, so it
+ * never lands between the steps of a save of the same file.
  *
  * @param path Path of the file to remove.
  * @return true if the file was deleted.
@@ -87,7 +88,8 @@ bool storage_format(void) APRS_MUST_CHECK;
  * as a whole - the "write temp file, then rename it over the live one" save
  * used by the per-functionality configuration files, telemetry.json,
  * bulletins.json, objitems.json and
- * telegram.json, and the whole-partition erase done by ::storage_format.
+ * telegram.json, the whole-partition erase done by ::storage_format, and the
+ * single-file changes of ::storage_delete and ::storage_replace.
  *
  * Ordering contract: a caller may take its own module lock first and this gate
  * second (that is what the savers do), never the other way round.
@@ -104,9 +106,8 @@ void storage_write_unlock(void);
  * @brief Monotonic counter of changes made to the filesystem from outside the
  * subsystem that owns the affected file.
  *
- * Incremented by ::storage_format, by ::storage_delete, and by
- * ::storage_note_external_change (which the web Storage page's upload handler
- * calls). Subsystems that cache a parsed file in RAM store the value seen when
+ * Incremented by ::storage_format, by ::storage_delete and by
+ * ::storage_replace (which the web Storage page's upload handler calls). Subsystems that cache a parsed file in RAM store the value seen when
  * they read it and drop the cache when it no longer matches, so a file
  * replaced, uploaded over or erased behind their back is picked up without
  * every module having to be told about it individually.
@@ -121,15 +122,32 @@ void storage_write_unlock(void);
 uint32_t storage_generation(void);
 
 /**
- * @brief Report that a file under /storage was created, replaced or removed by
- * something other than the subsystem that owns it, bumping
- * ::storage_generation.
+ * @brief Move a fully written temporary file over a file under /storage, as
+ * one step under ::storage_write_lock, and bump ::storage_generation.
  *
- * Used by the web Storage page's file upload, which can drop a new
- * a configuration file / telemetry.json / bulletins.json / objitems.json straight onto
- * the filesystem.
+ * This is how a file that does not belong to any subsystem's own saver - the
+ * web Storage page's upload - reaches the filesystem: the content is written
+ * to @p tmp_name first and only a complete file replaces @p name, so an
+ * upload that fails part-way leaves the previous file untouched, and the
+ * replacement can never interleave with a module's own temp-file + rename
+ * save of the same file. The generation bump tells every subsystem that keeps
+ * a parsed copy of a file in RAM (the per-functionality configuration files,
+ * telemetry.json, bulletins.json, objitems.json) that the copy may be stale.
+ *
+ * Both names follow the rules of ::storage_delete: a plain file directly under
+ * the storage root, with an optional single leading '/'.
+ *
+ * @param tmp_name Name of the complete temporary file.
+ * @param name     Name of the file it replaces (or creates).
+ * @return true if the file was moved into place; false if either name is
+ *         unusable or the rename failed, in which case the temporary file is
+ *         left for the caller to remove.
+ *
+ * @note Declared ::APRS_MUST_CHECK: a call site that discards the result
+ * reports success to the user for a write that may never have reached
+ * flash, so ignoring it fails the build.
  */
-void storage_note_external_change(void);
+bool storage_replace(const char *tmp_name, const char *name) APRS_MUST_CHECK;
 
 /**
  * @brief Report used/total bytes for the LittleFS partition (for the storage

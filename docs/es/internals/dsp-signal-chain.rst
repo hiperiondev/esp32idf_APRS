@@ -86,14 +86,22 @@ afectados: ``writeFx25Frame()`` rellena la FCS por su cuenta antes de la
 codificación Reed–Solomon.
 
 El campo de direcciones termina siempre en la última dirección en uso.
-``ax25_encode()`` y ``hdlcFrame()`` ponen el bit de fin de dirección (bit 0 del
-octeto SSID) en esa dirección y lo borran en todas las demás, incluido el caso
-completo de destino, origen y ocho digipetidores, en el que no queda ninguna
-ranura vacía detrás de la última. Una trama sin ese bit la rechazan Direwolf y
-los TNC KISS, y el receptor propio tomaría el byte de control como el final del
-campo de direcciones; como el digipetidor vuelve a codificar desde texto TNC2
-cada trama que repite, una trama legal de ocho digipetidores sale tan legal como
-entró.
+``ax25_encode()``, ``hdlcFrame()`` y ``ax25_encode_msg()`` ponen el bit de fin
+de dirección (bit 0 del octeto SSID) en esa dirección y lo borran en todas las
+demás, incluido el caso completo de destino, origen y ocho digipetidores, en el
+que no queda ninguna ranura vacía detrás de la última. Una trama sin ese bit la
+rechazan Direwolf y los TNC KISS, y el receptor propio tomaría el byte de
+control como el final del campo de direcciones. El digipetidor vuelve a
+codificar en binario cada trama que repite con ``ax25_encode_msg()``,
+directamente desde los campos decodificados, así que una trama legal de ocho
+digipetidores sale tan legal como entró y su campo de información se repite
+byte por byte.
+
+``ax25_encode()`` rechaza una línea TNC2 que contenga una dirección que no sea
+un indicativo legal — de una a seis letras o dígitos, con minúsculas aceptadas
+y enviadas como mayúsculas — o cuyo SSID no sea de uno o dos dígitos entre 0 y
+15, en lugar de truncar el indicativo o dejar que un SSID demasiado grande
+invada los bits vecinos del octeto.
 
 Cada trama se cierra con una bandera seguida de la cola de TX
 (``Ax25TxTail()``, 20 ms por defecto, redondeada hacia arriba a banderas

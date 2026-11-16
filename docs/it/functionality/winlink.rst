@@ -58,12 +58,25 @@ Sessioni
 Inviare un comando qualsiasi al servizio apre una sessione. Se l'account ha
 l'accesso sicuro attivo, il servizio risponde con una sfida della forma
 ``Login [NNN]``, dove ogni cifra è una posizione di carattere nella password
-contando da 1. La risposta è composta da quei caratteri più altri tre a piacere,
-in qualsiasi ordine — così la password stessa non viaggia mai in aria, e una
-risposta osservata sul canale rivela solo tre dei suoi caratteri e non da dove
-vengono. Con l'accesso sicuro spento non c'è alcuna sfida e il servizio
-risponde semplicemente al comando; il client lo accetta altrettanto volentieri
-e passa direttamente alla modalità comandi.
+contando da 1. La risposta è composta da quei caratteri, nell'ordine della
+sfida, con altri tre a piacere distribuiti a caso tra il suo inizio e la sua
+fine — così la password stessa non viaggia mai in aria, e una risposta
+osservata sul canale rivela solo tre dei suoi caratteri, senza dire da dove
+vengono né quali tre della risposta siano. Con l'accesso sicuro spento non c'è
+alcuna sfida e il servizio risponde semplicemente al comando; il client lo
+accetta altrettanto volentieri e passa direttamente alla modalità comandi.
+
+Una sfida riceve risposta solo mentre questa stazione sta effettuando
+l'accesso, e una sola volta per tentativo. Una che arriva senza un accesso in
+corso viene registrata e non riceve mai risposta, e una seconda sfida diversa
+nello stesso tentativo lo chiude con un errore; il servizio che ripete la
+sfida già risposta non cambia nulla. Altrimenti chiunque sia in grado di
+inviare un messaggio con il nominativo del servizio potrebbe raccogliere la
+password pochi caratteri alla volta sfidando lui stesso la stazione. Allo
+stesso modo, *Login valid* viene considerato solo mentre è in sospeso la
+risposta a una sfida, e il testo del servizio che arriva senza una sessione
+aperta o in apertura non tocca la sessione: finisce nella normale
+conversazione dei messaggi invece che nella casella.
 
 Una sessione scade dal lato del servizio dopo circa due ore.
 ``wlSessionMaxMin`` (110 minuti di default) resta al di sotto, così questa

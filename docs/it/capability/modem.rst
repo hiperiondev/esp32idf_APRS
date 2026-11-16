@@ -106,6 +106,11 @@ L'header pubblico del componente (``esp32idf_radioamateur_modem.h``) espone:
      - Costruire un frame grezzo da una stringa monitor TNC2.
    * - ``modem_send_tnc2(tnc2)``
      - Costruire + accodare in una singola chiamata.
+   * - ``modem_send_msg(msg, out_len)``
+     - Codificare in binario una trama decodificata (``ax25_encode_msg()``) e
+       accodarla: il campo informativo esce byte per byte e la trama è limitata
+       solo dalla dimensione del frame AX.25. È la via di trasmissione del
+       digipeater.
    * - ``modem_format_tnc2(msg, out, out_len)``
      - Rendere un frame decodificato di nuovo in una stringa TNC2.
    * - ``modem_tx_queue_depth()``
@@ -137,9 +142,9 @@ tipo di callback ``modem_rx_cb_t``. Si noti che **non** esiste un punto di
 ingresso di smontaggio: il modem viene avviato una volta per boot e
 riconfigurato sul posto con ``modem_set_modem()``.
 
-I tre punti di ingresso di trasmissione — ``modem_send_raw()``,
-``modem_build_frame_tnc2()`` e ``modem_send_tnc2()`` — si possono chiamare da
-qualsiasi task. Condividono un mutex interno, perché condividono l'accumulatore
+I quattro punti di ingresso di trasmissione — ``modem_send_raw()``,
+``modem_build_frame_tnc2()``, ``modem_send_tnc2()`` e ``modem_send_msg()`` — si
+possono chiamare da qualsiasi task. Condividono un mutex interno, perché condividono l'accumulatore
 di CRC in uscita, l'anello di trasmissione a produttore singolo e la macchina a
 stati che va in trasmissione a partire da esso. ``modem_send_tnc2()`` mantiene
 quel mutex per tutta la costruzione e l'accodamento, quindi una trama arriva

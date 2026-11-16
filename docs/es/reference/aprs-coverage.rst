@@ -569,7 +569,7 @@ Digipeteo y el paradigma New-N
      - Disponible detrás de un interruptor apagado por omisión. Cuando está apagado, un paquete que use esa convención cae a la lógica de ruta explícita en vez de descartarse.
    * - Señalización de precedencia y de operador presente con los bits RR
      - ❌
-     - No se implementan en ninguno de los dos sentidos las propuestas que reutilizan los bits reservados del octeto de SSID. El modo de marcado del digipeteo preventivo enciende el bit reservado bajo en las direcciones que saltea, pero la trama se recodifica desde su representación TNC2, que no lleva esos bits al canal.
+     - No se implementan en ninguno de los dos sentidos las propuestas que reutilizan los bits reservados del octeto de SSID. El modo de marcado del digipeteo preventivo enciende el bit reservado bajo en las direcciones que saltea, y como una trama repetida se codifica en binario a partir de sus campos decodificados, ese bit llega al canal; toda dirección que el digipeater no reescribe conserva sus bits reservados tal como se recibieron.
 
 Pasarela APRS-IS
 ================

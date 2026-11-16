@@ -105,6 +105,11 @@ La cabecera pública del componente (``esp32idf_radioamateur_modem.h``) expone:
      - Construir una trama cruda desde una cadena de monitor TNC2.
    * - ``modem_send_tnc2(tnc2)``
      - Construir + encolar en una sola llamada.
+   * - ``modem_send_msg(msg, out_len)``
+     - Codificar en binario una trama decodificada (``ax25_encode_msg()``) y
+       encolarla: el campo de información sale byte por byte y la trama queda
+       limitada solo por el tamaño de trama AX.25. Es la vía de transmisión
+       del digipetidor.
    * - ``modem_format_tnc2(msg, out, out_len)``
      - Renderizar una trama decodificada de vuelta a una cadena TNC2.
    * - ``modem_tx_queue_depth()``
@@ -135,9 +140,9 @@ y el tipo de callback ``modem_rx_cb_t``. Nótese que **no** hay punto de entrada
 de desmontaje: el módem se levanta una vez por arranque y se reconfigura en su
 sitio con ``modem_set_modem()``.
 
-Los tres puntos de entrada de transmisión — ``modem_send_raw()``,
-``modem_build_frame_tnc2()`` y ``modem_send_tnc2()`` — se pueden llamar desde
-cualquier tarea. Comparten un mutex interno, porque comparten el acumulador de
+Los cuatro puntos de entrada de transmisión — ``modem_send_raw()``,
+``modem_build_frame_tnc2()``, ``modem_send_tnc2()`` y ``modem_send_msg()`` — se
+pueden llamar desde cualquier tarea. Comparten un mutex interno, porque comparten el acumulador de
 CRC saliente, el anillo de transmisión de productor único y la máquina de
 estados que keyea desde él. ``modem_send_tnc2()`` sostiene ese mutex a lo largo
 del armado y del encolado, así que una trama siempre llega al anillo con la

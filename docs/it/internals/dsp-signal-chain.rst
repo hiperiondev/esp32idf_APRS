@@ -85,14 +85,22 @@ una trama del genere — e con contenuto casuale il caso capita circa a una tram
 su sessanta. I blocchi FX.25 non sono coinvolti: ``writeFx25Frame()`` riempie la
 FCS da sé prima della codifica Reed–Solomon.
 
-Il campo indirizzi termina sempre sull'ultimo indirizzo in uso. ``ax25_encode()``
-e ``hdlcFrame()`` impostano il bit di fine indirizzo (bit 0 dell'ottetto SSID)
-su quell'indirizzo e lo azzerano su tutti gli altri, compreso il caso completo di
-destinazione, sorgente e otto digipeater, in cui dopo l'ultimo non resta alcuno
-slot vuoto. Una trama senza quel bit viene scartata da Direwolf e dai TNC KISS,
-e il ricevitore interno prenderebbe il byte di controllo per la fine del campo
-indirizzi; poiché il digipeater ricodifica da testo TNC2 ogni trama che ripete,
-una trama legale con otto digipeater riparte legale come è arrivata.
+Il campo indirizzi termina sempre sull'ultimo indirizzo in uso. ``ax25_encode()``,
+``hdlcFrame()`` e ``ax25_encode_msg()`` impostano il bit di fine indirizzo (bit
+0 dell'ottetto SSID) su quell'indirizzo e lo azzerano su tutti gli altri,
+compreso il caso completo di destinazione, sorgente e otto digipeater, in cui
+dopo l'ultimo non resta alcuno slot vuoto. Una trama senza quel bit viene
+scartata da Direwolf e dai TNC KISS, e il ricevitore interno prenderebbe il
+byte di controllo per la fine del campo indirizzi. Il digipeater ricodifica in
+binario ogni trama che ripete con ``ax25_encode_msg()``, direttamente dai campi
+decodificati, così una trama legale con otto digipeater riparte legale come è
+arrivata e il suo campo informativo viene ripetuto byte per byte.
+
+``ax25_encode()`` rifiuta una riga TNC2 che contenga un indirizzo che non sia un
+nominativo legale — da una a sei lettere o cifre, con le minuscole accettate e
+inviate come maiuscole — o il cui SSID non sia di una o due cifre tra 0 e 15,
+invece di troncare il nominativo o lasciare che un SSID troppo grande invada i
+bit vicini dell'ottetto.
 
 Ogni trama si chiude con un flag seguito dalla coda TX (``Ax25TxTail()``,
 predefinita 20 ms, arrotondata per eccesso a flag interi), e solo allora la ISR

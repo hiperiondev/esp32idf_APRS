@@ -150,7 +150,10 @@ typedef struct {
     gps_fix_quality_t quality; /**< Fix quality from @c GGA. */
     gps_fix_mode_t mode;       /**< Solution dimensionality from @c GSA. */
 
-    bool has_position; /**< Latitude and longitude are solved and present. */
+    bool has_position; /**< Latitude and longitude come from a current fix. Cleared as soon as the receiver reports no fix (a @c GGA quality of 0 or a
+                            void @c RMC) or the link goes silent; @c latitude / @c longitude then keep the last fix's values, whose age is
+                            @c fix_age_s. Only coordinates inside their range (latitude up to 90, longitude up to 180 degrees, minutes below 60)
+                            are ever accepted. */
     double latitude;   /**< Latitude in signed decimal degrees, north positive. */
     double longitude;  /**< Longitude in signed decimal degrees, east positive. */
 

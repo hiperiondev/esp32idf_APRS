@@ -78,6 +78,14 @@ The badge condenses the page into one diagnosis:
 
    **Position** — latitude, longitude, altitude and geoid separation.
 
+A position is shown, and offered to the other pages' *Use GPS* option, only
+while it comes from a current fix: as soon as the receiver reports no fix — a
+``GGA`` quality of 0 or a void ``RMC`` — the station stops presenting the last
+coordinates as where it is, and the *Serial Link* panel's fix age tells how
+old the last fix is. A coordinate outside its range (latitude beyond 90°,
+longitude beyond 180°, minutes of 60 or more) is never accepted, even from a
+sentence whose checksum is good.
+
 .. figure:: /_static/webadmin/gps_fs03.png
    :alt: Motion — ground speed, course and magnetic variation.
    :align: center

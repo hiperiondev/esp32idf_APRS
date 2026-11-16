@@ -71,6 +71,26 @@ Il motore dei messaggi
   di origine sono normalizzati in maiuscolo durante l'analisi, così una
   stazione occupa un solo nome nel filo e un ack si abbina al messaggio in
   uscita che conferma.
+* **Un ack per trasmissione.** Un messaggio di solito viene sentito più volte
+  in pochi secondi — direttamente, di nuovo attraverso ogni digipeater che lo
+  ritrasmette, e anche via APRS-IS. La prima copia di un dato mittente e numero
+  di messaggio riceve subito l'ack, e le copie che seguono entro
+  ``MSG_ACK_HOLDOFF_S`` (15 s) condividono quell'ack invece di attivare
+  ciascuna il trasmettitore per il proprio. Una copia che arriva più tardi è la
+  ritrasmissione del mittente stesso e riceve di nuovo l'ack.
+* **I numeri di messaggio vengono verificati.** L'identificatore dopo ``{``
+  viene usato solo quando è un numero di messaggio APRS ben formato: da una a
+  cinque lettere o cifre, seguite facoltativamente da ``}`` e fino a due altre
+  (il Reply-ACK). Un messaggio che porta altro in quella posizione viene
+  memorizzato come messaggio inviato senza numero — senza ack né Reply-ACK
+  dovuto — così nessun byte di un identificatore malformato viene mai rimesso
+  in aria con il nominativo di questa stazione.
+* **Concorrenza.** La coda della conversazione, la tabella dei Reply-ACK e il
+  registro di trattenuta degli ack sono protetti da un unico mutex del modulo
+  di messaggistica, tenuto solo mentre quelle tabelle vengono lette o scritte e
+  mai durante una trasmissione. La pagina della chat, il task di ricezione, il
+  task APRS-IS, il ciclo dei tentativi e il risponditore di interrogazioni
+  possono quindi accedere alla coda contemporaneamente.
 
 Gruppi di messaggi
 ===================

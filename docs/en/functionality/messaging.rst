@@ -66,6 +66,24 @@ The message engine
   callsigns are normalised to upper case as they are parsed, so one station
   occupies one name in the thread and an ack pairs with the outbound message
   it acknowledges.
+* **One ack per transmission.** A message is usually heard several times
+  within seconds — directly, again through every digipeater that relays it,
+  and over APRS-IS as well. The first copy of a given sender and message number
+  is acknowledged at once and the copies that follow within
+  ``MSG_ACK_HOLDOFF_S`` (15 s) share that ack instead of each keying the
+  transmitter for one of their own. A copy arriving later than that is the
+  sender's own retransmission and is acknowledged again.
+* **Message numbers are checked.** The identifier after ``{`` is used only
+  when it is a well-formed APRS message number: one to five letters or digits,
+  optionally followed by ``}`` and up to two more (the Reply-ACK). A message
+  carrying anything else there is stored as a message sent without a number —
+  no ack, no Reply-ACK owed — so no byte of a malformed identifier is ever put
+  back on the air under this station's callsign.
+* **Thread safety.** The conversation queue, the Reply-ACK table and the ack
+  hold-off record are guarded by one mutex of the messaging module, held only
+  while those tables are read or written and never across a transmission. The
+  chat page, the receive task, the APRS-IS task, the retry tick and the query
+  responder can therefore all reach the queue at the same time.
 
 Message groups
 ==============

@@ -566,7 +566,7 @@ Digipeating and the New-N paradigm
      - Available behind a switch that is off by default. When it is off, a packet using that convention falls through to the explicit path logic instead of being dropped.
    * - RR-bit precedence and operator-present signalling
      - ❌
-     - The proposals that repurpose the reserved bits of the SSID octet are not implemented in either direction. The marking mode of preemptive digipeating sets the low reserved bit on the addresses it skips, but the frame is re-encoded from its TNC2 rendering, which does not carry those bits onto the channel.
+     - The proposals that repurpose the reserved bits of the SSID octet are not implemented in either direction. The marking mode of preemptive digipeating sets the low reserved bit on the addresses it skips, and since a repeated frame is encoded in binary from its decoded fields, that bit reaches the channel; every address the digipeater does not rewrite keeps its reserved bits as received.
 
 APRS-IS gatewaying
 ==================

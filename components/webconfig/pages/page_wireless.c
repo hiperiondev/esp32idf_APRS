@@ -326,10 +326,16 @@ esp_err_t page_wifi_scan_post(httpd_req_t *req) {
     if (num > 32)
         num = 32;
 
+    // The driver keeps the scan result list allocated until it is read with
+    // esp_wifi_scan_get_ap_records() or released with esp_wifi_clear_ap_list(),
+    // so every path that does not read it releases it.
     wifi_ap_record_t *records = NULL;
+    if (num == 0)
+        esp_wifi_clear_ap_list();
     if (num > 0) {
         records = calloc(num, sizeof(wifi_ap_record_t));
         if (!records) {
+            esp_wifi_clear_ap_list();
             if (mode_switched)
                 esp_wifi_set_mode(mode);
             httpd_resp_sendstr(req, "{\"error\":\"out of memory\"}");

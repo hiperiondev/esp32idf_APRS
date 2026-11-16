@@ -34,6 +34,7 @@
 #include "freertos/task.h"
 
 #include "app_config.h"
+#include "aprs_call.h" // aprs_call_normalize_base()/_path(): callsign, destination and report path are loaded in their on-air form
 #include "aprs_path.h" // aprs_path_build_suffix_from_config(), APRS_PATH_TCPIP_SUFFIX
 #include "aprs_service.h"
 #include "beacon_scheduler.h" // beacon_scheduler_jitter()
@@ -198,10 +199,17 @@ static bool load_locked(telemetry_config_t *out, bool *out_missing, bool *out_tr
     v = cJSON_GetObjectItemCaseSensitive(doc, "ssid");
     if (cJSON_IsNumber(v))
         out->ssid = (uint8_t)v->valuedouble;
+    // The callsign, the destination and the report path are loaded in the
+    // form they take on the air (aprs_call.h), so a hand-edited file cannot
+    // put an address on a frame that no receiver accepts. A callsign that
+    // normalizes to nothing leaves the field as it was.
     v = cJSON_GetObjectItemCaseSensitive(doc, "mycall");
     if (cJSON_IsString(v) && v->valuestring) {
-        strncpy(out->mycall, v->valuestring, sizeof(out->mycall) - 1);
-        out->mycall[sizeof(out->mycall) - 1] = 0;
+        char call[sizeof(out->mycall)];
+        strncpy(call, v->valuestring, sizeof(call) - 1);
+        call[sizeof(call) - 1] = 0;
+        if (aprs_call_normalize_base(call) || v->valuestring[0] == 0)
+            memcpy(out->mycall, call, sizeof(out->mycall));
     }
     v = cJSON_GetObjectItemCaseSensitive(doc, "path");
     if (cJSON_IsNumber(v))
@@ -256,11 +264,13 @@ static bool load_locked(telemetry_config_t *out, bool *out_missing, bool *out_tr
     if (cJSON_IsString(v) && v->valuestring) {
         strncpy(out->report_path, v->valuestring, sizeof(out->report_path) - 1);
         out->report_path[sizeof(out->report_path) - 1] = 0;
+        aprs_call_normalize_path(out->report_path, sizeof(out->report_path));
     }
     v = cJSON_GetObjectItemCaseSensitive(doc, "tocall");
     if (cJSON_IsString(v) && v->valuestring) {
         strncpy(out->tocall, v->valuestring, sizeof(out->tocall) - 1);
         out->tocall[sizeof(out->tocall) - 1] = 0;
+        aprs_call_normalize_base(out->tocall);
     }
     v = cJSON_GetObjectItemCaseSensitive(doc, "autoSeq");
     if (v)

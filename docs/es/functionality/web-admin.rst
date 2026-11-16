@@ -115,6 +115,21 @@ que se repiten (SSID, intervalo de transmisión, latitud, longitud, altitud)
 provienen de las constantes ``WEB_RANGE_*`` de ``web_common.h``, así un límite
 se define una sola vez para todas las páginas que lo comparten.
 
+Los campos de indicativo y de ruta de digipetidores se guardan en la forma que
+toman en el aire (``main/include/aprs_call.h``). Un campo de indicativo
+conserva solo letras mayúsculas y dígitos, seis como máximo — ``lu3vea`` se
+guarda como ``LU3VEA``, y un SSID escrito en un campo de indicativo se
+descarta, porque todos esos campos tienen su SSID en otro aparte. El indicativo
+del servicio Winlink, el único campo de indicativo que se guarda con su SSID,
+conserva un SSID de 1 a 15. Una ruta predefinida, y la ruta del informe de
+telemetría, conservan solo las entradas que son un indicativo legal con un SSID
+opcional de 1 a 15 y un ``*`` opcional, ocho como máximo; una entrada como
+``WIDE2-16`` se descarta en lugar de reescribirse, porque cualquier reescritura
+nombraría otro alias. La misma normalización corre al cargar ``config.json`` y
+``telemetry.json`` — para ``config.json`` con un aviso en la consola por cada
+valor que cambia —, de modo que un archivo editado a mano o subido tampoco puede poner en el aire una
+dirección que ningún receptor acepta.
+
 Ayuda contextual
 ================
 
@@ -462,6 +477,12 @@ Las páginas
        fábrica.
    * - **Storage**
      - Navegador LittleFS: descargar, borrar, subida multipart, uso, formatear.
+       Una subida se escribe en un archivo temporal ``<nombre>.upl`` y pasa a
+       reemplazar al destino solo cuando está completa, de modo que una
+       transferencia fallida o interrumpida deja intacto el archivo anterior.
+       Ese reemplazo y un borrado se hacen ambos bajo la compuerta de
+       escritura del almacenamiento, así que ninguno puede caer en medio del
+       guardado propio de un módulo sobre el mismo archivo.
    * - **About / Firmware**
      - Nombre del proyecto, versión, fecha/hora de compilación, versión de IDF,
        partición en ejecución, y el panel de **OTA Update**.
@@ -685,14 +706,21 @@ mismos.
 
 Tras 5 credenciales rechazadas consecutivas desde el mismo origen, ese origen
 queda bloqueado y toda petición posterior recibe ``429 Too Many Requests`` con
-una cabecera ``Retry-After`` en lugar de un ``401``, durante una ventana que
-empieza en 5 s y se duplica con cada nuevo intento rechazado mientras sigue
-bloqueado, con un tope de 300 s. Una ventana que expira sin un login exitoso
-se rearma un fallo por debajo del umbral en lugar de retomar el recuento
-acumulado, de modo que un cliente que sigue reintentando las mismas
-credenciales caducadas tras cada expiración solo vuelve a disparar el bloqueo
-base de 5 s cada vez, en lugar de escalar directamente hasta el tope de 300 s.
-Un login exitoso limpia por completo la entrada del origen.
+una cabecera ``Retry-After`` en lugar de un ``401``. Las peticiones hechas
+durante la ventana se rechazan sin mirar sus credenciales, así que ni cuentan
+ni ayudan. La primera ventana dura 5 s, y el recuento sobrevive a su final:
+cada nuevo intento rechazado después de que una ventana expiró inicia la
+siguiente con el doble de duración que la anterior, con un tope de 300 s. Un
+origen que sigue probando queda así limitado a un intento cada cinco minutos.
+El recuento lo limpia un login exitoso, que libera por completo la entrada del
+origen, o 15 minutos sin un solo intento rechazado.
+
+La tabla guarda 16 orígenes. Cada origen ocupa una sola entrada, y cuando un
+origen nuevo necesita una y la tabla está llena, la que se cede es la del
+origen cuyo último fallo es el más antiguo entre los que no están bloqueados en
+ese momento; un origen bloqueado pierde su entrada solo cuando todas están
+bloqueadas, de modo que una ráfaga de peticiones desde muchas direcciones no
+puede borrar el bloqueo de quien está probando contraseñas.
 
 Protección de mismo origen (CSRF)
 ==================================

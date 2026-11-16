@@ -61,6 +61,7 @@
 #include <string.h>
 
 #include "app_config.h"
+#include "aprs_call.h" // aprs_call_normalize_path(): the report path is stored in its on-air form
 #include "esp_log.h"
 #include "heap_monitor.h" // HEAP_MONITOR_BRACKET() - each form buffer below is a single multi-kilobyte block
 #include "pages.h"
@@ -693,7 +694,8 @@ static void parse_beacon(const char *body, telemetry_config_t *cfg, const char p
 
 static void parse_report_params(const char *body, telemetry_config_t *cfg) {
     web_form_get(body, "rptPath", cfg->report_path, sizeof(cfg->report_path));
-    web_form_get(body, "tocall", cfg->tocall, sizeof(cfg->tocall));
+    aprs_call_normalize_path(cfg->report_path, sizeof(cfg->report_path));
+    web_form_get_call(body, "tocall", cfg->tocall, sizeof(cfg->tocall));
     cfg->auto_seq = web_form_get_bool(body, "autoSeq");
     cfg->field_width = (uint8_t)web_form_get_int(body, "fieldW", cfg->field_width);
     cfg->omit_trailing = web_form_get_bool(body, "omitTrail");

@@ -30,6 +30,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h" // portMUX_TYPE and the critical section that claims the outgoing message number
+#include "freertos/semphr.h"   // the queue mutex
 
 #include "afsk.h" // afsk_ptt_gpio_is_valid(), MODEM_ADC_GPIO / MODEM_DAC_GPIO (checked internally by afsk_ptt_gpio_is_valid())
 #include "app_config.h"
@@ -75,6 +76,31 @@ _Static_assert(MSG_JSON_ENTRY_MAX >= MSG_JSON_TEMPLATE_LEN + MSG_JSON_TIME_LEN +
                "MSG_JSON_ENTRY_MAX is too small for the message field widths");
 static uint32_t s_seq = 0;
 
+// The conversation queue above, its insertion counter, the Reply-ACK table and
+// the ack hold-off ring below are shared by every task that handles messages:
+// the HTTP server (the chat page and the Winlink control pages), the packet
+// receive task and the APRS-IS task (both through handleIncomingAPRS()), the
+// 1 Hz service tick (retries and the Winlink session machine) and the beacon
+// scheduler (the "?APRSM" query answer). This one mutex covers all of them.
+//
+// It is held only while those tables are read or written, never across a
+// frame build that leaves this module, a transmission, a Telegram call or the
+// RX observer: every path that sends something takes a snapshot under the
+// lock, releases it, and transmits from the snapshot. It may be taken while
+// app_config_lock() is held, but app_config_lock() is never taken while it is.
+static SemaphoreHandle_t s_queueLock = NULL;
+static StaticSemaphore_t s_queueLockBuf;
+
+static void queue_lock(void) {
+    if (s_queueLock != NULL)
+        xSemaphoreTake(s_queueLock, portMAX_DELAY);
+}
+
+static void queue_unlock(void) {
+    if (s_queueLock != NULL)
+        xSemaphoreGive(s_queueLock);
+}
+
 // Sequence number carried by the "{NN" suffix of every message this station
 // originates, and the spinlock that hands one number to one sender. Three
 // tasks reach sendAPRSMessage(): the HTTP server task, from the /msgchat POST
@@ -117,6 +143,22 @@ typedef struct {
 static reply_ack_t s_replyAck[MSG_REPLY_ACK_STATIONS];
 static uint32_t s_replyAckSeq = 0;
 
+// ---------------------------------------------------------------------------
+// Ack hold-off: the acknowledgements sent recently, one slot per (sender,
+// message number) pair. A message heard directly and again through each
+// digipeater that relays it arrives several times within a few seconds, and
+// every copy is the same transmission: one ack answers all of them. A copy
+// arriving after MSG_ACK_HOLDOFF_S is the sender's own retransmission, which
+// means the first ack was not heard, and is acknowledged again.
+// ---------------------------------------------------------------------------
+typedef struct {
+    char callsign[11]; // sender acknowledged (empty slot when NUL at [0])
+    char msgNo[8];     // message identifier quoted back, exactly as acked
+    int64_t at_us;     // esp_timer_get_time() of that ack
+} ack_holdoff_t;
+
+static ack_holdoff_t s_ackHoldoff[MSG_ACK_HOLDOFF_SLOTS];
+
 void message_set_rx_observer(message_rx_observer_t observer) {
     s_rxObserver = observer;
 }
@@ -135,10 +177,15 @@ void message_set_tx_handler(void (*handler)(const char *packet, size_t len, uint
 }
 
 void message_init(void) {
+    if (s_queueLock == NULL)
+        s_queueLock = xSemaphoreCreateMutexStatic(&s_queueLockBuf);
+    queue_lock();
     memset(s_queue, 0, sizeof(s_queue));
     s_seq = 0;
     memset(s_replyAck, 0, sizeof(s_replyAck));
     s_replyAckSeq = 0;
+    memset(s_ackHoldoff, 0, sizeof(s_ackHoldoff));
+    queue_unlock();
 }
 
 // ---------------------------------------------------------------------------
@@ -338,11 +385,13 @@ static bool parseMsgNumber(const char *s, uint16_t *out) {
 #endif
 
 // Checks whether s is a valid message-number field as APRS101 chapter 14
-// defines it for an "ack"/"rej": 1-5 alphanumeric characters, optionally
-// followed by a single '}' and up to two more characters (the Reply-ACK free
-// acknowledgement), with nothing else before the end of the string. Ordinary
-// message text that merely happens to start with "ack"/"rej" - "acknowledged,
-// thanks", "rejoining net" - fails this check and is left as plain text.
+// defines it: 1-5 alphanumeric characters, optionally followed by a single '}'
+// and up to two more alphanumeric characters (the Reply-ACK free
+// acknowledgement), with nothing else before the end of the string. It is the
+// one test every identifier read off the air passes before this station quotes
+// it back in an ack or files it as an acknowledgement owed. Ordinary message
+// text that merely happens to start with "ack"/"rej" - "acknowledged, thanks",
+// "rejoining net" - fails this check and is left as plain text.
 static bool isValidMsgNoField(const char *s) {
     if (s == NULL || s[0] == 0)
         return false;
@@ -359,7 +408,10 @@ static bool isValidMsgNoField(const char *s) {
     if (s[i] != '}')
         return false; // more than 5 characters before any '}', or other junk
 
-    return strlen(s + i + 1) <= 2; // "MM}" or "MM}AA"
+    size_t j = i + 1;
+    while (j < i + 3 && isalnum((unsigned char)s[j]))
+        j++;
+    return s[j] == 0; // "MM}" or "MM}AA"
 }
 
 #ifdef ENABLE_MESSAGE
@@ -390,6 +442,7 @@ static void splitReplyAck(const char *msgNo, char *own, size_t own_size, char *a
 // Records the acknowledgement now owed to a station. A station already in the
 // table keeps its slot and has its number replaced, so only the latest one is
 // ever owed; a new station takes a free slot, or the one written longest ago.
+// Entered with the queue lock held.
 static void replyAckRemember(const char *call, const char *mm) {
     if (call[0] == 0 || mm[0] == 0)
         return;
@@ -427,7 +480,7 @@ static void replyAckRemember(const char *call, const char *mm) {
 //
 // Callsigns are matched exactly, the same rule pkgMsg_Find() applies to an
 // incoming ack, so an acknowledgement owed to one SSID of a station is never
-// attached to a message addressed to another.
+// attached to a message addressed to another. Entered with the queue lock held.
 static void buildMsgNumberSuffix(const char *call, uint16_t msgID, char *out, size_t out_size) {
     const char *owed = "";
     for (int i = 0; i < MSG_REPLY_ACK_STATIONS; i++) {
@@ -439,10 +492,42 @@ static void buildMsgNumberSuffix(const char *call, uint16_t msgID, char *out, si
     snprintf(out, out_size, "{%02u}%s", (unsigned)msgID, owed);
 }
 
+// Decides whether a received direct message gets an ack now, and records the
+// ack when it does. Answers false for a copy of a message acknowledged less
+// than MSG_ACK_HOLDOFF_S ago - a digipeated or cross-channel copy of the same
+// transmission - and true otherwise, the slot then taking the new timestamp. A
+// pair seen for the first time takes a free slot, or the oldest one. Entered
+// with the queue lock held.
+static bool ackHoldoffPass(const char *call, const char *msgNo) {
+    const int64_t now = esp_timer_get_time();
+    const int64_t window = (int64_t)MSG_ACK_HOLDOFF_S * 1000000;
+
+    int slot = 0;
+    for (int i = 0; i < MSG_ACK_HOLDOFF_SLOTS; i++) {
+        ack_holdoff_t *h = &s_ackHoldoff[i];
+        if (h->callsign[0] != 0 && strcmp(h->callsign, call) == 0 && strcmp(h->msgNo, msgNo) == 0) {
+            if (now - h->at_us < window)
+                return false;
+            h->at_us = now;
+            return true;
+        }
+        if (s_ackHoldoff[slot].callsign[0] != 0 && (h->callsign[0] == 0 || h->at_us < s_ackHoldoff[slot].at_us))
+            slot = i;
+    }
+
+    ack_holdoff_t *h = &s_ackHoldoff[slot];
+    memset(h, 0, sizeof(*h));
+    strncpy(h->callsign, call, sizeof(h->callsign) - 1);
+    strncpy(h->msgNo, msgNo, sizeof(h->msgNo) - 1);
+    h->at_us = now;
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 // Queue management
 // ---------------------------------------------------------------------------
-int pkgMsg_Find(const char *call, uint16_t msgID, bool rxtx) {
+// Entered with the queue lock held.
+static int pkgMsgFindLocked(const char *call, uint16_t msgID, bool rxtx) {
     // Exact match only. s_queue[i].callsign is always NUL-terminated (see
     // pkgMsgStore(), which memset()s the field before strncpy()) and always
     // upper case, as is every callsign reaching this function, so a plain
@@ -458,11 +543,18 @@ int pkgMsg_Find(const char *call, uint16_t msgID, bool rxtx) {
     return -1;
 }
 
+int pkgMsg_Find(const char *call, uint16_t msgID, bool rxtx) {
+    queue_lock();
+    int i = pkgMsgFindLocked(call, msgID, rxtx);
+    queue_unlock();
+    return i;
+}
+
 // Picks the slot the next message goes into: a free one while the queue is
 // filling up, otherwise the slot holding the oldest message of the whole
 // conversation, received or outbound. Age is taken from the insertion counter
 // rather than from the wall clock, so the choice stays right while the system
-// clock is still unset and when NTP steps it.
+// clock is still unset and when NTP steps it. Entered with the queue lock held.
 static int pkgMsgEvictSlot(void) {
     int ret = 0;
     uint32_t oldest = 0;
@@ -483,7 +575,8 @@ static int pkgMsgEvictSlot(void) {
 // is meaningful for RX entries only: true when the message was addressed to a
 // message group rather than to this station's own callsign, which is what
 // keeps a group message and a direct message that happen to share the same
-// sender and message number in separate slots.
+// sender and message number in separate slots. Entered with the queue lock
+// held.
 static int pkgMsgStore(const char *call, const char *text, uint16_t msgID, int8_t ack, bool rxtx, bool group) {
     if (!call[0] || !text[0])
         return -1;
@@ -515,7 +608,7 @@ static int pkgMsgStore(const char *call, const char *text, uint16_t msgID, int8_
 // message that happens to share its sender and number with an unrelated
 // direct message, which is a different line of the conversation and is kept
 // in a slot of its own. Text is compared as stored, i.e. after the truncation
-// to MSG_TEXT_MAX bytes.
+// to MSG_TEXT_MAX bytes. Entered with the queue lock held.
 static int pkgMsgFindRepeat(const char *call, const char *text, uint16_t msgID, bool rxtx, bool group) {
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
         if (!s_queue[i].used || s_queue[i].rxtx != rxtx || s_queue[i].msgID != msgID || s_queue[i].group != group)
@@ -541,7 +634,12 @@ size_t message_next_json(uint32_t after_seq, char *out, size_t out_size, uint32_
     // every attempt. Driving the walk off the counter rather than off slot order
     // also means a message evicted part-way through a response is skipped
     // instead of repeated or misplaced.
+    //
+    // The entry is copied out under the queue lock and formatted from the copy,
+    // so the escaping and the formatting run with the lock released.
+    msg_entry_t snapshot;
     const msg_entry_t *e = NULL;
+    queue_lock();
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
         const msg_entry_t *c = &s_queue[i];
         if (!c->used || c->seq <= after_seq)
@@ -549,6 +647,11 @@ size_t message_next_json(uint32_t after_seq, char *out, size_t out_size, uint32_
         if (!e || c->seq < e->seq)
             e = c;
     }
+    if (e) {
+        snapshot = *e;
+        e = &snapshot;
+    }
+    queue_unlock();
     if (!e)
         return 0;
 
@@ -749,7 +852,9 @@ void sendAPRSMessage(const char *toCall, const char *text) {
     sanitizeOutgoingText(text, payload, sizeof(payload));
 
     char suffix[8];
+    queue_lock();
     buildMsgNumberSuffix(toCallUp, msgID, suffix, sizeof(suffix));
+    queue_unlock();
 
     char info[320];
     snprintf(info, sizeof(info), ":%s:%s%s", toCallFixed, payload, suffix);
@@ -788,7 +893,9 @@ void sendAPRSMessage(const char *toCall, const char *text) {
     // shows next to the message. The sanitized payload is stored rather than
     // the caller's raw text, so a retry re-sends exactly what was already put
     // on the air instead of re-deriving it.
+    queue_lock();
     pkgMsgStore(toCallUp, payload, msgID, ackVal, false, false);
+    queue_unlock();
 }
 
 void sendAPRSAck(const char *toCall, const char *msgNo) {
@@ -834,13 +941,21 @@ int message_send_pending_to(const char *toCall) {
     int sent = 0;
     int held = 0;
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
+        // Each slot is examined and copied under the queue lock and transmitted
+        // from the copy once the lock is released.
+        char toCallFixed[10];
+        char callsign[sizeof(s_queue[0].callsign)];
+        char payload[MSG_TEXT_MAX];
+        char suffix[8];
+
+        queue_lock();
         // ack > 0 is the "outbound and still waiting for an ack" state; an
         // acked (-2), rejected (-3) or received (-1) entry is not something
         // this station is holding for the querying operator.
-        if (!s_queue[i].used || s_queue[i].rxtx || s_queue[i].ack <= 0)
+        if (!s_queue[i].used || s_queue[i].rxtx || s_queue[i].ack <= 0 || !callsignBaseMatch(s_queue[i].callsign, toCall)) {
+            queue_unlock();
             continue;
-        if (!callsignBaseMatch(s_queue[i].callsign, toCall))
-            continue;
+        }
 
         // One query answers with a handful of frames, not with the whole
         // queue: MSG_QUERY_BURST_MAX bounds how long the transmitter can stay
@@ -849,6 +964,7 @@ int message_send_pending_to(const char *toCall) {
         // sendAPRSMessageRetry() carries them at the configured interval,
         // which is the paced path this traffic already has.
         if (sent >= MSG_QUERY_BURST_MAX) {
+            queue_unlock();
             held++;
             continue;
         }
@@ -857,22 +973,21 @@ int message_send_pending_to(const char *toCall) {
         // transmission answers a query, so it must not spend one of the
         // message's own delivery attempts nor push the next scheduled retry
         // out by one interval.
-        char toCallFixed[10];
+        memcpy(callsign, s_queue[i].callsign, sizeof(callsign));
+        memcpy(payload, s_queue[i].text, sizeof(payload));
+        buildMsgNumberSuffix(s_queue[i].callsign, s_queue[i].msgID, suffix, sizeof(suffix));
+        queue_unlock();
+
+        callsign[sizeof(callsign) - 1] = 0;
+        payload[sizeof(payload) - 1] = 0;
         memset(toCallFixed, ' ', 9);
         toCallFixed[9] = 0;
-        size_t n = strlen(s_queue[i].callsign);
-        memcpy(toCallFixed, s_queue[i].callsign, n > 9 ? 9 : n);
-
-        char payload[300];
-        strncpy(payload, s_queue[i].text, sizeof(payload) - 1);
-        payload[sizeof(payload) - 1] = 0;
-
-        char suffix[8];
-        buildMsgNumberSuffix(s_queue[i].callsign, s_queue[i].msgID, suffix, sizeof(suffix));
+        size_t n = strlen(callsign);
+        memcpy(toCallFixed, callsign, n > 9 ? 9 : n);
 
         char info[320];
         snprintf(info, sizeof(info), ":%s:%s%s", toCallFixed, payload, suffix);
-        txPacket(myCall, s_queue[i].callsign, info);
+        txPacket(myCall, callsign, info);
         sent++;
     }
 
@@ -901,10 +1016,22 @@ void sendAPRSMessageRetry(void) {
     myCall[sizeof(myCall) - 1] = 0;
 
     for (int i = 0; i < MSG_QUEUE_SIZE; i++) {
-        if (!s_queue[i].used || s_queue[i].ack <= 0)
+        // The slot's retry state is advanced and its frame contents copied
+        // under the queue lock, so an ack processed on the receive task at the
+        // same moment either lands before this decision or after it, never in
+        // the middle of it. The transmission runs from the copy, unlocked.
+        char toCallFixed[10];
+        char callsign[sizeof(s_queue[0].callsign)];
+        char payload[MSG_TEXT_MAX];
+        char suffix[8];
+        uint16_t msgID;
+        int8_t ackLeft;
+
+        queue_lock();
+        if (!s_queue[i].used || s_queue[i].ack <= 0 || (now - s_queue[i].last_tx) <= g_config.msg_interval) {
+            queue_unlock();
             continue;
-        if ((now - s_queue[i].last_tx) <= g_config.msg_interval)
-            continue;
+        }
 
         // Stamp the moment this retry is sent. The guard above compares
         // (now - last_tx) against msg_interval, so the timestamp must be the
@@ -915,23 +1042,24 @@ void sendAPRSMessageRetry(void) {
         if (--s_queue[i].ack > 0)
             s_queue[i].last_tx = now;
 
-        char toCallFixed[10];
+        memcpy(callsign, s_queue[i].callsign, sizeof(callsign));
+        memcpy(payload, s_queue[i].text, sizeof(payload));
+        msgID = s_queue[i].msgID;
+        ackLeft = s_queue[i].ack;
+        buildMsgNumberSuffix(s_queue[i].callsign, msgID, suffix, sizeof(suffix));
+        queue_unlock();
+
+        callsign[sizeof(callsign) - 1] = 0;
+        payload[sizeof(payload) - 1] = 0;
         memset(toCallFixed, ' ', 9);
         toCallFixed[9] = 0;
-        size_t n = strlen(s_queue[i].callsign);
-        memcpy(toCallFixed, s_queue[i].callsign, n > 9 ? 9 : n);
-
-        char payload[300];
-        strncpy(payload, s_queue[i].text, sizeof(payload) - 1);
-        payload[sizeof(payload) - 1] = 0;
-
-        char suffix[8];
-        buildMsgNumberSuffix(s_queue[i].callsign, s_queue[i].msgID, suffix, sizeof(suffix));
+        size_t n = strlen(callsign);
+        memcpy(toCallFixed, callsign, n > 9 ? 9 : n);
 
         char info[320];
         snprintf(info, sizeof(info), ":%s:%s%s", toCallFixed, payload, suffix);
-        txPacket(myCall, s_queue[i].callsign, info);
-        ESP_LOGD(TAG, "Retry APRS message[%d] to %s msgID %u ack left %d", i, s_queue[i].callsign, (unsigned)s_queue[i].msgID, s_queue[i].ack);
+        txPacket(myCall, callsign, info);
+        ESP_LOGD(TAG, "Retry APRS message[%d] to %s msgID %u ack left %d", i, callsign, (unsigned)msgID, ackLeft);
     }
 }
 #endif // ENABLE_MESSAGE
@@ -1050,10 +1178,18 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     while (mlen > 0 && isspace((unsigned char)message[mlen - 1]))
         message[--mlen] = 0;
 
+    // The identifier after '{' is taken only when it is a well-formed message
+    // number (isValidMsgNoField()). It is quoted back in the ack and partly
+    // remembered as the Reply-ACK owed to the sender, so anything else - an
+    // overlong field, reserved characters, control bytes - would be put back
+    // on the air under this station's callsign; such a message is treated as
+    // one sent without a number. The text stops at the '{' either way, since
+    // message text reserves that character as the delimiter.
     char msgNo[12] = { 0 };
     char *brace = strchr(message, '{');
-    if (brace && brace[1]) {
-        strncpy(msgNo, brace + 1, sizeof(msgNo) - 1);
+    if (brace) {
+        if (brace[1] && isValidMsgNoField(brace + 1))
+            strncpy(msgNo, brace + 1, sizeof(msgNo) - 1);
         *brace = 0;
         mlen = strlen(message);
         while (mlen > 0 && isspace((unsigned char)message[mlen - 1]))
@@ -1158,9 +1294,13 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
             parseMsgNumber(ownNo, &ackID);
             s_rxObserver(fromCall, message, ackID, true);
         }
-        int i = parseMsgNumber(ownNo, &number) ? pkgMsg_Find(fromCall, number, false) : -1;
-        if (i >= 0)
-            s_queue[i].ack = isAck ? -2 : -3; // acked, or rejected by recipient: stop retrying, don't count as delivered
+        if (parseMsgNumber(ownNo, &number)) {
+            queue_lock();
+            int i = pkgMsgFindLocked(fromCall, number, false);
+            if (i >= 0)
+                s_queue[i].ack = isAck ? -2 : -3; // acked, or rejected by recipient: stop retrying, don't count as delivered
+            queue_unlock();
+        }
         return;
     }
 
@@ -1180,9 +1320,11 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     // a group message - this station never sent an outbound message to a
     // group for one to acknowledge - so skipped entirely for one.
     if (!isGroup && parseMsgNumber(replyAck, &number)) {
-        int i = pkgMsg_Find(fromCall, number, false);
+        queue_lock();
+        int i = pkgMsgFindLocked(fromCall, number, false);
         if (i >= 0)
             s_queue[i].ack = -2;
+        queue_unlock();
     }
 
     // Every received message is a new line of the conversation and gets a queue
@@ -1206,8 +1348,12 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     if (s_rxObserver)
         consumed = s_rxObserver(fromCall, decoded, rxID, false);
 
-    if (!consumed && pkgMsgFindRepeat(fromCall, decoded, rxID, true, isGroup) < 0)
-        pkgMsgStore(fromCall, decoded, rxID, -1, true, isGroup);
+    if (!consumed) {
+        queue_lock();
+        if (pkgMsgFindRepeat(fromCall, decoded, rxID, true, isGroup) < 0)
+            pkgMsgStore(fromCall, decoded, rxID, -1, true, isGroup);
+        queue_unlock();
+    }
 
     // A group message is never acked, never retransmitted and never
     // auto-replied to, "{id" suffix or not - it has no single owner to answer
@@ -1217,10 +1363,20 @@ void handleIncomingAPRS(const char *line, query_source_t source) {
     // sender actually requested one. That ack quotes the identifier whole,
     // Reply-ACK suffix included, and the sender's own number becomes the
     // acknowledgement owed back to that station.
+    //
+    // Copies of one transmission - heard directly and again through each
+    // digipeater that relays it, or on both RF and APRS-IS - are acknowledged
+    // once: ackHoldoffPass() lets the first one through and holds the others
+    // back for MSG_ACK_HOLDOFF_S, after which a copy is the sender's own
+    // retransmission and is acknowledged again.
     if (!isGroup) {
         if (msgNo[0] != 0) {
-            sendAPRSAck(fromCall, msgNo);
+            queue_lock();
+            bool ackNow = ackHoldoffPass(fromCall, msgNo);
             replyAckRemember(fromCall, ownNo);
+            queue_unlock();
+            if (ackNow)
+                sendAPRSAck(fromCall, msgNo);
         }
         // The alarm announces traffic the operator has to come and read. A
         // message an observer took is being dealt with by whatever took it, so

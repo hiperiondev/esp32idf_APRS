@@ -71,10 +71,17 @@
  *               when the path needs to be rewritten (hop-count decrement,
  *               callsign insertion, etc).
  *
- * @return 0  - do not repeat (drop / duplicate / not for us / already relayed)
- *         1  - repeat as-is (path already carries our used call, e.g. bypass "*")
- *         2  - repeat with modified path (packet.info + rewritten header must be
- *              re-encoded and transmitted on RF)
+ * @return 0  - do not repeat (drop / duplicate / not for us / already relayed).
+ *         1  - repeat: the path entry naming this station was only marked used
+ *              (and, with destination-SSID routing, the destination hop count
+ *              decremented).
+ *         2  - repeat: the path was rewritten (hop-count decrement, callsign
+ *              insertion or substitution).
+ *         Any non-zero value means the frame in @p packet, as modified, is to
+ *         be encoded and transmitted on RF; the two values only tell the
+ *         caller which kind of rewrite produced it. Because @p packet is
+ *         modified in place, a caller that still needs the frame as received
+ *         passes a copy.
  */
 int digiProcess(ax25_msg_t *packet);
 #endif

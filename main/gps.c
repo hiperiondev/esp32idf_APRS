@@ -281,7 +281,13 @@ static double field_num(char **fields, int count, int idx) {
 // point is found from the position of the '.' rather than assumed: that keeps
 // the conversion correct for a receiver emitting a different number of decimal
 // places, which modules do vary in.
-static bool parse_angle(const char *value, const char *hemi, double *out) {
+//
+// A value outside the angle's range - minutes of 60 or more, or more degrees
+// than max_deg (90 for a latitude, 180 for a longitude) - is refused: a
+// sentence that passed its checksum can still come from a module that has not
+// settled, and a coordinate it cannot hold must not become the station's
+// position.
+static bool parse_angle(const char *value, const char *hemi, double max_deg, double *out) {
     if (value == NULL || value[0] == 0 || hemi == NULL || hemi[0] == 0)
         return false;
 
@@ -297,9 +303,18 @@ static bool parse_angle(const char *value, const char *hemi, double *out) {
     memcpy(deg_txt, value, deg_len);
     deg_txt[deg_len] = 0;
 
+    for (size_t i = 0; i < deg_len; i++) {
+        if (deg_txt[i] < '0' || deg_txt[i] > '9')
+            return false;
+    }
+
     double degrees = strtod(deg_txt, NULL);
     double minutes = strtod(value + deg_len, NULL);
+    if (minutes < 0.0 || minutes >= 60.0)
+        return false;
     double result = degrees + minutes / 60.0;
+    if (result > max_deg)
+        return false;
 
     if (hemi[0] == 'S' || hemi[0] == 's' || hemi[0] == 'W' || hemi[0] == 'w')
         result = -result;
@@ -403,11 +418,15 @@ static void parse_gga(char **f, int n) {
     // A quality field of 0 means the receiver is reporting no fix, and in that
     // state it fills the position fields with the last known values or with
     // blanks depending on the module. Gating the position on the quality field
-    // is what keeps a stale coordinate from being presented as current.
+    // is what keeps a stale coordinate from being presented as current: the
+    // coordinates of the last fix stay in the snapshot, together with its age,
+    // but the snapshot stops claiming a position.
+    if (s_data.quality == GPS_FIX_NONE && has_field(f, n, 6))
+        s_data.has_position = false;
     if (s_data.quality != GPS_FIX_NONE) {
         double lat, lon;
-        if (has_field(f, n, 2) && has_field(f, n, 3) && has_field(f, n, 4) && has_field(f, n, 5) && parse_angle(f[2], f[3], &lat) &&
-            parse_angle(f[4], f[5], &lon)) {
+        if (has_field(f, n, 2) && has_field(f, n, 3) && has_field(f, n, 4) && has_field(f, n, 5) && parse_angle(f[2], f[3], 90.0, &lat) &&
+            parse_angle(f[4], f[5], 180.0, &lon)) {
             s_data.latitude = lat;
             s_data.longitude = lon;
             s_data.has_position = true;
@@ -442,11 +461,15 @@ static void parse_rmc(char **f, int n) {
         s_data.has_time = true;
 
     s_data.valid = has_field(f, n, 2) && (f[2][0] == 'A' || f[2][0] == 'a');
+    // A void RMC is the receiver saying it has no fix: whatever coordinates
+    // were last decoded no longer describe where the station is.
+    if (!s_data.valid)
+        s_data.has_position = false;
 
     if (s_data.valid) {
         double lat, lon;
-        if (has_field(f, n, 3) && has_field(f, n, 4) && has_field(f, n, 5) && has_field(f, n, 6) && parse_angle(f[3], f[4], &lat) &&
-            parse_angle(f[5], f[6], &lon)) {
+        if (has_field(f, n, 3) && has_field(f, n, 4) && has_field(f, n, 5) && has_field(f, n, 6) && parse_angle(f[3], f[4], 90.0, &lat) &&
+            parse_angle(f[5], f[6], 180.0, &lon)) {
             s_data.latitude = lat;
             s_data.longitude = lon;
             s_data.has_position = true;

@@ -43,6 +43,22 @@ static inline void copy_call(char dst[7], const char *src) {
     dst[i] = '\0';
 }
 
+// Raw SSID octet of an address this station writes into the path itself: both
+// reserved bits set, as AX.25 leaves them when nothing else is asked of them,
+// and the SSID in bits 4:1. The has-been-repeated bit is carried by rpt_flags
+// and the address-extension bit is placed by the encoder, so neither belongs
+// here.
+#define AX25_SSID_OCTET_RESERVED 0x60
+
+// Write this station's callsign and SSID into one path address, including the
+// raw octet the binary encoder reads its reserved bits from, so the address
+// carries nothing over from whatever occupied the slot before.
+static inline void set_own_call(ax25_call_t *field, const char *myCall, uint8_t mySsid) {
+    copy_call(field->call, myCall);
+    field->ssid = mySsid;
+    field->ssidBits = (uint8_t)(AX25_SSID_OCTET_RESERVED | ((mySsid & 0x0F) << 1));
+}
+
 // Does one received repeater callsign match one alias row? The comparison is
 // case-insensitive and requires equal length, and DIGI_ALIAS_WILDCARD in the
 // row matches exactly one decimal digit. Equal length is what keeps "WIDE#"
@@ -98,8 +114,7 @@ static void insert_own_call(ax25_msg_t *packet, int idx, const char *myCall, uin
         int n = j + 1;
         if (n >= AX25_MAX_RPT)
             break;
-        copy_call(packet->rpt_list[n].call, packet->rpt_list[j].call);
-        packet->rpt_list[n].ssid = packet->rpt_list[j].ssid;
+        packet->rpt_list[n] = packet->rpt_list[j];
         if (packet->rpt_flags & (1 << j))
             packet->rpt_flags |= (1 << n);
         else
@@ -107,8 +122,7 @@ static void insert_own_call(ax25_msg_t *packet, int idx, const char *myCall, uin
     }
 
     packet->rpt_count += 1;
-    copy_call(packet->rpt_list[idx].call, myCall);
-    packet->rpt_list[idx].ssid = mySsid;
+    set_own_call(&packet->rpt_list[idx], myCall, mySsid);
     packet->rpt_flags |= (1 << idx);
 }
 
@@ -125,18 +139,14 @@ static void insert_own_call(ax25_msg_t *packet, int idx, const char *myCall, uin
 // Rewrite one path address' raw SSID octet so it agrees with the decoded
 // callsign/SSID pair and carries the repeated flag.
 //
-// The frame this station puts back on the air is re-encoded from its TNC2
-// rendering, which expresses an address as callsign, SSID and the used marker
-// alone, so the reserved bits do not reach the channel. Maintaining the octet
-// still matters: it is the raw form every other consumer of the decoded frame
-// reads, and leaving it describing the address that used to be in this slot
-// would make the two views of the same frame disagree.
+// The frame this station puts back on the air is encoded in binary from the
+// decoded fields (ax25_encode_msg()), which takes each path address' reserved
+// bits from this octet, so what is written here is what reaches the channel.
 //
 // The other proposals for these two bits are absent in both directions: the
 // reserved pair is neither read as the sender's routing precedence nor
-// written to advertise that an operator is present at this station. They ride
-// in the same octet, so they would meet the same TNC2 re-encoding on the way
-// out, and a signal a receiver only sometimes gets is worse than none.
+// written to advertise that an operator is present at this station. An address
+// this station does not rewrite keeps the pair exactly as it was received.
 static inline void set_ssid_octet(ax25_call_t *field, uint8_t ssid, bool rr_low) {
     field->ssidBits =
         (uint8_t)((field->ssidBits & AX25_SSID_OCTET_KEEP) | AX25_SSID_OCTET_H | (rr_low ? AX25_SSID_OCTET_RR_LOW : 0) | (uint8_t)((ssid & 0x0F) << 1));
@@ -251,8 +261,7 @@ static int digipeat_preemptive(ax25_msg_t *packet, const digi_alias_t *table, co
     // In both modes the matched alias becomes this station's callsign, marked
     // used, so the hop is attributable afterwards exactly as a traced n-N hop
     // is. Whatever follows it in the path is untouched and stays live.
-    copy_call(packet->rpt_list[match].call, myCall);
-    packet->rpt_list[match].ssid = mySsid;
+    set_own_call(&packet->rpt_list[match], myCall, mySsid);
     set_ssid_octet(&packet->rpt_list[match], mySsid, mode == DIGI_PREEMPT_MARK);
 
     return 2;
@@ -283,8 +292,7 @@ static int digipeat_by_dest_ssid(ax25_msg_t *packet, const char *myCall, uint8_t
         // straight into the first slot rather than through insert_own_call(),
         // whose scan starts by reading the entry it is asked to displace.
         packet->dst.ssid = hops - 1;
-        copy_call(packet->rpt_list[0].call, myCall);
-        packet->rpt_list[0].ssid = mySsid;
+        set_own_call(&packet->rpt_list[0], myCall, mySsid);
         packet->rpt_flags |= (1 << 0);
         packet->rpt_count += 1;
         return 2;
@@ -436,8 +444,7 @@ int digiProcess(ax25_msg_t *packet) {
                 // An alias with no hops left is spent: it is replaced by this
                 // station's callsign, marked used, which both consumes the
                 // entry and records who made the final hop.
-                copy_call(packet->rpt_list[idx].call, digiMyCall);
-                packet->rpt_list[idx].ssid = digiMySsid;
+                set_own_call(&packet->rpt_list[idx], digiMyCall, digiMySsid);
                 packet->rpt_flags |= (1 << idx);
                 j = 2;
                 break;
@@ -461,8 +468,7 @@ int digiProcess(ax25_msg_t *packet) {
             hops--;
 
             if (hops == 0) {
-                copy_call(packet->rpt_list[idx].call, digiMyCall);
-                packet->rpt_list[idx].ssid = digiMySsid;
+                set_own_call(&packet->rpt_list[idx], digiMyCall, digiMySsid);
                 packet->rpt_flags |= (1 << idx);
                 j = 2;
                 break;

@@ -150,6 +150,12 @@ static char s_outstanding[APRS_MSG_TEXT_STD_MAX + 1];
 static uint8_t s_tries_left = 0;
 
 static char s_answer[WL_ANSWER_MAX];
+
+// Digits of the challenge this login attempt has answered, empty until one has
+// been. A login attempt answers exactly one challenge: the service repeating
+// that same challenge (its own retransmission of an unacknowledged message) is
+// absorbed here, and a different one in the same attempt ends the session.
+static char s_challenge[WL_CHALLENGE_MAX + 1];
 static char s_error[WL_ERROR_MAX + 1];
 
 // True between the command that opens a message and the terminator that hands
@@ -553,8 +559,10 @@ int winlink_queue_depth(void) {
 // ---------------------------------------------------------------------------
 
 // Each digit of the challenge is a 1-based character position in the
-// operator's password; the answer quotes those characters back and adds three
-// arbitrary ones, in any order, so the password itself never travels. A
+// operator's password; the answer quotes those characters back, in challenge
+// order, with three arbitrary ones split at random between the front and the
+// back of the answer, so the password itself never travels and an observer of
+// the answer cannot tell which of its characters are the quoted ones. A
 // challenge that names a position the password does not have is refused rather
 // than answered with a substitute character: a wrong answer costs the session
 // anyway and hides the real problem, which is that the configured password is
@@ -572,16 +580,20 @@ static bool build_response(const char *digits, const char *password, char *out, 
     if (out_size < ndigits + WL_ANSWER_PAD + 1)
         return false;
 
-    size_t n = 0;
     for (size_t i = 0; i < ndigits; i++) {
         if (digits[i] < '1' || digits[i] > '9')
             return false;
-        size_t pos = (size_t)(digits[i] - '0');
-        if (pos > pwlen)
+        if ((size_t)(digits[i] - '0') > pwlen)
             return false;
-        out[n++] = password[pos - 1];
     }
-    for (int i = 0; i < WL_ANSWER_PAD; i++)
+
+    size_t lead = esp_random() % (WL_ANSWER_PAD + 1);
+    size_t n = 0;
+    for (size_t i = 0; i < lead; i++)
+        out[n++] = alphabet[esp_random() % (sizeof(alphabet) - 1)];
+    for (size_t i = 0; i < ndigits; i++)
+        out[n++] = password[(size_t)(digits[i] - '0') - 1];
+    for (size_t i = lead; i < WL_ANSWER_PAD; i++)
         out[n++] = alphabet[esp_random() % (sizeof(alphabet) - 1)];
     out[n] = 0;
     return true;
@@ -654,6 +666,7 @@ static bool login_locked(char *pending, size_t pending_size) {
     s_error[0] = 0;
     queue_clear();
     s_outstanding[0] = 0;
+    s_challenge[0] = 0;
     s_tries_left = WL_CMD_TRIES;
     s_session_started = time(NULL);
     set_state(WL_STATE_LOGIN_SENT);
@@ -890,9 +903,33 @@ static void on_service_ack_locked(void) {
 
 // Entered with s_sess_lock held. The answer is copied into pending for the
 // caller to transmit after unlocking.
+//
+// A challenge is answered only while this station is itself logging in, which
+// is the one time the service has a reason to send one, and only once per
+// login attempt. Anything else that reads like a challenge - one arriving with
+// no login in progress, or a second, different one inside the same attempt -
+// is a request to quote password characters that this station never asked to
+// be challenged for, and answering it would let any station able to send a
+// message under the service callsign collect the password a few characters at
+// a time. Such a challenge is never answered: outside a login it is logged and
+// dropped, inside one it ends the attempt. The service repeating the challenge
+// already answered is its own retransmission and changes nothing.
 static void on_challenge_locked(const char *text, char *pending, size_t pending_size) {
     char digits[WL_CHALLENGE_MAX + 1];
-    if (!parse_challenge(text, digits, sizeof(digits))) {
+    bool readable = parse_challenge(text, digits, sizeof(digits));
+
+    if (s_state == WL_STATE_CHALLENGE_SENT || s_state == WL_STATE_WAIT_VALID) {
+        if (readable && strcmp(digits, s_challenge) == 0)
+            return;
+        session_fail("a second challenge arrived in the same login attempt");
+        return;
+    }
+    if (s_state != WL_STATE_LOGIN_SENT && s_state != WL_STATE_WAIT_CHALLENGE) {
+        ESP_LOGW(TAG, "challenge received with no login in progress, not answered");
+        return;
+    }
+
+    if (!readable) {
         session_fail("challenge could not be read");
         return;
     }
@@ -903,6 +940,8 @@ static void on_challenge_locked(const char *text, char *pending, size_t pending_
     // The answer replaces whatever was outstanding: the service asked for it
     // instead of acting on the command that opened the session, and that
     // command is re-sent by the operator once the session is up.
+    strncpy(s_challenge, digits, sizeof(s_challenge) - 1);
+    s_challenge[sizeof(s_challenge) - 1] = 0;
     s_tries_left = WL_CMD_TRIES;
     set_state(WL_STATE_CHALLENGE_SENT);
     transmit_locked(s_answer, pending, pending_size);
@@ -947,17 +986,32 @@ static bool winlink_rx_observer(const char *sender, const char *text, uint16_t m
         consumed = false;
     } else if (is_ack) {
         on_service_ack_locked();
+    } else if (strncmp(text, "Login [", 7) == 0) {
+        // Consumed whatever the verdict, so a challenge that is not answered
+        // still never reaches the conversation queue as a message to reply to.
+        s_last_rx = time(NULL);
+        on_challenge_locked(text, pending, sizeof(pending));
+    } else if (s_state == WL_STATE_IDLE || s_state == WL_STATE_ERROR) {
+        // No session is open and none is being opened, so the service has
+        // nothing outstanding to answer. The text cannot move the state
+        // machine; it is left to the ordinary conversation queue, where the
+        // operator reads it like any other message.
+        consumed = false;
     } else {
         s_last_rx = time(NULL);
 
-        if (strncmp(text, "Login [", 7) == 0) {
-            on_challenge_locked(text, pending, sizeof(pending));
-        } else if (strstr(text, "Login valid") != NULL) {
-            s_error[0] = 0;
-            s_outstanding[0] = 0;
-            s_tries_left = WL_CMD_TRIES;
-            s_session_started = time(NULL);
-            set_state(s_composing ? WL_STATE_COMPOSING : WL_STATE_LOGGED_IN);
+        if (strstr(text, "Login valid") != NULL) {
+            // Confirms a challenge answer, so it means something only while
+            // that answer is outstanding.
+            if (s_state == WL_STATE_CHALLENGE_SENT || s_state == WL_STATE_WAIT_VALID) {
+                s_error[0] = 0;
+                s_outstanding[0] = 0;
+                s_tries_left = WL_CMD_TRIES;
+                s_session_started = time(NULL);
+                set_state(s_composing ? WL_STATE_COMPOSING : WL_STATE_LOGGED_IN);
+            } else {
+                ESP_LOGW(TAG, "login confirmation received with no challenge answered, ignored");
+            }
         } else if (strncmp(text, "Log off successful", 18) == 0) {
             session_close();
         } else {

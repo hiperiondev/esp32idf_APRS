@@ -26,6 +26,14 @@ almacenamiento. Las tres excepciones son ``/logs/start``, ``/logs/stop`` y
 porque lo que conmutan es un espejo de la salida de consola de la propia
 estación y nada de la estación cambia con ello.
 
+El cuerpo de una petición — un formulario o la subida de un archivo — tiene que
+seguir llegando. El servidor atiende todas las peticiones en una sola tarea, así
+que un cliente que anuncia un ``Content-Length`` y luego deja de enviar recibe
+``WEB_BODY_MAX_TIMEOUTS`` (3) esperas de recepción consecutivas de 5 s cada una
+y luego la petición se abandona, en lugar de retener toda la administración web
+mientras el cliente siga conectado. Cualquier dato que llega reinicia la
+cuenta, de modo que una subida lenta pero viva se completa.
+
 La tabla lista todas las rutas de una compilación con todos los módulos
 habilitados. Las rutas de cada módulo se registran solo cuando ese módulo está en
 la compilación (ver :ref:`es-config-module-switches`), así que una ruta de un
@@ -234,8 +242,7 @@ mitad sin credenciales del handshake de Basic Auth que todo navegador realiza
 por sí solo. Solo cuenta una petición que presentó credenciales y fue
 rechazada. Tras 5 rechazos así desde el mismo origen IPv4, las peticiones
 siguientes reciben ``429 Too Many Requests`` (con ``Retry-After``) durante una
-ventana que empieza en 5 s y se duplica con cada rechazo mientras sigue
-bloqueado, con tope de 300 s; una ventana que expira sin login exitoso se
-rearma un fallo por debajo del umbral, de modo que credenciales caducadas
-repetidas solo disparan el bloqueo base de 5 s cada vez en lugar de escalar
-hasta el tope. Véase :ref:`es-web-admin` para más detalles.
+ventana que empieza en 5 s; el recuento sobrevive a la ventana, y cada nuevo
+rechazo después de que una expiró inicia la siguiente con el doble de
+duración, con tope de 300 s. Lo limpia un login exitoso o 15 minutos sin
+ningún rechazo. Véase :ref:`es-web-admin` para más detalles.

@@ -486,6 +486,7 @@ bool ax25_decode(uint8_t *buf, size_t len, uint16_t mVrms, ax25_msg_t *msg, enum
     // is rejected here instead of decoding whatever bytes happen to follow it
     // in the caller's buffer.
     msg->rpt_count = 0;
+    msg->rpt_flags = 0;
     while (true) {
         if (buf >= end)
             return false; // extension bit claims another address past the end of the frame
@@ -1890,47 +1891,65 @@ static unsigned int strpos(const char *txt, char chk) {
     return (unsigned int)(pch - txt);
 }
 
-static void convPath(ax25_header_t *hdr, const char *txt, unsigned int size) {
-    unsigned int i, p, j;
-    char num[5];
+// Parse one "CALL[-SSID][*]" address of a TNC2 header into an ::ax25_header_t.
+// The field is the first `size` bytes of `txt`; it also ends at the first '*',
+// ',' or ':' inside them. The callsign must be one to six letters or digits -
+// lower-case letters are taken as their upper-case form, since an address
+// octet only ever carries upper case - and the SSID, when present, one or two
+// digits worth 0 to 15. Anything else is refused rather than encoded: a
+// callsign cut to six characters or an SSID spilling into the neighbouring
+// bits of the octet would put a different address on the air than the one
+// asked for. A '*' right after the field sets the has-been-repeated bit.
+static bool convPath(ax25_header_t *hdr, const char *txt, unsigned int size) {
+    unsigned int i, end, dash;
 
     hdr->ssid = 0;
     memset(hdr->addr, 0, sizeof(hdr->addr));
-    memset(num, 0, sizeof(num));
 
-    p = strpos(txt, '-');
-    if (p > 0 && p < size) {
-        for (i = 0; i < p && i < 6; i++) // callsign/path
-            hdr->addr[i] = txt[i];
-
-        j = 0;
-        for (i = p + 1; i < size && j < sizeof(num) - 1; i++) { // SSID
-            if (txt[i] < 0x30)
-                break;
-            if (txt[i] > 0x39)
-                break;
-            num[j++] = txt[i];
+    end = size;
+    for (i = 0; i < size; i++) {
+        if (txt[i] == '*' || txt[i] == ',' || txt[i] == ':') {
+            end = i;
+            break;
         }
-        if (j > 0)
-            hdr->ssid = (char)atoi(num);
-
-        hdr->ssid <<= 1;
-    } else {
-        for (i = 0; i < size && i < 6; i++) {
-            if (txt[i] == '*')
-                break;
-            if (txt[i] == ',')
-                break;
-            if (txt[i] == ':')
-                break;
-            hdr->addr[i] = txt[i];
-        }
-        hdr->ssid = 0;
     }
-    p = strpos(txt, '*');
-    if (p > 0 && p < size)
-        hdr->ssid |= 0x80;
-    hdr->ssid |= 0x60;
+    bool repeated = (end < size && txt[end] == '*');
+
+    dash = end;
+    for (i = 0; i < end; i++) {
+        if (txt[i] == '-') {
+            dash = i;
+            break;
+        }
+    }
+    if (dash == 0 || dash > AX25_CALL_CHARS)
+        return false;
+
+    for (i = 0; i < dash; i++) {
+        char c = txt[i];
+        if (c >= 'a' && c <= 'z')
+            c = (char)(c - 'a' + 'A');
+        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')))
+            return false;
+        hdr->addr[i] = c;
+    }
+
+    unsigned int ssid = 0;
+    if (dash < end) {
+        unsigned int digits = end - dash - 1;
+        if (digits == 0 || digits > 2)
+            return false;
+        for (i = dash + 1; i < end; i++) {
+            if (txt[i] < '0' || txt[i] > '9')
+                return false;
+            ssid = ssid * 10 + (unsigned int)(txt[i] - '0');
+        }
+        if (ssid > 15)
+            return false;
+    }
+
+    hdr->ssid = (char)(uint8_t)(0x60 | (ssid << 1) | (repeated ? 0x80 : 0));
+    return true;
 }
 
 char ax25_encode(ax25_frame_t *frame, char *txt, int size) {
@@ -1966,7 +1985,8 @@ char ax25_encode(ax25_frame_t *frame, char *txt, int size) {
     for (i = 0; i < (size - (int)p) - 1 && i < (int)sizeof(frame->data) - 1; i++)
         frame->data[i] = txt[p + i + 1];
 
-    convPath(&frame->header[1], &txt[0], p2); // source callsign
+    if (!convPath(&frame->header[1], &txt[0], p2)) // source callsign
+        return 0;
 
     // strpos() scans the whole line, so a ',' inside the information field
     // reports an offset past the header, and one inside the source call
@@ -1977,7 +1997,8 @@ char ax25_encode(ax25_frame_t *frame, char *txt, int size) {
     if (j <= p2 || j > p)
         j = p;
 
-    convPath(&frame->header[0], &txt[p2 + 1], j - p2 - 1); // destination
+    if (!convPath(&frame->header[0], &txt[p2 + 1], j - p2 - 1)) // destination
+        return 0;
 
     p3 = 0;
     if (j < p) { // digipeater path present
@@ -1994,7 +2015,8 @@ char ax25_encode(ax25_frame_t *frame, char *txt, int size) {
         token = strtok_r(txt, ",", &save);
         hop = 0;
         while (token != NULL && hop < 8) {
-            convPath(&frame->header[hop + 2], token, (unsigned int)strlen(token));
+            if (!convPath(&frame->header[hop + 2], token, (unsigned int)strlen(token)))
+                return 0;
             token = strtok_r(NULL, ",", &save);
             hop++;
         }
@@ -2088,4 +2110,73 @@ int hdlcFrame(uint8_t *outbuf, size_t outbuf_len, ax25_ctx_t *ctx, ax25_frame_t 
 
     memcpy(outbuf, info, (size_t)idx);
     return idx;
+}
+
+// Serialize one address: six callsign characters, space-padded and shifted
+// left one bit, followed by the SSID octet the caller has already built. The
+// callsign must be one to six upper-case letters or digits, the same rule
+// addrCallValid() enforces on reception, so a frame this encoder produces is
+// one this station's own decoder accepts.
+static bool encodeAddress(uint8_t *out, const ax25_call_t *field, uint8_t ssidOctet) {
+    size_t n = strnlen(field->call, AX25_CALL_CHARS + 1);
+    if (n == 0 || n > AX25_CALL_CHARS)
+        return false;
+
+    for (size_t j = 0; j < AX25_CALL_CHARS; j++) {
+        char c = (j < n) ? field->call[j] : ' ';
+        if (j < n && !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')))
+            return false;
+        out[j] = (uint8_t)((uint8_t)c << 1);
+    }
+    out[AX25_CALL_CHARS] = ssidOctet;
+    return true;
+}
+
+int ax25_encode_msg(const ax25_msg_t *msg, uint8_t *out, size_t out_len) {
+    if (msg == NULL || out == NULL)
+        return 0;
+    if (msg->rpt_count > AX25_MAX_RPT || msg->len > sizeof(msg->info))
+        return 0;
+
+    size_t need = (size_t)(2 + msg->rpt_count) * AX25_ADDR_LEN + AX25_CTRL_PID_LEN + msg->len;
+    if (need > out_len || need > AX25_FRAME_MAX_SIZE)
+        return 0;
+
+    size_t idx = 0;
+
+    // Destination and source keep the command/response bit and both reserved
+    // bits of their octet as received; the SSID is taken from the decoded
+    // field, which is the one a digipeater rewrites.
+    uint8_t dstOctet = (uint8_t)((msg->dst.ssidBits & 0xE0) | ((msg->dst.ssid & 0x0F) << 1));
+    if (!encodeAddress(&out[idx], &msg->dst, dstOctet))
+        return 0;
+    idx += AX25_ADDR_LEN;
+
+    uint8_t srcOctet = (uint8_t)((msg->src.ssidBits & 0xE0) | ((msg->src.ssid & 0x0F) << 1) | (msg->rpt_count == 0 ? 0x01 : 0x00));
+    if (!encodeAddress(&out[idx], &msg->src, srcOctet))
+        return 0;
+    idx += AX25_ADDR_LEN;
+
+    // A path address keeps its reserved bits; its has-been-repeated bit comes
+    // from rpt_flags, which is what the decoder fills and the digipeater
+    // updates, and the address-extension bit goes on the last one.
+    for (uint8_t i = 0; i < msg->rpt_count; i++) {
+        const ax25_call_t *field = &msg->rpt_list[i];
+        uint8_t octet = (uint8_t)((field->ssidBits & 0x60) | ((field->ssid & 0x0F) << 1));
+        if (AX25_REPEATED(msg, i))
+            octet |= 0x80;
+        if (i == msg->rpt_count - 1)
+            octet |= 0x01;
+        if (!encodeAddress(&out[idx], field, octet))
+            return 0;
+        idx += AX25_ADDR_LEN;
+    }
+
+    out[idx++] = msg->ctrl;
+    out[idx++] = msg->pid;
+    if (msg->len > 0)
+        memcpy(&out[idx], msg->info, msg->len);
+    idx += msg->len;
+
+    return (int)idx;
 }

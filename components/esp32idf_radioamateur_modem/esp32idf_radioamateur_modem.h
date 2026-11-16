@@ -498,6 +498,34 @@ int modem_build_frame_tnc2(const char *tnc2, uint8_t *out, size_t out_len);
 esp_err_t modem_send_tnc2(const char *tnc2);
 
 /**
+ * @brief Encode a decoded frame in binary form and queue it for transmission.
+ *
+ * The frame is built by ax25_encode_msg() straight from the fields of @p msg,
+ * so its information field goes out byte for byte - binary content included -
+ * and its length is bounded only by ::AX25_FRAME_MAX_SIZE. This is the entry
+ * point for putting a received frame back on the air with a rewritten path,
+ * where a round trip through TNC2 text would lose bytes and refuse frames
+ * whose text form is longer than the frame itself.
+ *
+ * Safe to call from any task; it shares the internal transmit lock with
+ * modem_send_tnc2() and modem_send_raw().
+ *
+ * @param msg     Frame to transmit (see ax25_encode_msg() for the rules its
+ *                addresses must follow).
+ * @param out_len Receives the length, in bytes, of the frame queued (address
+ *                field onwards, no flags and no FCS), or 0 when nothing was
+ *                queued. May be NULL.
+ * @return ESP_OK if the frame was queued successfully.
+ *         ESP_ERR_INVALID_ARG if @p msg is NULL.
+ *         ESP_ERR_INVALID_SIZE if the frame could not be encoded: an illegal
+ *         callsign, or longer than ::AX25_FRAME_MAX_SIZE.
+ *         ESP_ERR_INVALID_STATE if modem_init() has not run yet.
+ *         ESP_ERR_TIMEOUT if the transmit path could not be acquired.
+ *         ESP_ERR_NO_MEM if the transmit ring is full (frame dropped).
+ */
+esp_err_t modem_send_msg(const ax25_msg_t *msg, uint16_t *out_len);
+
+/**
  * @brief Render an already-decoded frame back into a TNC2-style monitor
  *        string.
  * @param msg     Decoded message to render.

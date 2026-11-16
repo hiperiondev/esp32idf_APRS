@@ -17,4 +17,5 @@ esp_err_t esp_wifi_set_config(wifi_interface_t i, wifi_config_t *c);
 esp_err_t esp_wifi_scan_start(const wifi_scan_config_t *c, bool block);
 esp_err_t esp_wifi_scan_get_ap_records(uint16_t *n, wifi_ap_record_t *r);
 esp_err_t esp_wifi_scan_get_ap_num(uint16_t *n);
+esp_err_t esp_wifi_clear_ap_list(void);
 esp_err_t esp_wifi_connect(void);

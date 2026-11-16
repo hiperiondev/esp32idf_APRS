@@ -57,12 +57,24 @@ Sesiones
 Enviar cualquier orden al servicio abre una sesión. Si la cuenta tiene el
 acceso seguro activado, el servicio responde con un desafío de la forma
 ``Login [NNN]``, donde cada dígito es una posición de carácter en la contraseña
-contando desde 1. La respuesta son esos caracteres más otros tres cualesquiera,
-en cualquier orden — así la contraseña nunca viaja por el aire, y una respuesta
-observada en el canal revela solo tres de sus caracteres y no de dónde salen.
-Con el acceso seguro apagado no hay desafío alguno y el servicio simplemente
-responde la orden; el cliente acepta eso igual de bien y pasa directo al modo
-de órdenes.
+contando desde 1. La respuesta son esos caracteres, en el orden del desafío,
+con otros tres cualesquiera repartidos al azar entre su principio y su final —
+así la contraseña nunca viaja por el aire, y una respuesta observada en el
+canal revela solo tres de sus caracteres, sin decir de dónde salen ni cuáles
+tres de la respuesta son. Con el acceso seguro apagado no hay desafío alguno y
+el servicio simplemente responde la orden; el cliente acepta eso igual de bien
+y pasa directo al modo de órdenes.
+
+Un desafío se responde solo mientras esta estación está iniciando sesión, y una
+única vez por intento. Uno que llega sin un inicio de sesión en curso se
+registra y nunca se responde, y un segundo desafío distinto dentro del mismo
+intento lo termina con error; que el servicio repita el desafío ya respondido
+no cambia nada. De otro modo, cualquiera capaz de enviar un mensaje con el
+indicativo del servicio podría juntar la contraseña de a pocos caracteres
+desafiando él mismo a la estación. Del mismo modo, *Login valid* se toma en
+cuenta solo mientras hay una respuesta a un desafío pendiente, y el texto del
+servicio que llega sin una sesión abierta o en apertura no toca la sesión: va a
+la conversación de mensajes común en lugar del buzón.
 
 Una sesión caduca del lado del servicio a las dos horas aproximadamente.
 ``wlSessionMaxMin`` (110 minutos por omisión) queda por debajo, de modo que

@@ -700,6 +700,35 @@ esp_err_t modem_send_raw(const uint8_t *frame, uint16_t len) {
     return err;
 }
 
+esp_err_t modem_send_msg(const ax25_msg_t *msg, uint16_t *out_len) {
+    uint8_t buf[AX25_FRAME_MAX_SIZE];
+    esp_err_t err;
+
+    if (out_len)
+        *out_len = 0;
+    if (msg == NULL)
+        return ESP_ERR_INVALID_ARG;
+
+    // The binary encoder keeps no state of its own, so the frame is built
+    // before the transmit lock is taken and only the queueing runs under it.
+    int size = ax25_encode_msg(msg, buf, sizeof(buf));
+    if (size <= 0) {
+        ESP_LOGW(TAG, "cannot encode frame from %s-%u (%u path address(es), %u info byte(s))", msg->src.call, (unsigned)msg->src.ssid, (unsigned)msg->rpt_count,
+                 (unsigned)msg->len);
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    err = txLock();
+    if (err != ESP_OK)
+        return err;
+    err = sendRawLocked(buf, (uint16_t)size);
+    txUnlock();
+
+    if (err == ESP_OK && out_len)
+        *out_len = (uint16_t)size;
+    return err;
+}
+
 esp_err_t modem_send_tnc2(const char *tnc2) {
     uint8_t buf[AX25_FRAME_MAX_SIZE];
     esp_err_t err;

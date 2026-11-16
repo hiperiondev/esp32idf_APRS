@@ -34,6 +34,7 @@
 #include <string.h>
 
 #include "app_config.h"
+#include "aprs_call.h"  // aprs_call_normalize_base()/_token()/_path(): callsign and path fields are loaded in their on-air form
 #include "aprs_coord.h" // aprs_symbol_table_is_valid()/aprs_symbol_code_is_valid(): the symbol pair accepted on air
 // RF_TX_BUFFERS_MIN/MAX, RF_PREAMBLE_MS_MIN/MAX, RF_TX_TAIL_MS_MAX, RF_TX_TIMESLOT_MS_MAX,
 // PTT_MIN_UNKEY_MS_MAX, CSMA_PERSIST_MIN, CSMA_SLOT_MS_*, CSMA_BUSY_MAX_S_*:
@@ -189,6 +190,42 @@ static void set_str_utf8(char *dst, size_t sz, const char *val) {
     char stripped[COMMENT_SIZE];
     str_copy_strip_line_breaks(val, stripped, sizeof(stripped) < sz ? sizeof(stripped) : sz);
     str_copy_utf8_safe(stripped, dst, sz);
+}
+
+// Loads a stored base-callsign field in the form it takes on the air
+// (aprs_call_normalize_base()): upper case, letters and digits only, at most
+// six characters. An empty stored value is loaded as it is. A value with no
+// usable callsign in it at all leaves the field as it was, since an empty
+// callsign is no more usable than the text that produced it.
+static void set_call(char *dst, size_t sz, const char *val, const char *key) {
+    char tmp[16];
+    set_str(tmp, sizeof(tmp), val);
+    if (tmp[0] == 0) {
+        set_str(dst, sz, "");
+        return;
+    }
+    char orig[sizeof(tmp)];
+    memcpy(orig, tmp, sizeof(orig));
+    if (!aprs_call_normalize_base(tmp)) {
+        ESP_LOGW(TAG, "%s \"%s\" holds no usable callsign, kept \"%s\"", key, orig, dst);
+        return;
+    }
+    if (strcmp(orig, tmp) != 0)
+        ESP_LOGW(TAG, "%s \"%s\" loaded as \"%s\"", key, orig, tmp);
+    set_str(dst, sz, tmp);
+}
+
+// Loads a stored digipeater path in the form it takes on the air
+// (aprs_call_normalize_path()): every entry a legal callsign/SSID pair, at
+// most eight of them. Entries that are not are left out, and the operator is
+// told when the stored text and the loaded path differ.
+static void set_path(char *dst, size_t sz, const char *val, const char *key) {
+    char orig[sizeof(((app_config_t *)0)->path[0])];
+    set_str(orig, sizeof(orig), val);
+    set_str(dst, sz, orig);
+    aprs_call_normalize_path(dst, sz);
+    if (strcmp(orig, dst) != 0)
+        ESP_LOGW(TAG, "%s \"%s\" loaded as \"%s\"", key, orig, dst);
 }
 
 void app_config_set_defaults(app_config_t *c) {
@@ -1224,7 +1261,7 @@ static void section_read_system(cJSON *d, app_config_t *c) {
 }
 
 static void section_read_station(cJSON *d, app_config_t *c) {
-    set_str(c->my_callsign, sizeof(c->my_callsign), jget_str(d, "myCallsign", c->my_callsign));
+    set_call(c->my_callsign, sizeof(c->my_callsign), jget_str(d, "myCallsign", c->my_callsign), "myCallsign");
     c->my_use_gps = jget_bool(d, "myUseGps", c->my_use_gps);
     c->my_lat = (float)jget_num(d, "myLAT", c->my_lat);
     c->my_lon = (float)jget_num(d, "myLON", c->my_lon);
@@ -1522,7 +1559,7 @@ static void section_read_igate(cJSON *d, app_config_t *c) {
             }
         }
     }
-    set_str(c->aprs_mycall, sizeof(c->aprs_mycall), jget_str(d, "igateMycall", c->aprs_mycall));
+    set_call(c->aprs_mycall, sizeof(c->aprs_mycall), jget_str(d, "igateMycall", c->aprs_mycall), "igateMycall");
     c->igate_use_station = jget_bool(d, "igateUseStation", c->igate_use_station);
     c->igate_use_gps = jget_bool(d, "igateUseGps", c->igate_use_gps);
     set_str(c->aprs_passcode, sizeof(c->aprs_passcode), jget_str(d, "igatePasscode", c->aprs_passcode));
@@ -1616,7 +1653,7 @@ static void section_read_digipeater(cJSON *d, app_config_t *c) {
     c->digi_loc2inet = jget_bool(d, "digiPos2inet", c->digi_loc2inet);
     c->digi_timestamp = jget_bool(d, "digiTime", c->digi_timestamp);
     c->digi_ssid = (uint8_t)jget_num(d, "digiSSID", c->digi_ssid);
-    set_str(c->digi_mycall, sizeof(c->digi_mycall), jget_str(d, "digiMycall", c->digi_mycall));
+    set_call(c->digi_mycall, sizeof(c->digi_mycall), jget_str(d, "digiMycall", c->digi_mycall), "digiMycall");
     c->digi_use_station = jget_bool(d, "digiUseStation", c->digi_use_station);
     c->digi_use_gps = jget_bool(d, "digiUseGps", c->digi_use_gps);
     c->digi_path = (uint8_t)jget_num(d, "digiPath", c->digi_path);
@@ -1711,7 +1748,7 @@ static void section_read_digipeater(cJSON *d, app_config_t *c) {
         cJSON *p = cJSON_GetObjectItemCaseSensitive(d, "path");
         for (int i = 0; i < 4; i++) {
             cJSON *v = p ? cJSON_GetArrayItem(p, i) : NULL;
-            set_str(c->path[i], sizeof(c->path[i]), (v && cJSON_IsString(v)) ? v->valuestring : c->path[i]);
+            set_path(c->path[i], sizeof(c->path[i]), (v && cJSON_IsString(v)) ? v->valuestring : c->path[i], "path");
         }
     }
 }
@@ -1722,7 +1759,7 @@ static void section_read_tracker(cJSON *d, app_config_t *c) {
     c->trk_loc2inet = jget_bool(d, "trkPos2inet", c->trk_loc2inet);
     c->trk_timestamp = jget_bool(d, "trkTime", c->trk_timestamp);
     c->trk_ssid = (uint8_t)jget_num(d, "trkSSID", c->trk_ssid);
-    set_str(c->trk_mycall, sizeof(c->trk_mycall), jget_str(d, "trkMycall", c->trk_mycall));
+    set_call(c->trk_mycall, sizeof(c->trk_mycall), jget_str(d, "trkMycall", c->trk_mycall), "trkMycall");
     c->trk_use_station = jget_bool(d, "trkUseStation", c->trk_use_station);
     c->trk_use_gps = jget_bool(d, "trkUseGps", c->trk_use_gps);
     c->trk_use_live_gps = jget_bool(d, "trkUseLiveGps", c->trk_use_live_gps);
@@ -1777,7 +1814,7 @@ static void section_read_weather(cJSON *d, app_config_t *c) {
     c->wx_2inet = jget_bool(d, "wxTx2inet", c->wx_2inet);
     c->wx_timestamp = jget_bool(d, "wxTime", c->wx_timestamp);
     c->wx_ssid = (uint8_t)jget_num(d, "wxSSID", c->wx_ssid);
-    set_str(c->wx_mycall, sizeof(c->wx_mycall), jget_str(d, "wxMycall", c->wx_mycall));
+    set_call(c->wx_mycall, sizeof(c->wx_mycall), jget_str(d, "wxMycall", c->wx_mycall), "wxMycall");
     c->wx_use_station = jget_bool(d, "wxUseStation", c->wx_use_station);
     c->wx_use_gps = jget_bool(d, "wxUseGps", c->wx_use_gps);
     c->wx_path = (uint8_t)jget_num(d, "wxPath", c->wx_path);
@@ -1814,7 +1851,7 @@ static void section_read_gps(cJSON *d, app_config_t *c) {
 
 static void section_read_message(cJSON *d, app_config_t *c) {
     c->msg_enable = jget_bool(d, "msgEnable", c->msg_enable);
-    set_str(c->msg_mycall, sizeof(c->msg_mycall), jget_str(d, "msgMycall", c->msg_mycall));
+    set_call(c->msg_mycall, sizeof(c->msg_mycall), jget_str(d, "msgMycall", c->msg_mycall), "msgMycall");
     c->msg_use_station = jget_bool(d, "msgUseStation", c->msg_use_station);
     c->msg_rf = jget_bool(d, "msgRf", c->msg_rf);
     c->msg_inet = jget_bool(d, "msgInet", c->msg_inet);
@@ -1835,11 +1872,11 @@ static void section_read_message(cJSON *d, app_config_t *c) {
 static void section_read_winlink(cJSON *d, app_config_t *c) {
     c->wl_enable = jget_bool(d, "wlEnable", c->wl_enable);
     set_str(c->wl_service_call, sizeof(c->wl_service_call), jget_str(d, "wlServiceCall", c->wl_service_call));
-    if (c->wl_service_call[0] == 0)
+    if (!aprs_call_normalize_token(c->wl_service_call, false))
         set_str(c->wl_service_call, sizeof(c->wl_service_call), WL_SERVICE_CALL_DEFAULT);
     set_str(c->wl_password, sizeof(c->wl_password), jget_str(d, "wlPassword", c->wl_password));
     c->wl_use_msg_call = jget_bool(d, "wlUseMsgCall", c->wl_use_msg_call);
-    set_str(c->wl_mycall, sizeof(c->wl_mycall), jget_str(d, "wlMyCall", c->wl_mycall));
+    set_call(c->wl_mycall, sizeof(c->wl_mycall), jget_str(d, "wlMyCall", c->wl_mycall), "wlMyCall");
     c->wl_auto_login = jget_bool(d, "wlAutoLogin", c->wl_auto_login);
     {
         int mins = (int)jget_num(d, "wlSessionMaxMin", c->wl_session_max_min);

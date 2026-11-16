@@ -105,6 +105,20 @@ Recurring domains (SSID, transmit interval, latitude, longitude, altitude) come
 from the ``WEB_RANGE_*`` constants in ``web_common.h`` so a bound is defined
 once for every page that shares it.
 
+Callsign and digipeater-path fields are stored in the form they take on the
+air (``main/include/aprs_call.h``). A callsign field keeps upper-case letters
+and digits only, at most six of them — ``lu3vea`` is stored as ``LU3VEA``, and
+an SSID typed into a callsign field is dropped, since every such field has its
+SSID in a separate one. The Winlink service callsign, the one call field
+stored with its SSID, keeps an SSID of 1 to 15. A path preset, and the
+telemetry report path, keep only entries that are a legal callsign with an
+optional SSID of 1 to 15 and an optional ``*``, at most eight of them; an entry
+such as ``WIDE2-16`` is dropped rather than rewritten, because any rewrite
+would name a different alias. The same normalization runs when
+``config.json`` and ``telemetry.json`` are loaded — for ``config.json`` with a
+warning on the console for every value it changes — so a hand-edited or uploaded file cannot
+put an address no receiver accepts on the air either.
+
 Contextual help
 ===============
 
@@ -420,6 +434,11 @@ The pages
        Also the factory-reset button.
    * - **Storage**
      - LittleFS browser: download, delete, multipart upload, usage, format.
+       An upload is written to a temporary ``<name>.upl`` file and moved over
+       the destination only once it is complete, so a failed or interrupted
+       transfer leaves the previous file untouched. The move and a delete are
+       both made under the storage writer gate, so neither can land in the
+       middle of a module's own save of the same file.
    * - **About / Firmware**
      - Project name, version, build date/time, IDF version, running partition,
        and the **OTA Update** panel.
@@ -631,14 +650,20 @@ tripping a lockout on their own.
 
 After 5 consecutive rejected credentials from the same source, that source is
 locked out and every further request gets ``429 Too Many Requests`` with a
-``Retry-After`` header instead of a ``401``, for a window that starts at 5 s
-and doubles on each further rejected attempt while still locked out, capped at
-300 s. A window that elapses without a successful login rearms one failure
-below the threshold rather than resuming from the accumulated count, so a
-client that keeps retrying the same stale credentials after every window
-expires re-triggers only the base 5 s lockout each time, instead of ratcheting
-straight back to the 300 s cap. A successful login clears the source's slot
-entirely.
+``Retry-After`` header instead of a ``401``. Requests made during the window
+are refused without their credentials being looked at, so they neither count
+nor help. The first window lasts 5 s, and the count survives its end: each
+further rejected attempt after a window has elapsed starts the next one at
+twice the length of the last, capped at 300 s. A source that keeps guessing is
+therefore held to one attempt every five minutes. The count is cleared by a
+successful login, which frees the source's slot entirely, or by 15 minutes
+without a single rejected attempt.
+
+The table holds 16 sources. Each source owns one slot, and when a new source
+needs one and the table is full, the slot given up is that of the source whose
+latest failure is oldest among those not locked out at that moment; a locked
+source loses its slot only when every slot is locked, so a burst of requests
+from many addresses cannot wipe out the lockout of the one doing the guessing.
 
 Same-origin protection (CSRF)
 ==============================

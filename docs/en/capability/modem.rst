@@ -101,6 +101,10 @@ The component's public header (``esp32idf_radioamateur_modem.h``) exposes:
      - Build a raw frame from a TNC2 monitor string.
    * - ``modem_send_tnc2(tnc2)``
      - Build + queue in one call.
+   * - ``modem_send_msg(msg, out_len)``
+     - Encode a decoded frame in binary (``ax25_encode_msg()``) and queue it:
+       the information field goes out byte for byte and the frame is bounded
+       only by the AX.25 frame size. The digipeater's transmit path.
    * - ``modem_format_tnc2(msg, out, out_len)``
      - Render a decoded frame back to a TNC2 string.
    * - ``modem_tx_queue_depth()``
@@ -129,9 +133,9 @@ initialiser), the ``MODEM_DELAY_TICKS(ms)`` helper, ``modem_rx_frame_t`` and the
 the modem is brought up once per boot and reconfigured in place with
 ``modem_set_modem()``.
 
-The three transmit entry points — ``modem_send_raw()``,
-``modem_build_frame_tnc2()`` and ``modem_send_tnc2()`` — are safe to call from
-any task. They share one internal mutex, because they share the outgoing CRC
+The four transmit entry points — ``modem_send_raw()``,
+``modem_build_frame_tnc2()``, ``modem_send_tnc2()`` and ``modem_send_msg()`` —
+are safe to call from any task. They share one internal mutex, because they share the outgoing CRC
 accumulator, the single-producer transmit ring and the state machine that keys
 up from it. ``modem_send_tnc2()`` holds that mutex across both the build and
 the queue, so a frame always reaches the ring with the checksum accumulated for

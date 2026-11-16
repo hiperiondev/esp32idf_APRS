@@ -471,7 +471,9 @@ ni parámetros remotos propios por encima de él.
    * - ``/menu``
      - cualquiera
      - Muestra la interfaz de botones (teclado en línea de Telegram) para los
-       comandos anteriores.
+       comandos anteriores. Su botón *Settings* ejecuta el informe ``/config``,
+       reservado a administradores, por lo que solo se muestra a ellos, y una
+       pulsación de cualquier otro recibe el mismo rechazo que da la orden.
    * - ``/stats``
      - cualquiera
      - Informa los contadores propios del servicio: actualizaciones

@@ -70,7 +70,7 @@
 #define LANG_IT 2 /**< Italiano (Italian). */
 
 #ifndef LANGUAGE
-#define LANGUAGE LANG_EN /**< Active UI language, one of the @c LANG_* codes. Overridable from the build system. */
+#define LANGUAGE LANG_ES /**< Active UI language, one of the @c LANG_* codes. Overridable from the build system. */
 #endif
 /** @} */
 

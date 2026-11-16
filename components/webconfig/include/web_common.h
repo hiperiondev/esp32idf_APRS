@@ -29,6 +29,7 @@
 #include "esp_http_server.h"
 
 #include "app_config.h"
+#include "aprs_call.h" // aprs_call_normalize_base(): callsign fields are stored in their on-air form
 
 /**
  * @brief Privilege a request carries, decided by which credential pair it
@@ -129,13 +130,50 @@ bool web_check_auth(httpd_req_t *req);
 bool web_check_auth_admin(httpd_req_t *req);
 
 /**
+ * @brief Base URL every page fetches APRS symbol icons from, ending in the
+ * directory the @c "<code>-<table>.png" images live in.
+ *
+ * @details The firmware carries no symbol sprite of its own, so the icons on
+ * the traffic table, the symbol picker and the symbol fields are images the
+ * admin's browser loads from this address; @c <code> is the decimal ASCII
+ * value of the symbol character and @c <table> is 1 for the primary table and
+ * 2 for the alternate one. Every page builds its icon URLs from this one
+ * constant. It is scheme-relative, so the icons are requested over the same
+ * scheme as the admin page itself - over HTTPS when the admin sits behind a
+ * TLS-terminating proxy, where a fixed @c http:// address would be refused as
+ * mixed content. A build that should not have the browser contact a third
+ * party for its icons - or that mirrors them on a local server - overrides it
+ * with a compile definition; an icon that cannot be loaded is hidden, and the
+ * symbol picker falls back to the raw character.
+ */
+#ifndef WEB_SYMBOL_ICON_BASE
+#define WEB_SYMBOL_ICON_BASE "//aprs.dprns.com/symbols/icons/"
+#endif
+
+/**
+ * @brief Consecutive receive time-outs a request body may run into before the
+ * request is abandoned.
+ *
+ * @details esp_http_server serves every request on one task, so a client that
+ * announces a @c Content-Length and then stops sending would hold that task -
+ * and with it the whole admin UI - for as long as it stays connected if each
+ * time-out were simply retried. web_read_body() and
+ * web_multipart_receive_file() retry a time-out only this many times in a row,
+ * each one lasting the server's receive wait (5 s by default); any data that
+ * arrives resets the count, so a slow but live upload is never cut short.
+ */
+#define WEB_BODY_MAX_TIMEOUTS 3
+
+/**
  * @brief Read the whole request body (application/x-www-form-urlencoded) into
  * a caller-allocated buffer.
  *
  * @param req      Incoming request.
  * @param buf      Destination buffer.
  * @param buf_size Size of @p buf, in bytes.
- * @return Number of bytes read, or -1 on error / body too large for @p buf.
+ * @return Number of bytes read, or -1 on error, on a body too large for
+ *         @p buf, or when the client stopped sending for more than
+ *         ::WEB_BODY_MAX_TIMEOUTS consecutive receive time-outs.
  */
 int web_read_body(httpd_req_t *req, char *buf, size_t buf_size);
 
@@ -328,7 +366,9 @@ typedef esp_err_t (*web_multipart_data_cb_t)(void *cb_ctx, const uint8_t *data, 
  *         well-formed body with no filename'd file part; ESP_ERR_INVALID_ARG
  *         for a missing/unparseable Content-Type or boundary; ESP_ERR_NO_MEM
  *         if the internal scratch buffer could not be allocated; ESP_FAIL for
- *         a malformed body, socket error, or a non-OK return from @p cb.
+ *         a malformed body, socket error, a client that stopped sending for
+ *         more than ::WEB_BODY_MAX_TIMEOUTS consecutive receive time-outs, or
+ *         a non-OK return from @p cb.
  */
 esp_err_t web_multipart_receive_file(httpd_req_t *req, web_multipart_data_cb_t cb, void *cb_ctx, char *filename_out, size_t filename_out_size);
 
@@ -376,11 +416,14 @@ float web_form_get_float(const char *body, const char *key, float def);
 void web_urldecode(const char *src, char *dst, size_t dst_size);
 
 /**
- * @brief Read a callsign form field, clamped to at most 6 characters.
+ * @brief Read a base-callsign form field in the form it takes on the air.
  *
- * Reads @p key like web_form_get(), then clamps the result to the 6-character
- * AX.25 limit so an over-long value can never later overflow a 7-byte
- * ax25_call_t.call field.
+ * Reads @p key like web_form_get(), then normalizes the result with
+ * aprs_call_normalize_base(): upper case, letters and digits only, at most six
+ * characters. Every field read this way has its SSID in a separate field, so
+ * the value is the base call alone, and what is stored is always something
+ * that encodes to a legal AX.25 address and fits the 7-byte ax25_call_t.call
+ * field.
  *
  * @param body     Form/query blob.
  * @param key      Field name.
@@ -389,8 +432,7 @@ void web_urldecode(const char *src, char *dst, size_t dst_size);
  */
 static inline void web_form_get_call(const char *body, const char *key, char *out, size_t out_size) {
     web_form_get(body, key, out, out_size);
-    if (out_size > 6)
-        out[6] = '\0';
+    aprs_call_normalize_base(out);
 }
 
 /**
